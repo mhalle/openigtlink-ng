@@ -7,7 +7,7 @@ elements with named sub-fields.
 
 The module intentionally does not import :class:`FieldSchema` directly:
 ``ElementDescriptor.fields`` is a forward reference (``"FieldSchema"``)
-resolved when :mod:`oigt_corpus_tools.schema.field` finishes loading and
+resolved when :mod:`oigtl_corpus_tools.schema.field` finishes loading and
 calls ``ElementDescriptor.model_rebuild()``. This layering keeps the
 mutual recursion between element and field types expressible without
 circular imports.
@@ -19,7 +19,7 @@ from typing import TYPE_CHECKING, Optional, Union
 
 from pydantic import BaseModel, ConfigDict, Field, model_validator
 
-from oigt_corpus_tools.schema.types import (
+from oigtl_corpus_tools.schema.types import (
     Encoding,
     Endianness,
     FieldType,
@@ -30,7 +30,7 @@ from oigt_corpus_tools.schema.types import (
 
 if TYPE_CHECKING:
     # Resolved at runtime by field.py's ``ElementDescriptor.model_rebuild()``.
-    from oigt_corpus_tools.schema.field import FieldSchema  # noqa: F401
+    from oigtl_corpus_tools.schema.field import FieldSchema  # noqa: F401
 
 
 class ElementDescriptor(BaseModel):

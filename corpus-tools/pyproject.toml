@@ -1,5 +1,5 @@
 [project]
-name = "oigt-corpus-tools"
+name = "oigtl-corpus-tools"
 version = "0.1.0"
 description = "Tooling for the openigtlink-ng conformance corpus: schema validation, corpus generation, differential testing."
 readme = "README.md"
@@ -18,14 +18,14 @@ dev = [
 ]
 
 [project.scripts]
-oigt-corpus = "oigt_corpus_tools.cli:main"
+oigtl-corpus = "oigtl_corpus_tools.cli:main"
 
 [build-system]
 requires = ["hatchling"]
 build-backend = "hatchling.build"
 
 [tool.hatch.build.targets.wheel]
-packages = ["src/oigt_corpus_tools"]
+packages = ["src/oigtl_corpus_tools"]
 
 [tool.pytest.ini_options]
 testpaths = ["tests"]

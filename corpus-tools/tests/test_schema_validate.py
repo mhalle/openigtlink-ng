@@ -1,4 +1,4 @@
-"""Tests for ``oigt_corpus_tools.commands.schema``.
+"""Tests for ``oigtl_corpus_tools.commands.schema``.
 
 Validation logic is exercised directly through the pure
 :func:`validate_schemas` function rather than through the CLI, so tests
@@ -15,11 +15,11 @@ from pathlib import Path
 
 import pytest
 
-from oigt_corpus_tools.commands.schema import (
+from oigtl_corpus_tools.commands.schema import (
     _render_meta_schema,
     validate_schemas,
 )
-from oigt_corpus_tools.paths import (
+from oigtl_corpus_tools.paths import (
     find_repo_root,
     meta_schema_path,
     schemas_dir,
@@ -53,7 +53,7 @@ def test_all_real_schemas_validate(repo_root: Path) -> None:
 def test_meta_schema_on_disk_in_sync_with_models(repo_root: Path) -> None:
     """The committed ``spec/meta-schema.json`` must match what the Pydantic models emit.
 
-    Equivalent to running ``oigt-corpus schema emit-meta --check``; this
+    Equivalent to running ``oigtl-corpus schema emit-meta --check``; this
     test form gives a useful diff when pytest's ``-vv`` mode is used.
     """
     expected = _render_meta_schema()
@@ -61,7 +61,7 @@ def test_meta_schema_on_disk_in_sync_with_models(repo_root: Path) -> None:
 
     assert actual == expected, (
         "spec/meta-schema.json is out of sync with the Pydantic models. "
-        "Run 'uv run oigt-corpus schema emit-meta' to regenerate."
+        "Run 'uv run oigtl-corpus schema emit-meta' to regenerate."
     )
 
 

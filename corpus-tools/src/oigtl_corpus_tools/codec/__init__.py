@@ -13,12 +13,12 @@ Public API:
 - :func:`load_schema` — load and validate a schema by type_id.
 """
 
-from oigt_corpus_tools.codec.header import (
+from oigtl_corpus_tools.codec.header import (
     HEADER_SIZE,
     pack_header,
     unpack_header,
 )
-from oigt_corpus_tools.codec.message import (
+from oigtl_corpus_tools.codec.message import (
     load_schema,
     pack_body,
     pack_message,

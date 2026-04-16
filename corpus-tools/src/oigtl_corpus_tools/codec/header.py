@@ -11,7 +11,7 @@ from __future__ import annotations
 import struct
 from typing import Any
 
-from oigt_corpus_tools.codec.crc64 import crc64
+from oigtl_corpus_tools.codec.crc64 import crc64
 
 HEADER_SIZE = 58
 _HEADER_FMT = ">H12s20sQQQ"  # version, type[12], device_name[20], timestamp, body_size, crc

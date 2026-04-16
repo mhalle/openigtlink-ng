@@ -1,8 +1,8 @@
 """Top-level CLI dispatcher.
 
-Follows the command / subcommand pattern (``oigt-corpus <command>
+Follows the command / subcommand pattern (``oigtl-corpus <command>
 <subcommand> [options]``). Each command is a module in
-``oigt_corpus_tools.commands`` that exposes a ``register(parser)`` function
+``oigtl_corpus_tools.commands`` that exposes a ``register(parser)`` function
 taking the argparse subparser for that command and attaching its own
 subparsers and handlers.
 
@@ -16,13 +16,13 @@ import argparse
 import sys
 from collections.abc import Sequence
 
-from oigt_corpus_tools import __version__
-from oigt_corpus_tools.commands import schema
+from oigtl_corpus_tools import __version__
+from oigtl_corpus_tools.commands import schema
 
 
 def _build_parser() -> argparse.ArgumentParser:
     parser = argparse.ArgumentParser(
-        prog="oigt-corpus",
+        prog="oigtl-corpus",
         description="Tooling for the openigtlink-ng conformance corpus.",
     )
     parser.add_argument(
@@ -47,7 +47,7 @@ def _build_parser() -> argparse.ArgumentParser:
 
 
 def main(argv: Sequence[str] | None = None) -> int:
-    """Entry point for the ``oigt-corpus`` console script.
+    """Entry point for the ``oigtl-corpus`` console script.
 
     Returns the exit code. Console scripts that want to exit cleanly should
     wrap this call in ``sys.exit(main())``.

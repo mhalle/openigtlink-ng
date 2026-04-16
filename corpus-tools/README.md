@@ -3,7 +3,7 @@
 Tooling for producing and maintaining the conformance corpus at
 [`../spec/corpus/`](../spec/corpus/).
 
-Python module with a single `oigt-corpus` command-line entry point and a
+Python module with a single `oigtl-corpus` command-line entry point and a
 command / subcommand structure. All Python work in the project uses
 [`uv`](https://github.com/astral-sh/uv); there is no `pip install` path.
 
@@ -20,23 +20,23 @@ environment automatically.
 ## CLI
 
 ```
-oigt-corpus <command> <subcommand> [options]
+oigtl-corpus <command> <subcommand> [options]
 ```
 
 ### `schema validate`
 
 Validates message schemas under `../spec/schemas/*.json` against the
 Pydantic `MessageSchema` model in
-[`src/oigt_corpus_tools/schema/model.py`](src/oigt_corpus_tools/schema/model.py)
+[`src/oigtl_corpus_tools/schema/model.py`](src/oigtl_corpus_tools/schema/model.py)
 — the source of truth. The JSON Schema at `../spec/meta-schema.json`
 is a derived artifact; this command does not consult it.
 
 ```bash
 # Validate every schema in the repo
-uv run oigt-corpus schema validate
+uv run oigtl-corpus schema validate
 
 # Validate specific files
-uv run oigt-corpus schema validate ../spec/schemas/transform.json
+uv run oigtl-corpus schema validate ../spec/schemas/transform.json
 ```
 
 Exit codes: `0` if all schemas pass, `1` if any fail validation, `2` on
@@ -53,10 +53,10 @@ verifies it is in sync with `--check`.
 
 ```bash
 # Regenerate spec/meta-schema.json in place
-uv run oigt-corpus schema emit-meta
+uv run oigtl-corpus schema emit-meta
 
 # Verify the checked-in file is in sync (CI-friendly, does not write)
-uv run oigt-corpus schema emit-meta --check
+uv run oigtl-corpus schema emit-meta --check
 ```
 
 The JSON Schema exists for non-Python consumers (editors, external
@@ -100,9 +100,9 @@ Listed to make the intended scope visible. None are implemented yet.
 corpus-tools/
 ├── pyproject.toml
 ├── src/
-│   └── oigt_corpus_tools/
+│   └── oigtl_corpus_tools/
 │       ├── __init__.py
-│       ├── __main__.py                 # python -m oigt_corpus_tools entry
+│       ├── __main__.py                 # python -m oigtl_corpus_tools entry
 │       ├── cli.py                      # argparse dispatcher
 │       ├── paths.py                    # repo-root / spec-path helpers
 │       └── commands/

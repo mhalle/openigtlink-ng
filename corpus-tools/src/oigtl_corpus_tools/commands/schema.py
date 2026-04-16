@@ -33,13 +33,13 @@ from typing import Any
 
 from pydantic import ValidationError as PydanticValidationError
 
-from oigt_corpus_tools.paths import (
+from oigtl_corpus_tools.paths import (
     RepoRootNotFound,
     find_repo_root,
     meta_schema_path,
     schemas_dir,
 )
-from oigt_corpus_tools.schema import MessageSchema, generate_meta_schema
+from oigtl_corpus_tools.schema import MessageSchema, generate_meta_schema
 
 
 # ---------------------------------------------------------------------------
@@ -166,7 +166,7 @@ def _register_emit_meta(subparsers: argparse._SubParsersAction) -> None:
         help="Regenerate spec/meta-schema.json from the Pydantic models.",
         description=(
             "Generate spec/meta-schema.json from the Pydantic models in "
-            "oigt_corpus_tools.schema (types / element / field / message). "
+            "oigtl_corpus_tools.schema (types / element / field / message). "
             "With --check, verify that the committed file matches what "
             "would be generated and exit non-zero if it does not. Without "
             "--check, write the file."
@@ -258,7 +258,7 @@ def _cmd_emit_meta(args: argparse.Namespace) -> int:
             return 0
         print(f"FAIL  {rel} is out of sync with the Pydantic models.", file=sys.stderr)
         print(
-            "      Run 'uv run oigt-corpus schema emit-meta' to regenerate.",
+            "      Run 'uv run oigtl-corpus schema emit-meta' to regenerate.",
             file=sys.stderr,
         )
         return 1

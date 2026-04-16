@@ -1,10 +1,10 @@
 """Emit the JSON Schema artifact under ``spec/meta-schema.json``.
 
-The Pydantic models in :mod:`oigt_corpus_tools.schema` (split across
+The Pydantic models in :mod:`oigtl_corpus_tools.schema` (split across
 ``types``, ``element``, ``field``, and ``message``) are the source of
 truth. The JSON Schema file is a derived artifact for the benefit of
 non-Python consumers (editors, codegen in other languages, third-party
-reviewers). The ``oigt-corpus schema emit-meta`` CLI subcommand writes
+reviewers). The ``oigtl-corpus schema emit-meta`` CLI subcommand writes
 the file; ``--check`` verifies the committed copy is in sync.
 
 Two small customizations to Pydantic's default schema generation:
@@ -26,7 +26,7 @@ from typing import Any
 
 from pydantic.json_schema import GenerateJsonSchema
 
-from oigt_corpus_tools.schema.message import MessageSchema
+from oigtl_corpus_tools.schema.message import MessageSchema
 
 
 _META_SCHEMA_HEADER: dict[str, Any] = {
@@ -34,9 +34,9 @@ _META_SCHEMA_HEADER: dict[str, Any] = {
     "$id": "https://openigtlink-ng.org/spec/meta-schema.json",
     "$comment": (
         "GENERATED from the Pydantic models in "
-        "corpus-tools/src/oigt_corpus_tools/schema/ (types.py, element.py, "
+        "corpus-tools/src/oigtl_corpus_tools/schema/ (types.py, element.py, "
         "field.py, message.py) — do not edit by hand; run "
-        "'uv run oigt-corpus schema emit-meta' to regenerate."
+        "'uv run oigtl-corpus schema emit-meta' to regenerate."
     ),
     "title": "OpenIGTLink Message Schema",
     "description": (

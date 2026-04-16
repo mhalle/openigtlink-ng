@@ -10,9 +10,9 @@ import struct
 
 import pytest
 
-from oigt_corpus_tools.codec.crc64 import crc64
-from oigt_corpus_tools.codec.header import HEADER_SIZE, pack_header, unpack_header, verify_crc
-from oigt_corpus_tools.codec.message import (
+from oigtl_corpus_tools.codec.crc64 import crc64
+from oigtl_corpus_tools.codec.header import HEADER_SIZE, pack_header, unpack_header, verify_crc
+from oigtl_corpus_tools.codec.message import (
     load_schema,
     pack_body,
     pack_message,
@@ -246,7 +246,7 @@ class TestSchemaLoading:
 
     def test_all_schemas_loadable(self):
         """Every .json in spec/schemas/ should be loadable by its type_id."""
-        from oigt_corpus_tools.paths import find_repo_root, schemas_dir
+        from oigtl_corpus_tools.paths import find_repo_root, schemas_dir
         import json
 
         sdir = schemas_dir(find_repo_root())

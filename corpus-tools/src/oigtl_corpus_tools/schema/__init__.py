@@ -3,7 +3,7 @@
 The Pydantic models in this package are the source of truth for what a
 file under ``spec/schemas/`` may contain. The JSON Schema in
 ``spec/meta-schema.json`` is generated from those models via
-:func:`generate_meta_schema` and the ``oigt-corpus schema emit-meta``
+:func:`generate_meta_schema` and the ``oigtl-corpus schema emit-meta``
 CLI subcommand; it exists as a spec artifact for non-Python consumers,
 not as an authoritative specification.
 
@@ -26,18 +26,18 @@ POLYDATA) should land in their own modules rather than swelling
 :mod:`.field` or :mod:`.message`.
 """
 
-from oigt_corpus_tools.schema.element import ElementDescriptor
-from oigt_corpus_tools.schema.emit import (
+from oigtl_corpus_tools.schema.element import ElementDescriptor
+from oigtl_corpus_tools.schema.emit import (
     CompactJsonSchema,
     generate_meta_schema,
 )
-from oigt_corpus_tools.schema.field import FieldSchema
-from oigt_corpus_tools.schema.message import (
+from oigtl_corpus_tools.schema.field import FieldSchema
+from oigtl_corpus_tools.schema.message import (
     ExtendedHeader,
     MessageSchema,
     SpecReference,
 )
-from oigt_corpus_tools.schema.types import (
+from oigtl_corpus_tools.schema.types import (
     CountSource,
     Encoding,
     Endianness,

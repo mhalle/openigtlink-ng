@@ -24,8 +24,8 @@ from typing import Any, Optional, Union
 
 from pydantic import BaseModel, ConfigDict, Field, model_validator
 
-from oigt_corpus_tools.schema.element import ElementDescriptor, ElementType
-from oigt_corpus_tools.schema.types import (
+from oigtl_corpus_tools.schema.element import ElementDescriptor, ElementType
+from oigtl_corpus_tools.schema.types import (
     CountSource,
     CountValue,
     Encoding,

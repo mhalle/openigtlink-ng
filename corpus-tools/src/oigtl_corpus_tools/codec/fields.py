@@ -14,7 +14,7 @@ from __future__ import annotations
 import struct
 from typing import Any
 
-from oigt_corpus_tools.codec.primitives import FORMAT, SIZE, pack_primitive, unpack_primitive
+from oigtl_corpus_tools.codec.primitives import FORMAT, SIZE, pack_primitive, unpack_primitive
 
 
 # ---------------------------------------------------------------------------

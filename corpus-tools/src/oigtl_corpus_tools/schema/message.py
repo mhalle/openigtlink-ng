@@ -19,8 +19,8 @@ from typing import Literal, Optional
 
 from pydantic import BaseModel, ConfigDict, Field, model_validator
 
-from oigt_corpus_tools.schema.field import FieldSchema
-from oigt_corpus_tools.schema.types import (
+from oigtl_corpus_tools.schema.field import FieldSchema
+from oigtl_corpus_tools.schema.types import (
     FieldType,
     ProtocolVersion,
     Size,

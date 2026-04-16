@@ -2,7 +2,7 @@
 
 The public API for the reference codec. Usage::
 
-    from oigt_corpus_tools.codec import unpack_message, pack_message
+    from oigtl_corpus_tools.codec import unpack_message, pack_message
 
     header, body = unpack_message(wire_bytes)
     wire_bytes = pack_message("TRANSFORM", "DeviceName", body_values)
@@ -15,15 +15,15 @@ from functools import lru_cache
 from pathlib import Path
 from typing import Any
 
-from oigt_corpus_tools.codec.crc64 import crc64
-from oigt_corpus_tools.codec.fields import pack_fields, unpack_fields
-from oigt_corpus_tools.codec.header import (
+from oigtl_corpus_tools.codec.crc64 import crc64
+from oigtl_corpus_tools.codec.fields import pack_fields, unpack_fields
+from oigtl_corpus_tools.codec.header import (
     HEADER_SIZE,
     pack_header,
     unpack_header,
     verify_crc,
 )
-from oigt_corpus_tools.paths import find_repo_root, schemas_dir
+from oigtl_corpus_tools.paths import find_repo_root, schemas_dir
 
 
 # ---------------------------------------------------------------------------
