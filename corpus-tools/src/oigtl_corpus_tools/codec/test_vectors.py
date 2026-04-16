@@ -38,6 +38,27 @@ def _extract_hex_arrays(path: Path) -> Iterator[tuple[str, bytes]]:
         yield name, raw
 
 
+def _looks_like_wire_message(raw: bytes) -> bool:
+    """Heuristic: does *raw* look like a complete OpenIGTLink wire message?
+
+    Checks:
+    - at least 58 bytes (the fixed header)
+    - version field is 1, 2, or 3
+    - body_size matches len(raw) - 58
+
+    Used as a fallback when the array name doesn't match a canonical
+    pattern — e.g. the Format2 fixture arrays which have ad-hoc names
+    like ``test_transform_message_Format2``.
+    """
+    if len(raw) < 58:
+        return False
+    version = int.from_bytes(raw[0:2], "big")
+    if version not in (1, 2, 3):
+        return False
+    body_size = int.from_bytes(raw[42:50], "big")
+    return len(raw) == 58 + body_size
+
+
 def _concat_split_vector(arrays: dict[str, bytes], stem: str) -> bytes | None:
     """Try to reassemble a full wire message from split _header/_body arrays.
 
@@ -111,6 +132,15 @@ def _discover_test_vectors() -> dict[str, bytes]:
         joined = _concat_split_vector(arrays, stem)
         if joined:
             vectors[stem] = joined
+            continue
+
+        # Fallback: any array in this file that looks like a complete
+        # wire message. Handles ad-hoc names like
+        # ``test_transform_message_Format2`` that don't match the
+        # canonical ``test_<stem>_message`` pattern.
+        candidates = [raw for raw in arrays.values() if _looks_like_wire_message(raw)]
+        if len(candidates) == 1:
+            vectors[stem] = candidates[0]
             continue
 
         # Otherwise, skip — these files contain partial payload data

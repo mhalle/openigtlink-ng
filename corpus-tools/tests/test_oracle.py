@@ -28,14 +28,7 @@ from oigtl_corpus_tools.codec.test_vectors import UPSTREAM_VECTORS
 # differences that the body-only codec doesn't yet handle. They're
 # expected to fail at the unpack or round-trip stage, not at CRC.
 _XFAIL_VECTORS: dict[str, str] = {
-    "transformFormat2": "v2 extended header — codec unpacks the body region only",
-    "tdataFormat2": "v2 extended header",
-    "trajectoryFormat2": "v2 extended header",
-    "commandFormat2": "v2 extended header",
-    "positionFormat2": "v2 extended header",
-    "rtpwrapper": "RTP wrapper, not a standard message",
-    "colortable": "upstream vector uses legacy wire type 'COLORTABLE'; schema uses modern 'COLORT' (see colortable2)",
-    "videometa": "upstream vector declares version=2 but includes v3 extended header — inconsistent fixture",
+    "rtpwrapper": "RTP/UDP fragmentation wrapper, not a standard OpenIGTLink message",
 }
 
 
@@ -161,3 +154,53 @@ class TestUpstreamVectorFieldValues:
         assert result.ok
         assert result.body["npoints"] > 0
         assert len(result.body["points"]) == result.body["npoints"]
+
+
+class TestExtendedHeaderAndMetadata:
+    """Verify the oracle correctly handles v2+ framing (ext header + metadata)."""
+
+    def test_transform_format2_has_extended_header(self):
+        """Format2 vectors declare version=2 and carry an extended header."""
+        if "transformFormat2" not in UPSTREAM_VECTORS:
+            pytest.skip("transformFormat2 vector not discovered")
+        result = verify_wire_bytes(UPSTREAM_VECTORS["transformFormat2"])
+        assert result.ok, result.error
+        assert result.header["version"] == 2
+        assert result.extended_header is not None
+        assert result.extended_header["ext_header_size"] == 12
+        # Content schema still decodes correctly
+        assert len(result.body["matrix"]) == 12
+
+    def test_transform_format2_metadata_decoded(self):
+        if "transformFormat2" not in UPSTREAM_VECTORS:
+            pytest.skip("transformFormat2 vector not discovered")
+        result = verify_wire_bytes(UPSTREAM_VECTORS["transformFormat2"])
+        assert result.ok, result.error
+        # transformFormat2 fixture carries 2 metadata entries
+        assert len(result.metadata) == 2
+        # Each entry is (key, encoding, value_bytes)
+        for key, encoding, value in result.metadata:
+            assert isinstance(key, str)
+            assert isinstance(encoding, int)
+            assert isinstance(value, (bytes, bytearray))
+
+    def test_videometa_now_works(self):
+        """VIDEOMETA fixture uses version=2 + v3 extended header — oracle handles it."""
+        result = verify_wire_bytes(UPSTREAM_VECTORS["videometa"])
+        assert result.ok, result.error
+        assert len(result.body["videos"]) == 3
+
+    def test_v1_message_has_no_extended_header(self):
+        """v1 messages should have extended_header=None."""
+        result = verify_wire_bytes(UPSTREAM_VECTORS["transform"])
+        assert result.ok
+        assert result.header["version"] == 1
+        assert result.extended_header is None
+        assert result.metadata == []
+
+    def test_colortable_legacy_schema(self):
+        """The legacy 'COLORTABLE' wire type_id now decodes via colortable_legacy.json."""
+        result = verify_wire_bytes(UPSTREAM_VECTORS["colortable"])
+        assert result.ok, result.error
+        assert result.type_id == "COLORTABLE"
+        assert "table" in result.body

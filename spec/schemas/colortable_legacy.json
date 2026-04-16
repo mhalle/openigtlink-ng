@@ -1,0 +1,47 @@
+{
+  "$schema": "../meta-schema.json",
+
+  "message_type": "COLORTABLE_LEGACY",
+  "type_id": "COLORTABLE",
+  "introduced_in": "v1",
+
+  "description": "Legacy wire alias for COLORTABLE. Body layout is identical to the modern `COLORT` type_id; the only difference is the 10-character wire string that predates upstream shortening to 'COLORT'. Kept as a distinct schema so receivers can round-trip pre-shortening traffic without ambiguity.",
+
+  "rationale": "The upstream C++ library at some point shortened its `m_SendMessageType` from 'COLORTABLE' to 'COLORT'. Fixtures captured before the change still contain the 10-byte name in the 12-byte type field. New senders MUST use 'COLORT' (see colortable.json); receivers that care about backward compatibility with older deployments SHOULD accept this legacy name too.",
+
+  "spec_reference": {
+    "section": "Body (COLORTABLE)",
+    "document": "protocol/v3.md"
+  },
+
+  "body_size": "variable",
+
+  "fields": [
+    {
+      "name": "index_type",
+      "type": "int8",
+      "description": "Index type — 3 = uint8 (256 entries), 5 = uint16 (65536 entries). Same semantics as the modern COLORT schema."
+    },
+    {
+      "name": "map_type",
+      "type": "int8",
+      "description": "Map type — 3 = uint8 (1 byte/entry), 5 = uint16 (2 bytes/entry), 19 = RGB (3 bytes/entry)."
+    },
+    {
+      "name": "table",
+      "type": "array",
+      "element_type": "uint8",
+      "count_from": "remaining",
+      "description": "Raw color table data. Same rules as COLORT."
+    }
+  ],
+
+  "metadata_allowed": true,
+
+  "legacy_notes": [
+    "This schema exists solely to let receivers decode pre-shortening wire traffic that uses 'COLORTABLE' as the type_id. New senders MUST use the 'COLORT' type_id (see colortable.json).",
+    "The body layout is byte-identical to the modern COLORT schema — only the 12-byte type_id field differs on the wire."
+  ],
+
+  "see_also": ["COLORTABLE", "IMAGE", "LBMETA"]
+}
