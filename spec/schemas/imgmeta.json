@@ -1,0 +1,104 @@
+{
+  "$schema": "../meta-schema.json",
+
+  "message_type": "IMGMETA",
+  "type_id": "IMGMETA",
+  "introduced_in": "v1",
+
+  "description": "Advertises the set of IMAGE volumes available on a server. Each element describes one image's name, device suffix, modality, patient identity, acquisition timestamp, spatial dimensions, and pixel type. A client uses IMGMETA to populate an image list without downloading full pixel data first.",
+
+  "rationale": "Image metadata is small (260 bytes per item) relative to image pixel data (often megabytes). IMGMETA lets a server publish 'here's what I have' as a cheap directory listing, letting clients browse before fetching. The per-element fields cover the DICOM-adjacent identifiers that most clinical consumers need for routing (modality, patient name/ID) without requiring a full DICOM header.",
+
+  "spec_reference": {
+    "section": "Body (IMGMETA)",
+    "document": "protocol/v3.md"
+  },
+
+  "body_size": "variable",
+
+  "fields": [
+    {
+      "name": "images",
+      "type": "array",
+      "element_type": {
+        "type": "struct",
+        "fields": [
+          {
+            "name": "name",
+            "type": "fixed_string",
+            "size_bytes": 64,
+            "encoding": "ascii",
+            "null_padded": true,
+            "description": "Human-readable image name or description, null-padded to 64 bytes."
+          },
+          {
+            "name": "device_name",
+            "type": "fixed_string",
+            "size_bytes": 20,
+            "encoding": "ascii",
+            "null_padded": true,
+            "description": "Device-name suffix used to retrieve this IMAGE via GET_IMAGE. Forms the authoritative key for this metadata entry."
+          },
+          {
+            "name": "modality",
+            "type": "fixed_string",
+            "size_bytes": 32,
+            "encoding": "ascii",
+            "null_padded": true,
+            "description": "Imaging modality — e.g. 'CT', 'MR', 'US', 'XA'. Free-form ASCII; no enforced vocabulary. Implementations SHOULD use DICOM-standard modality codes where applicable."
+          },
+          {
+            "name": "patient_name",
+            "type": "fixed_string",
+            "size_bytes": 64,
+            "encoding": "ascii",
+            "null_padded": true,
+            "description": "Patient name, null-padded to 64 bytes. This is PHI; implementations SHOULD treat the field as sensitive and MAY omit or redact it depending on deployment policy."
+          },
+          {
+            "name": "patient_id",
+            "type": "fixed_string",
+            "size_bytes": 64,
+            "encoding": "ascii",
+            "null_padded": true,
+            "description": "Patient identifier (e.g. MRN), null-padded to 64 bytes. Also PHI; same treatment guidance as patient_name."
+          },
+          {
+            "name": "timestamp",
+            "type": "uint64",
+            "description": "Scan time as a uint64 in the same encoding as the OpenIGTLink header timestamp (upper 32 bits = seconds since Unix epoch, lower 32 bits = fraction-of-second). 0 means 'unspecified'."
+          },
+          {
+            "name": "size",
+            "type": "array",
+            "element_type": "uint16",
+            "count": 3,
+            "description": "Entire image volume size in voxels: (Sx, Sy, Sz). Matches the dimensions the corresponding IMAGE message will report."
+          },
+          {
+            "name": "scalar_type",
+            "type": "uint8",
+            "description": "Pixel scalar type, matching IMAGE's scalar_type codes: 2=int8, 3=uint8, 4=int16, 5=uint16, 6=int32, 7=uint32, 10=float32, 11=float64. Receivers MUST accept unknown values without rejection."
+          },
+          {
+            "name": "reserved",
+            "type": "uint8",
+            "description": "Reserved; senders SHOULD write 0 and receivers MUST ignore."
+          }
+        ]
+      },
+      "count_from": "remaining",
+      "description": "Array of 260-byte IMGMETA elements. Element count is derived as body_size / 260; a body whose size is not a multiple of 260 is malformed and MUST be rejected."
+    }
+  ],
+
+  "metadata_allowed": true,
+
+  "legacy_notes": [
+    "Total body size is exactly 260 * N where N is the number of image entries. An empty IMGMETA body (N=0, body_size=0) is legal and means 'no images available'.",
+    "Patient name and patient ID fields carry PHI in most deployments. Implementations targeting HIPAA / GDPR environments SHOULD consider whether to redact these fields on outgoing IMGMETA and whether to reject incoming IMGMETA that carries PHI over an unencrypted transport. The wire format does not provide a redaction indicator; empty (null-padded) strings are the de facto redaction.",
+    "Upstream C++ library (at pinned SHA 94244fe) iterates `nelem` elements in igtl_imgmeta_convert_byte_order without verifying the body is large enough. A conformant implementation MUST reject any IMGMETA message whose body_size is not a multiple of 260."
+  ],
+
+  "see_also": ["LBMETA", "IMAGE", "COLORTABLE"]
+}

@@ -1,0 +1,74 @@
+{
+  "$schema": "../meta-schema.json",
+
+  "message_type": "QTDATA",
+  "type_id": "QTDATA",
+  "introduced_in": "v1",
+
+  "description": "Stream of tracked-tool poses using position + quaternion representation. Each element reports one tool's name, classification, 3D position, and orientation quaternion. Typical use: real-time tracking of surgical instruments at 30–240 Hz where quaternion orientation is preferred over a full transformation matrix.",
+
+  "rationale": "QTDATA is the quaternion-orientation counterpart to TDATA. Each element is 50 bytes versus TDATA's 70, saving bandwidth when orientation can be expressed compactly. Multiple tools may be packed into a single QTDATA message so a multi-tool tracking snapshot arrives atomically.",
+
+  "spec_reference": {
+    "section": "Body (QTDATA)",
+    "document": "protocol/v3.md"
+  },
+
+  "body_size": "variable",
+
+  "fields": [
+    {
+      "name": "tools",
+      "type": "array",
+      "element_type": {
+        "type": "struct",
+        "fields": [
+          {
+            "name": "name",
+            "type": "fixed_string",
+            "size_bytes": 20,
+            "encoding": "ascii",
+            "null_padded": true,
+            "description": "Instrument or tracker name, null-padded to 20 bytes."
+          },
+          {
+            "name": "type",
+            "type": "uint8",
+            "description": "Tool kind: 1 = tracker reference, 2 = 6D instrument, 3 = 3D instrument (tip only), 4 = 5D instrument (tip + handle). Receivers MUST accept unknown values without rejection."
+          },
+          {
+            "name": "reserved",
+            "type": "uint8",
+            "description": "Reserved; senders SHOULD write 0 and receivers MUST ignore."
+          },
+          {
+            "name": "position",
+            "type": "array",
+            "element_type": "float32",
+            "count": 3,
+            "description": "Tool position (x, y, z) in the session's reference frame."
+          },
+          {
+            "name": "quaternion",
+            "type": "array",
+            "element_type": "float32",
+            "count": 4,
+            "description": "Tool orientation as a quaternion (qx, qy, qz, w). Unit-magnitude is expected; implementations SHOULD tolerate small deviations from unit magnitude."
+          }
+        ]
+      },
+      "count_from": "remaining",
+      "description": "Array of 50-byte QTDATA elements. Element count is derived as body_size / 50; a body whose size is not a multiple of 50 is malformed and MUST be rejected (see U-7 in protocol/v3.md)."
+    }
+  ],
+
+  "metadata_allowed": true,
+
+  "legacy_notes": [
+    "Total body size is exactly 50 * N where N is the number of tools reported. An empty message (N=0, body_size=0) is legal but unusual.",
+    "The `type` byte is intentionally a numeric classification rather than a free-text tag so receivers can discriminate without parsing. Additions to the type set over time are additive; unknown values are ignored at the receiver (see description).",
+    "Upstream C++ library (at pinned SHA 94244fe) iterates `nelem` elements in igtl_qtdata_convert_byte_order without verifying the body is large enough. A conformant implementation MUST reject any QTDATA message whose body_size is not a multiple of 50, and MUST reject messages where body_size < expected_count * 50 before any element access. See partial-element rejection hardening (U-7 class)."
+  ],
+
+  "see_also": ["TDATA", "POSITION", "TRANSFORM"]
+}

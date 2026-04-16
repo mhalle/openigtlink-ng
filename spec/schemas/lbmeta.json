@@ -1,0 +1,90 @@
+{
+  "$schema": "../meta-schema.json",
+
+  "message_type": "LBMETA",
+  "type_id": "LBMETA",
+  "introduced_in": "v1",
+
+  "description": "Advertises the set of label-map regions available as IMAGE messages on a server. Each element describes one label — its human name, the IMAGE device that carries the label data, the integer pixel value that represents the label, a color, the spatial extent, and an optional owner-image reference.",
+
+  "rationale": "A single IMAGE label-map can encode multiple labels (e.g. liver=1, kidney=2). LBMETA lets a server announce, per label, 'which pixel value is this named structure, what color should it render as, and which IMAGE do you fetch to get the pixels?' so a client can populate a segmentation list without downloading every IMAGE first.",
+
+  "spec_reference": {
+    "section": "Body (LBMETA)",
+    "document": "protocol/v3.md"
+  },
+
+  "body_size": "variable",
+
+  "fields": [
+    {
+      "name": "labels",
+      "type": "array",
+      "element_type": {
+        "type": "struct",
+        "fields": [
+          {
+            "name": "name",
+            "type": "fixed_string",
+            "size_bytes": 64,
+            "encoding": "ascii",
+            "null_padded": true,
+            "description": "Human-readable label name or description (e.g. 'Liver'). Null-padded to 64 bytes."
+          },
+          {
+            "name": "device_name",
+            "type": "fixed_string",
+            "size_bytes": 20,
+            "encoding": "ascii",
+            "null_padded": true,
+            "description": "Device-name suffix of the IMAGE message carrying the label-map pixels. A client retrieves that IMAGE via GET_IMAGE using this name."
+          },
+          {
+            "name": "label",
+            "type": "uint8",
+            "description": "Integer pixel value in the referenced IMAGE that corresponds to this label. Values are intended to be distinct within a single LBMETA element's referenced IMAGE, but that is not enforced at the wire level."
+          },
+          {
+            "name": "reserved",
+            "type": "uint8",
+            "description": "Reserved; senders SHOULD write 0 and receivers MUST ignore."
+          },
+          {
+            "name": "rgba",
+            "type": "array",
+            "element_type": "uint8",
+            "count": 4,
+            "description": "Suggested rendering color as RGBA bytes. (0, 0, 0, 0) is legal and interpreted as 'no color preference'."
+          },
+          {
+            "name": "size",
+            "type": "array",
+            "element_type": "uint16",
+            "count": 3,
+            "description": "Extent of the label-map IMAGE in voxels: (Sx, Sy, Sz). Matches the referenced IMAGE's overall size."
+          },
+          {
+            "name": "owner",
+            "type": "fixed_string",
+            "size_bytes": 20,
+            "encoding": "ascii",
+            "null_padded": true,
+            "description": "Optional device-name suffix of the IMAGE that this label is a segmentation of (the 'anatomy' image the label-map was derived from). May be empty (all null bytes) when not applicable."
+          }
+        ]
+      },
+      "count_from": "remaining",
+      "description": "Array of 116-byte LBMETA elements. Element count is derived as body_size / 116; a body whose size is not a multiple of 116 is malformed and MUST be rejected."
+    }
+  ],
+
+  "metadata_allowed": true,
+
+  "legacy_notes": [
+    "Total body size is exactly 116 * N where N is the number of labels advertised. An empty LBMETA body (N=0, body_size=0) is legal and means 'no labels available'.",
+    "Multiple LBMETA elements MAY reference the same IMAGE (via device_name) with different `label` values; this is the intended way to advertise a multi-label IMAGE (e.g. liver=1 AND kidney=2 pointing to the same label-map IMAGE). Duplicate (device_name, label) pairs are undefined.",
+    "Upstream C++ library (at pinned SHA 94244fe) iterates `nelem` elements without verifying the body is large enough. A conformant implementation MUST reject any LBMETA message whose body_size is not a multiple of 116."
+  ],
+
+  "see_also": ["IMGMETA", "IMAGE", "COLORTABLE"]
+}

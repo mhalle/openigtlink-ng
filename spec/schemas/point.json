@@ -1,0 +1,85 @@
+{
+  "$schema": "../meta-schema.json",
+
+  "message_type": "POINT",
+  "type_id": "POINT",
+  "introduced_in": "v1",
+
+  "description": "List of 3D annotated points: landmarks, fiducials, surgical targets, and similar discrete spatial markers. Each element carries a point's name, group, color, 3D position, radius, and owning-image reference.",
+
+  "rationale": "A single message bundles many related points (e.g. 'all fiducials in this registration', 'all landmarks identified in this scan') so a client receives them atomically. The per-point group string lets a consumer partition points into semantically related sets (fiducials vs. landmarks vs. targets) without defining a group-level message type.",
+
+  "spec_reference": {
+    "section": "Body (POINT)",
+    "document": "protocol/v3.md"
+  },
+
+  "body_size": "variable",
+
+  "fields": [
+    {
+      "name": "points",
+      "type": "array",
+      "element_type": {
+        "type": "struct",
+        "fields": [
+          {
+            "name": "name",
+            "type": "fixed_string",
+            "size_bytes": 64,
+            "encoding": "ascii",
+            "null_padded": true,
+            "description": "Human-readable point name or description, null-padded to 64 bytes."
+          },
+          {
+            "name": "group_name",
+            "type": "fixed_string",
+            "size_bytes": 32,
+            "encoding": "ascii",
+            "null_padded": true,
+            "description": "Group tag: 'Fiducial', 'Landmark', 'Labeled Point', or any application-specific string. Used to partition points into semantic sets."
+          },
+          {
+            "name": "rgba",
+            "type": "array",
+            "element_type": "uint8",
+            "count": 4,
+            "description": "Suggested rendering color as RGBA bytes."
+          },
+          {
+            "name": "position",
+            "type": "array",
+            "element_type": "float32",
+            "count": 3,
+            "description": "Point coordinates (x, y, z) in the session's reference frame."
+          },
+          {
+            "name": "radius",
+            "type": "float32",
+            "description": "Rendering radius of the point (e.g. for a sphere glyph). A value of 0 means 'use renderer default' or 'point has no meaningful size'."
+          },
+          {
+            "name": "owner",
+            "type": "fixed_string",
+            "size_bytes": 20,
+            "encoding": "ascii",
+            "null_padded": true,
+            "description": "Optional device-name suffix of the IMAGE that this point is anchored to. May be empty (all null bytes) for points not tied to a specific image."
+          }
+        ]
+      },
+      "count_from": "remaining",
+      "description": "Array of 136-byte POINT elements. Element count is derived as body_size / 136; a body whose size is not a multiple of 136 is malformed and MUST be rejected."
+    }
+  ],
+
+  "metadata_allowed": true,
+
+  "legacy_notes": [
+    "Total body size is exactly 136 * N where N is the number of points. An empty POINT body (N=0, body_size=0) is legal and means 'no points'.",
+    "The per-element struct packs with 1-byte alignment (no implicit padding). Implementations that rely on C struct layout without `#pragma pack(1)` will produce incorrect wire bytes on platforms that would otherwise pad `rgba`, `position`, or `radius`.",
+    "Upstream C++ library (at pinned SHA 94244fe) iterates `nelem` elements in igtl_point_convert_byte_order without verifying the body is large enough. A conformant implementation MUST reject any POINT message whose body_size is not a multiple of 136."
+  ],
+
+  "see_also": ["TRAJECTORY", "TDATA", "QTDATA"]
+}

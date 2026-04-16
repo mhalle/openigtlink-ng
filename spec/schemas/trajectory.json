@@ -1,0 +1,103 @@
+{
+  "$schema": "../meta-schema.json",
+
+  "message_type": "TRAJECTORY",
+  "type_id": "TRAJECTORY",
+  "introduced_in": "v1",
+
+  "description": "List of 3D trajectories — planned or executed paths from an entry point to a target point. Typical use: planning needle paths, catheter insertions, and surgical access routes. Each element carries a trajectory's name, type, color, entry/target positions, radius, and owning-image reference.",
+
+  "rationale": "Trajectories are essentially two points (entry and target) plus classification metadata. A dedicated message type captures the entry/target relationship explicitly rather than leaving it implicit in a POINT pair, which matters for workflow integrations that reason about insertion paths (collision avoidance, pullback visualization).",
+
+  "spec_reference": {
+    "section": "Body (TRAJECTORY)",
+    "document": "protocol/v3.md"
+  },
+
+  "body_size": "variable",
+
+  "fields": [
+    {
+      "name": "trajectories",
+      "type": "array",
+      "element_type": {
+        "type": "struct",
+        "fields": [
+          {
+            "name": "name",
+            "type": "fixed_string",
+            "size_bytes": 64,
+            "encoding": "ascii",
+            "null_padded": true,
+            "description": "Human-readable trajectory name or description, null-padded to 64 bytes."
+          },
+          {
+            "name": "group_name",
+            "type": "fixed_string",
+            "size_bytes": 32,
+            "encoding": "ascii",
+            "null_padded": true,
+            "description": "Group tag (e.g. 'Trajectory', 'Planned Path', or any application-specific string)."
+          },
+          {
+            "name": "type",
+            "type": "int8",
+            "description": "Which endpoints are populated: 1 = entry-only (target_pos ignored), 2 = target-only (entry_pos ignored), 3 = entry-and-target. Receivers MUST accept unknown values without rejection and SHOULD treat them as equivalent to 'entry-and-target'."
+          },
+          {
+            "name": "reserved",
+            "type": "int8",
+            "description": "Reserved; senders SHOULD write 0 and receivers MUST ignore."
+          },
+          {
+            "name": "rgba",
+            "type": "array",
+            "element_type": "uint8",
+            "count": 4,
+            "description": "Suggested rendering color as RGBA bytes."
+          },
+          {
+            "name": "entry_pos",
+            "type": "array",
+            "element_type": "float32",
+            "count": 3,
+            "description": "Entry-point coordinates (x, y, z). Meaningful when `type` indicates entry is defined; undefined otherwise."
+          },
+          {
+            "name": "target_pos",
+            "type": "array",
+            "element_type": "float32",
+            "count": 3,
+            "description": "Target-point coordinates (x, y, z). Meaningful when `type` indicates target is defined; undefined otherwise."
+          },
+          {
+            "name": "radius",
+            "type": "float32",
+            "description": "Rendering radius of the trajectory (e.g. for a tube or cylinder glyph). A value of 0 means 'use renderer default' or 'no meaningful radius'."
+          },
+          {
+            "name": "owner_name",
+            "type": "fixed_string",
+            "size_bytes": 20,
+            "encoding": "ascii",
+            "null_padded": true,
+            "description": "Optional device-name suffix of the IMAGE this trajectory is anchored to. May be empty (all null bytes)."
+          }
+        ]
+      },
+      "count_from": "remaining",
+      "description": "Array of 150-byte TRAJECTORY elements. Element count is derived as body_size / 150; a body whose size is not a multiple of 150 is malformed and MUST be rejected."
+    }
+  ],
+
+  "metadata_allowed": true,
+
+  "legacy_notes": [
+    "Total body size is exactly 150 * N where N is the number of trajectories. An empty TRAJECTORY body (N=0, body_size=0) is legal.",
+    "The per-element struct packs with 1-byte alignment. Implementations that rely on C struct layout without `#pragma pack(1)` will produce incorrect wire bytes on platforms that would otherwise pad the rgba/entry_pos/target_pos/radius fields.",
+    "The `type` field determines which of entry_pos / target_pos is semantically valid, but BOTH occupy wire bytes regardless. Senders SHOULD write zeros for the unused position but receivers MUST NOT depend on that.",
+    "Upstream C++ library (at pinned SHA 94244fe) iterates `nelem` elements without verifying the body is large enough. A conformant implementation MUST reject any TRAJECTORY message whose body_size is not a multiple of 150."
+  ],
+
+  "see_also": ["POINT", "TDATA"]
+}

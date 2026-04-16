@@ -1,0 +1,68 @@
+{
+  "$schema": "../meta-schema.json",
+
+  "message_type": "TDATA",
+  "type_id": "TDATA",
+  "introduced_in": "v1",
+
+  "description": "Stream of tracked-tool poses using a 3×4 transformation matrix per tool. Each element reports one tool's name, classification, and full pose as 12 floats in the same column-major layout as TRANSFORM. Typical use: real-time tracking of surgical instruments at 30–240 Hz when the sender prefers matrix orientation over quaternion.",
+
+  "rationale": "TDATA is the matrix-orientation counterpart to QTDATA. Each element carries the identical 48-byte transformation body as the TRANSFORM message, plus 22 bytes of per-tool identification and classification. Multiple tools may be packed into a single TDATA message so a multi-tool tracking snapshot arrives atomically. At 70 bytes per tool, TDATA is ~40% larger per tool than QTDATA — the tradeoff is that no orientation decomposition is required at the receiver.",
+
+  "spec_reference": {
+    "section": "Body (TDATA)",
+    "document": "protocol/v3.md"
+  },
+
+  "body_size": "variable",
+
+  "fields": [
+    {
+      "name": "tools",
+      "type": "array",
+      "element_type": {
+        "type": "struct",
+        "fields": [
+          {
+            "name": "name",
+            "type": "fixed_string",
+            "size_bytes": 20,
+            "encoding": "ascii",
+            "null_padded": true,
+            "description": "Instrument or tracker name, null-padded to 20 bytes."
+          },
+          {
+            "name": "type",
+            "type": "uint8",
+            "description": "Tool kind: 1 = tracker reference, 2 = 6D instrument, 3 = 3D instrument (tip only), 4 = 5D instrument (tip + handle). Receivers MUST accept unknown values without rejection."
+          },
+          {
+            "name": "reserved",
+            "type": "uint8",
+            "description": "Reserved; senders SHOULD write 0 and receivers MUST ignore."
+          },
+          {
+            "name": "transform",
+            "type": "array",
+            "element_type": "float32",
+            "count": 12,
+            "layout": "column_major_3x4",
+            "description": "Upper-3×4 of a 4×4 homogeneous transformation matrix, 12 floats in column-major order. Wire order: R11, R21, R31, R12, R22, R32, R13, R23, R33, TX, TY, TZ. Same encoding as TRANSFORM's body — see TRANSFORM's legacy_notes for the column-major interop trap."
+          }
+        ]
+      },
+      "count_from": "remaining",
+      "description": "Array of 70-byte TDATA elements. Element count is derived as body_size / 70; a body whose size is not a multiple of 70 is malformed and MUST be rejected."
+    }
+  ],
+
+  "metadata_allowed": true,
+
+  "legacy_notes": [
+    "Total body size is exactly 70 * N where N is the number of tools reported. An empty message (N=0, body_size=0) is legal but unusual.",
+    "The 48-byte `transform` sub-field is byte-identical to the body of a TRANSFORM message. Implementations SHOULD share the encode/decode path between TRANSFORM and TDATA elements; the column-major layout trap that bit openigtlink-rust v0.3.x applies equally to TDATA.",
+    "Upstream C++ library (at pinned SHA 94244fe) iterates `nelem` elements in igtl_tdata_convert_byte_order without verifying the body is large enough. A conformant implementation MUST reject any TDATA message whose body_size is not a multiple of 70, and MUST reject messages where body_size < expected_count * 70 before any element access."
+  ],
+
+  "see_also": ["QTDATA", "TRANSFORM"]
+}
