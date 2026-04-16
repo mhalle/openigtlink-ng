@@ -92,6 +92,25 @@ class Encoding(str, Enum):
     BINARY = "binary"
 
 
+class CountSource(str, Enum):
+    """How an array's element count is derived when not given explicitly.
+
+    ``remaining`` means the count is computed at parse time as the number
+    of elements that fit in the body bytes not consumed by earlier
+    fields: ``count = (body_size - bytes_consumed_so_far) / element_size``.
+    The division must be exact — a message whose body_size does not divide
+    evenly is malformed. This matches the dominant pattern across the
+    OpenIGTLink message catalog (CAPABILITY, POINT, TDATA, QTDATA,
+    TRAJECTORY, IMGMETA, LBMETA), where the element count is implicit in
+    the body size rather than carried in a header field.
+
+    This enum is reserved for future growth (e.g. an NDARRAY-style
+    product-of-sizes variant); today it has a single value.
+    """
+
+    REMAINING = "remaining"
+
+
 # ---------------------------------------------------------------------------
 # Shared constrained aliases
 # ---------------------------------------------------------------------------
@@ -216,7 +235,19 @@ class FieldSchema(BaseModel):
         default=None,
         description=(
             "For ``array`` / ``struct_array``: either a fixed integer "
-            "count, or the name of a sibling field that carries the count."
+            "count, or the name of a sibling field that carries the count. "
+            "Mutually exclusive with ``count_from``."
+        ),
+    )
+    count_from: Optional[CountSource] = Field(
+        default=None,
+        description=(
+            "For ``array`` / ``struct_array``: derive the element count "
+            "implicitly rather than from a fixed integer or sibling field. "
+            "Value ``remaining`` means ``count = (body_size - "
+            "bytes_consumed_so_far) / element_size``, and the division "
+            "must be exact. Mutually exclusive with ``count``; exactly one "
+            "of the two is required on array / struct_array fields."
         ),
     )
     element_type: Optional[ElementType] = Field(
@@ -294,6 +325,20 @@ class FieldSchema(BaseModel):
                 f"field '{self.name}' of type length_prefixed_string "
                 f"requires length_prefix_type"
             )
+        if self.type in (FieldType.ARRAY, FieldType.STRUCT_ARRAY):
+            has_count = self.count is not None
+            has_count_from = self.count_from is not None
+            if has_count and has_count_from:
+                raise ValueError(
+                    f"field '{self.name}' of type {self.type.value} "
+                    f"has both `count` and `count_from` set; exactly "
+                    f"one is required"
+                )
+            if not has_count and not has_count_from:
+                raise ValueError(
+                    f"field '{self.name}' of type {self.type.value} "
+                    f"requires one of `count` or `count_from`"
+                )
         return self
 
 

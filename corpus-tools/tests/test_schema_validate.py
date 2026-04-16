@@ -270,3 +270,111 @@ def test_length_prefixed_string_requires_length_prefix_type(tmp_path: Path) -> N
     assert any(
         "length_prefix_type" in err.message for err in result.errors
     ), [err.message for err in result.errors]
+
+
+def test_array_requires_count_or_count_from(tmp_path: Path) -> None:
+    """An array field with neither `count` nor `count_from` must be rejected."""
+    schema = {
+        "message_type": "TEST",
+        "type_id": "TEST",
+        "introduced_in": "v1",
+        "description": "Synthetic test.",
+        "body_size": "variable",
+        "fields": [
+            {
+                "name": "data",
+                "type": "array",
+                "element_type": "uint32",
+                # neither count nor count_from — invalid
+                "description": "Disallowed: array without count or count_from.",
+            }
+        ],
+    }
+    path = _write_schema(tmp_path, "test.json", schema)
+    [result] = validate_schemas([path])
+
+    assert not result.ok
+    assert any(
+        "count" in err.message and "count_from" in err.message
+        for err in result.errors
+    ), [err.message for err in result.errors]
+
+
+def test_array_cannot_have_both_count_and_count_from(tmp_path: Path) -> None:
+    """An array field with both `count` and `count_from` set must be rejected."""
+    schema = {
+        "message_type": "TEST",
+        "type_id": "TEST",
+        "introduced_in": "v1",
+        "description": "Synthetic test.",
+        "body_size": "variable",
+        "fields": [
+            {
+                "name": "data",
+                "type": "array",
+                "element_type": "uint32",
+                "count": 10,
+                "count_from": "remaining",
+                "description": "Disallowed: array with both count and count_from.",
+            }
+        ],
+    }
+    path = _write_schema(tmp_path, "test.json", schema)
+    [result] = validate_schemas([path])
+
+    assert not result.ok
+    assert any(
+        "both" in err.message for err in result.errors
+    ), [err.message for err in result.errors]
+
+
+def test_array_with_count_from_remaining_passes(tmp_path: Path) -> None:
+    """An array with count_from='remaining' and no explicit count is valid."""
+    schema = {
+        "message_type": "TEST",
+        "type_id": "TEST",
+        "introduced_in": "v1",
+        "description": "Synthetic test exercising count_from=remaining.",
+        "body_size": "variable",
+        "fields": [
+            {
+                "name": "data",
+                "type": "array",
+                "element_type": "uint32",
+                "count_from": "remaining",
+                "description": (
+                    "Variable-length array; element count is body_size / 4."
+                ),
+            }
+        ],
+    }
+    path = _write_schema(tmp_path, "test.json", schema)
+    [result] = validate_schemas([path])
+    assert result.ok, [f"{e.location}: {e.message}" for e in result.errors]
+
+
+def test_count_from_rejects_unknown_source(tmp_path: Path) -> None:
+    """Any count_from value other than a defined CountSource variant is rejected."""
+    schema = {
+        "message_type": "TEST",
+        "type_id": "TEST",
+        "introduced_in": "v1",
+        "description": "Synthetic test.",
+        "body_size": "variable",
+        "fields": [
+            {
+                "name": "data",
+                "type": "array",
+                "element_type": "uint32",
+                "count_from": "body_remainder",  # not a valid CountSource value
+                "description": "Disallowed: unknown count_from value.",
+            }
+        ],
+    }
+    path = _write_schema(tmp_path, "test.json", schema)
+    [result] = validate_schemas([path])
+
+    assert not result.ok
+    assert any(
+        err.location.endswith("count_from") for err in result.errors
+    ), [err.location for err in result.errors]

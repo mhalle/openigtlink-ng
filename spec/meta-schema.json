@@ -5,6 +5,14 @@
   "title": "OpenIGTLink Message Schema",
   "description": "Meta-schema that validates the shape of every file under spec/schemas/. Each message-type schema describes one OpenIGTLink wire message and is consumed by codegen tools across all language ports.",
   "$defs": {
+    "CountSource": {
+      "description": "How an array's element count is derived when not given explicitly.\n\n``remaining`` means the count is computed at parse time as the number\nof elements that fit in the body bytes not consumed by earlier\nfields: ``count = (body_size - bytes_consumed_so_far) / element_size``.\nThe division must be exact \u2014 a message whose body_size does not divide\nevenly is malformed. This matches the dominant pattern across the\nOpenIGTLink message catalog (CAPABILITY, POINT, TDATA, QTDATA,\nTRAJECTORY, IMGMETA, LBMETA), where the element count is implicit in\nthe body size rather than carried in a header field.\n\nThis enum is reserved for future growth (e.g. an NDARRAY-style\nproduct-of-sizes variant); today it has a single value.",
+      "enum": [
+        "remaining"
+      ],
+      "title": "CountSource",
+      "type": "string"
+    },
     "Encoding": {
       "description": "Text encoding for string-typed fields.",
       "enum": [
@@ -118,8 +126,13 @@
             }
           ],
           "default": null,
-          "description": "For ``array`` / ``struct_array``: either a fixed integer count, or the name of a sibling field that carries the count.",
+          "description": "For ``array`` / ``struct_array``: either a fixed integer count, or the name of a sibling field that carries the count. Mutually exclusive with ``count_from``.",
           "title": "Count"
+        },
+        "count_from": {
+          "$ref": "#/$defs/CountSource",
+          "default": null,
+          "description": "For ``array`` / ``struct_array``: derive the element count implicitly rather than from a fixed integer or sibling field. Value ``remaining`` means ``count = (body_size - bytes_consumed_so_far) / element_size``, and the division must be exact. Mutually exclusive with ``count``; exactly one of the two is required on array / struct_array fields."
         },
         "element_type": {
           "anyOf": [
