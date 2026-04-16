@@ -1,0 +1,65 @@
+{
+  "$schema": "../meta-schema.json",
+
+  "message_type": "COMMAND",
+  "type_id": "COMMAND",
+  "introduced_in": "v3",
+
+  "description": "Carries a structured command — typically an XML document — from one peer to another, tagged with a session-unique ID and a symbolic name so replies (RTS_COMMAND) can reference it. The body is a 138-byte fixed header followed by a variable-length command string whose byte count is declared in the header's `length` field and whose character encoding is declared by the `encoding` field (an IANA MIBenum value).",
+
+  "rationale": "STRING already lets a sender ship an arbitrary text blob, but in real deployments a command channel needs two additional pieces: a stable ID so the sender can correlate a reply with its request, and a symbolic name so the receiver can dispatch without parsing the payload. COMMAND adds both with a dense 138-byte header, and it extends STRING's uint16 length field to uint32 so a command payload can exceed 64 KiB — relevant for DICOM-adjacent or image-manipulation commands. The `encoding` field is carried explicitly rather than hard-coded to ASCII so a deployment using Latin-1 or UTF-8 (MIBenum 106) can be unambiguous on the wire; US-ASCII (MIBenum 3) is the default and the strongly-recommended choice for interoperability.",
+
+  "spec_reference": {
+    "section": "Body (COMMAND)",
+    "document": "protocol/v3.md"
+  },
+
+  "body_size": "variable",
+
+  "fields": [
+    {
+      "name": "command_id",
+      "type": "uint32",
+      "description": "Session-unique identifier chosen by the sender. A receiver echoes this value in any RTS_COMMAND reply so the sender can correlate responses with outstanding requests. Uniqueness and wraparound policy are the sender's responsibility; the protocol imposes no requirement beyond 'unique within a connection's lifetime'."
+    },
+    {
+      "name": "command_name",
+      "type": "fixed_string",
+      "size_bytes": 128,
+      "encoding": "ascii",
+      "null_padded": true,
+      "description": "Symbolic command name, null-padded to 128 bytes. Used by the receiver to dispatch without parsing the command payload. Sender SHOULD choose a name that is stable across versions of the same command. An empty name (all null bytes) is legal but discouraged."
+    },
+    {
+      "name": "encoding",
+      "type": "uint16",
+      "description": "IANA MIBenum code for the character encoding of the `command` bytes (e.g. 3 = US-ASCII, 106 = UTF-8, 4 = ISO-8859-1). See https://www.iana.org/assignments/character-sets. Receivers MUST reject values not in the IANA table and SHOULD treat 3 (US-ASCII) as the interoperable default when not otherwise constrained."
+    },
+    {
+      "name": "length",
+      "type": "uint32",
+      "description": "Byte length of the trailing `command` field. Receivers MUST verify `body_size >= 138 + length` before any access to the command region; upstream C++ does not (see U-9). When length is zero, the `command` field occupies no body bytes and the message carries only the symbolic name / ID."
+    },
+    {
+      "name": "command",
+      "type": "array",
+      "element_type": "uint8",
+      "count": "length",
+      "description": "Command payload — exactly `length` bytes, interpreted per `encoding`. Typically XML, but the protocol treats the bytes as opaque and applies no structure check. The payload MUST NOT be null-terminated on the wire (a trailing null would be included in `length`); receivers that need a C string SHOULD copy and null-terminate into a fresh buffer."
+    }
+  ],
+
+  "metadata_allowed": true,
+
+  "legacy_notes": [
+    "COMMAND was introduced in protocol v3.0 (January 2017). Earlier deployments that need a command channel use STRING with an application-layer convention; COMMAND is the protocol's standardized replacement.",
+    "The fixed header is exactly 138 bytes: 4 (command_id) + 128 (command_name) + 2 (encoding) + 4 (length) = 138. Total body_size on the wire is 138 + length (plus any trailing metadata block the framework appends).",
+    "`encoding` is carried as a uint16, wide enough for the full IANA MIBenum range. The upstream C++ library validates incoming encoding on the sender's SetContentEncoding setter against a hand-maintained list of 257 values, but `UnpackContent` does NOT validate the encoding field on receive. Conformant implementations SHOULD validate on both sides.",
+    "The upstream C++ setter `CommandMessage::SetCommandContent` enforces a 16-bit cap on content length (`if (strlen(string) > 0xFFFF) return 0`), tighter than the 32-bit wire format. A conformant reimplementation MAY choose to honor the full uint32 range, but interoperating with upstream senders means practical payloads are bounded by 65535 bytes.",
+    "Related message type RTS_COMMAND is a reply carrying the same ID and name, plus an error string reusing the same 128-byte buffer. Not a distinct wire schema — it reuses the COMMAND body layout with the understanding that `command_name` is repurposed as the error name on the reply direction.",
+    "Upstream C++ `CommandMessage::UnpackContent` does NOT validate body_size against 138 or against 138 + length before accessing the header or appending the command region (see U-9). A conformant implementation MUST reject any COMMAND message where `body_size < 138` or `body_size < 138 + length` before any field access.",
+    "Upstream C++ `CommandMessage::SetCommandName` and `RTSCommandMessage::SetCommandErrorString` use `strlen(x) > IGTL_COMMAND_NAME_SIZE` then `strcpy`, an off-by-one that permits a 128-character name to overflow the 128-byte buffer by one null byte (see U-10). This is a sender-side bug and does not affect wire interpretation, but a conformant implementation MUST use `>=` or an explicit bounded copy."
+  ],
+
+  "see_also": ["STRING", "STATUS"]
+}
