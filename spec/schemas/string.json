@@ -1,0 +1,45 @@
+{
+  "$schema": "../meta-schema.json",
+
+  "message_type": "STRING",
+  "type_id": "STRING",
+  "introduced_in": "v1",
+
+  "description": "Carries a character string with an explicit character-encoding hint. The payload is a plain byte sequence whose interpretation is governed by the leading encoding field.",
+
+  "rationale": "Provides a device-to-host text channel (notifications, parameters, free-text command arguments) that can carry non-ASCII content. Uses an explicit IANA MIBenum encoding field rather than assuming a single charset because medical devices frequently emit vendor-specific or localized text.",
+
+  "spec_reference": {
+    "section": "Body (STRING)",
+    "document": "protocol/v3.md"
+  },
+
+  "body_size": "variable",
+
+  "fields": [
+    {
+      "name": "encoding",
+      "type": "uint16",
+      "description": "Character encoding as an IANA MIBenum value. Typical: 3 (US-ASCII), 106 (UTF-8). See the IANA character-sets registry at https://www.iana.org/assignments/character-sets. Receivers MUST accept unknown encoding values without rejection; if the value is not recognized, the payload MAY be treated as opaque bytes."
+    },
+    {
+      "name": "value",
+      "type": "length_prefixed_string",
+      "length_prefix_type": "uint16",
+      "encoding": "binary",
+      "description": "String payload: a big-endian uint16 length, immediately followed by that many bytes of string data. Interpretation of the bytes is governed by the preceding `encoding` field; at the wire level the field is opaque. The 16-bit length caps the maximum string size at 65535 bytes. No terminator byte.",
+      "legacy_notes": [
+        "Upstream C++ library (at pinned SHA 94244fe) unpacks this field with m_String.append(ptr, header->length) on line 135 of igtlStringMessage.cxx without bounds-checking `length` against the actual body size available. A conformant implementation MUST reject any STRING message where body_size < 4 + length; otherwise an attacker-controlled length value causes OOB reads up to 65535 bytes past the buffer."
+      ]
+    }
+  ],
+
+  "metadata_allowed": true,
+
+  "legacy_notes": [
+    "Total body size is 4 + length bytes: the fixed 4-byte header (uint16 encoding + uint16 length) followed by `length` bytes of payload. An empty string is legal (length=0, total body_size=4).",
+    "There is no null terminator. Implementations MUST NOT assume one is present or append one."
+  ],
+
+  "see_also": ["STATUS", "COMMAND"]
+}
