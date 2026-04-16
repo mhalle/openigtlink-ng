@@ -2,7 +2,7 @@
   "$schema": "../meta-schema.json",
 
   "message_type": "TRAJECTORY",
-  "type_id": "TRAJECTORY",
+  "type_id": "TRAJ",
   "introduced_in": "v1",
 
   "description": "List of 3D trajectories — planned or executed paths from an entry point to a target point. Typical use: planning needle paths, catheter insertions, and surgical access routes. Each element carries a trajectory's name, type, color, entry/target positions, radius, and owning-image reference.",

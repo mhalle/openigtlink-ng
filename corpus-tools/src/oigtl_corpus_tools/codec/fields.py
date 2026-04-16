@@ -159,7 +159,10 @@ def _unpack_field(
         prefix_type = field["length_prefix_type"]
         length, offset = unpack_primitive(prefix_type, data, offset)
         enc = field.get("encoding", "ascii")
-        value = data[offset : offset + length].decode(enc)
+        raw = data[offset : offset + length]
+        # 'binary' encoding = opaque bytes (STRING's value uses this
+        # because the charset is declared in a sibling field).
+        value = bytes(raw) if enc == "binary" else raw.decode(enc)
         return value, offset + length
 
     # --- Trailing string ---
@@ -169,7 +172,7 @@ def _unpack_field(
         null_terminated = field.get("null_terminated", False)
         if null_terminated and raw and raw[-1:] == b"\x00":
             raw = raw[:-1]
-        value = raw.decode(enc)
+        value = bytes(raw) if enc == "binary" else raw.decode(enc)
         return value, len(data)
 
     # --- Array / struct_array ---
