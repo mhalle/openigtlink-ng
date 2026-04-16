@@ -64,9 +64,18 @@ class PrimitiveType(str, Enum):
 class FieldType(str, Enum):
     """Composite field types — everything that isn't a numeric primitive.
 
-    ``trailing_string`` consumes all remaining body bytes and MUST be the
-    last field in its message. ``length_prefixed_string`` requires a
-    ``length_prefix_type``. ``fixed_string`` requires ``size_bytes``.
+    - ``fixed_string`` requires ``size_bytes``.
+    - ``length_prefixed_string`` requires a ``length_prefix_type``.
+    - ``trailing_string`` consumes all remaining body bytes; MUST be the
+      last field in its message.
+    - ``fixed_bytes`` requires ``size_bytes``.
+    - ``array`` holds a variable number of elements of a single type;
+      element count is given by ``count`` or ``count_from``.
+    - ``struct_array`` — historical alias for ``array`` with a struct
+      element; kept for symmetry with upstream terminology.
+    - ``struct`` — composite element with a named ``fields`` list. Used
+      as an array element to describe per-entry layouts like POINT's
+      136-byte element or TDATA's 70-byte element.
     """
 
     FIXED_STRING = "fixed_string"
@@ -75,6 +84,7 @@ class FieldType(str, Enum):
     FIXED_BYTES = "fixed_bytes"
     ARRAY = "array"
     STRUCT_ARRAY = "struct_array"
+    STRUCT = "struct"
 
 
 class Endianness(str, Enum):
@@ -258,6 +268,15 @@ class ElementDescriptor(BaseModel):
             "would add clarity."
         ),
     )
+    fields: Optional[list["FieldSchema"]] = Field(
+        default=None,
+        description=(
+            "For ``struct`` elements: ordered list of named sub-fields. "
+            "Each sub-field is a full FieldSchema (primitive, array, or "
+            "nested struct). Required when ``type`` is ``struct`` and "
+            "MUST NOT be set for other types."
+        ),
+    )
 
     @model_validator(mode="after")
     def _check_type_requirements(self) -> ElementDescriptor:
@@ -282,6 +301,16 @@ class ElementDescriptor(BaseModel):
                 "trailing_string cannot be an array element; it must be a "
                 "top-level field and must be the last one in its message"
             )
+        if self.type == FieldType.STRUCT:
+            if not self.fields:
+                raise ValueError(
+                    "element of type struct requires a non-empty `fields` list"
+                )
+        elif self.fields is not None:
+            raise ValueError(
+                f"`fields` is only allowed on struct elements; "
+                f"got type={self.type.value if isinstance(self.type, FieldType) else self.type}"
+            )
         return self
 
 
@@ -295,9 +324,9 @@ def _try_element_byte_size(element_type: Any) -> Optional[int]:
 
     ``None`` means the size cannot be derived without reading the data
     (e.g. the element is a struct reference whose layout is defined
-    elsewhere, or a variable-length element type). Callers that need
-    a known size to validate — notably ``count_from: remaining`` — use
-    this helper and reject when ``None``.
+    elsewhere by name, or a variable-length element type). Callers that
+    need a known size to validate — notably ``count_from: remaining`` —
+    use this helper and reject when ``None``.
     """
     if isinstance(element_type, PrimitiveType):
         return _PRIMITIVE_BYTE_SIZES[element_type]
@@ -313,9 +342,57 @@ def _try_element_byte_size(element_type: Any) -> Optional[int]:
             and isinstance(element_type.size_bytes, int)
         ):
             return element_type.size_bytes
+        # Struct element: sum the byte sizes of each named sub-field.
+        # Any sub-field with a variable size poisons the sum to None.
+        if element_type.type == FieldType.STRUCT and element_type.fields:
+            total = 0
+            for sub_field in element_type.fields:
+                size = _try_field_byte_size(sub_field)
+                if size is None:
+                    return None
+                total += size
+            return total
         return None
     # UpperIdentifier (named struct) — layout lives elsewhere, not yet
     # resolvable at schema-validation time.
+    return None
+
+
+def _try_field_byte_size(field: "FieldSchema") -> Optional[int]:
+    """Return the field's statically-known byte size, or ``None``.
+
+    Mirrors :func:`_try_element_byte_size` but operates on a
+    :class:`FieldSchema`, which has a richer set of attributes including
+    ``count`` and ``count_from``. Used recursively to compute the size
+    of a struct element by summing its sub-fields.
+    """
+    # Primitive field.
+    if isinstance(field.type, PrimitiveType):
+        return _PRIMITIVE_BYTE_SIZES[field.type]
+    # Fixed-size byte-strings / byte-buffers.
+    if field.type in (FieldType.FIXED_STRING, FieldType.FIXED_BYTES):
+        if isinstance(field.size_bytes, int):
+            return field.size_bytes
+        return None
+    # Array / struct_array — compute as (element_size * count) when
+    # both factors are known statically.
+    if field.type in (FieldType.ARRAY, FieldType.STRUCT_ARRAY):
+        element_size = _try_element_byte_size(field.element_type)
+        if element_size is None:
+            return None
+        if isinstance(field.count, int):
+            return element_size * field.count
+        # count from a sibling field or count_from: dynamic, not
+        # computable at schema-validation time.
+        return None
+    # Top-level struct field with inline fields list — unusual shape;
+    # its size is the sum of its sub-fields' sizes. Not commonly used
+    # because struct-shaped data is more idiomatically expressed as
+    # a struct *element* inside an array of length 1.
+    # Deferred until a real use case emerges.
+    if field.type == FieldType.STRUCT:
+        return None
+    # length_prefixed_string, trailing_string: variable size.
     return None
 
 
@@ -642,3 +719,10 @@ class MessageSchema(BaseModel):
                     f"{len(self.fields) - i - 1} field(s) following)"
                 )
         return self
+
+
+# Resolve the forward reference from ElementDescriptor.fields to
+# FieldSchema now that both models are defined. This enables recursive
+# element-to-field-to-element type composition (needed for struct
+# elements whose sub-fields may themselves be arrays of elements).
+ElementDescriptor.model_rebuild()

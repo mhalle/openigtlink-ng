@@ -531,3 +531,223 @@ def test_count_from_remaining_with_primitive_element_passes(tmp_path: Path) -> N
     path = _write_schema(tmp_path, "test.json", schema)
     [result] = validate_schemas([path])
     assert result.ok, [f"{e.location}: {e.message}" for e in result.errors]
+
+
+# ---------------------------------------------------------------------------
+# Struct element type (nested FieldSchema list inside ElementDescriptor)
+# ---------------------------------------------------------------------------
+
+
+def test_struct_element_with_mixed_fields_passes(tmp_path: Path) -> None:
+    """A struct element with primitive, fixed_string, and array sub-fields
+    is valid when all sub-fields have statically-known sizes.
+
+    This is the shape used by POINT, TDATA, etc.
+    """
+    schema = {
+        "message_type": "TEST",
+        "type_id": "TEST",
+        "introduced_in": "v1",
+        "description": "Synthetic test exercising struct-element arrays.",
+        "body_size": "variable",
+        "fields": [
+            {
+                "name": "entries",
+                "type": "array",
+                "element_type": {
+                    "type": "struct",
+                    "fields": [
+                        {
+                            "name": "name",
+                            "type": "fixed_string",
+                            "size_bytes": 16,
+                            "encoding": "ascii",
+                            "null_padded": True,
+                            "description": "Entry name.",
+                        },
+                        {
+                            "name": "kind",
+                            "type": "uint8",
+                            "description": "Entry kind.",
+                        },
+                        {
+                            "name": "reserved",
+                            "type": "uint8",
+                            "description": "Reserved.",
+                        },
+                        {
+                            "name": "vector",
+                            "type": "array",
+                            "element_type": "float32",
+                            "count": 3,
+                            "description": "3-vector.",
+                        },
+                    ],
+                },
+                "count_from": "remaining",
+                "description": "Array of 30-byte struct entries.",
+            }
+        ],
+    }
+    path = _write_schema(tmp_path, "test.json", schema)
+    [result] = validate_schemas([path])
+    assert result.ok, [f"{e.location}: {e.message}" for e in result.errors]
+
+
+def test_struct_element_requires_fields(tmp_path: Path) -> None:
+    """A struct-typed element with no `fields` list must be rejected."""
+    schema = {
+        "message_type": "TEST",
+        "type_id": "TEST",
+        "introduced_in": "v1",
+        "description": "Synthetic test.",
+        "body_size": "variable",
+        "fields": [
+            {
+                "name": "entries",
+                "type": "array",
+                "element_type": {
+                    "type": "struct",
+                    # fields: deliberately omitted
+                },
+                "count_from": "remaining",
+                "description": "Disallowed: struct element without fields.",
+            }
+        ],
+    }
+    path = _write_schema(tmp_path, "test.json", schema)
+    [result] = validate_schemas([path])
+
+    assert not result.ok
+    assert any(
+        "struct" in err.message and "fields" in err.message
+        for err in result.errors
+    ), [err.message for err in result.errors]
+
+
+def test_fields_on_non_struct_element_rejected(tmp_path: Path) -> None:
+    """An element with `fields` set but a non-struct type must be rejected."""
+    schema = {
+        "message_type": "TEST",
+        "type_id": "TEST",
+        "introduced_in": "v1",
+        "description": "Synthetic test.",
+        "body_size": "variable",
+        "fields": [
+            {
+                "name": "data",
+                "type": "array",
+                "element_type": {
+                    "type": "uint32",
+                    "fields": [
+                        {
+                            "name": "a",
+                            "type": "uint32",
+                            "description": "Disallowed: primitive can't have fields.",
+                        }
+                    ],
+                },
+                "count_from": "remaining",
+                "description": "Disallowed: fields on a primitive element.",
+            }
+        ],
+    }
+    path = _write_schema(tmp_path, "test.json", schema)
+    [result] = validate_schemas([path])
+
+    assert not result.ok
+    assert any(
+        "fields" in err.message and "struct" in err.message
+        for err in result.errors
+    ), [err.message for err in result.errors]
+
+
+def test_struct_element_with_variable_subfield_blocks_count_from_remaining(
+    tmp_path: Path,
+) -> None:
+    """count_from=remaining requires a statically-sized element.
+
+    If a struct element contains a variable-size sub-field (e.g. a
+    length_prefixed_string), the struct's total size is not statically
+    known, so count_from=remaining must be rejected.
+    """
+    schema = {
+        "message_type": "TEST",
+        "type_id": "TEST",
+        "introduced_in": "v1",
+        "description": "Synthetic test.",
+        "body_size": "variable",
+        "fields": [
+            {
+                "name": "entries",
+                "type": "array",
+                "element_type": {
+                    "type": "struct",
+                    "fields": [
+                        {
+                            "name": "tag",
+                            "type": "uint32",
+                            "description": "Fixed tag.",
+                        },
+                        {
+                            "name": "payload",
+                            "type": "length_prefixed_string",
+                            "length_prefix_type": "uint16",
+                            "encoding": "utf-8",
+                            "description": "Variable-size payload.",
+                        },
+                    ],
+                },
+                "count_from": "remaining",
+                "description": (
+                    "Disallowed: struct contains a variable-size sub-field."
+                ),
+            }
+        ],
+    }
+    path = _write_schema(tmp_path, "test.json", schema)
+    [result] = validate_schemas([path])
+
+    assert not result.ok
+    assert any(
+        "statically-known" in err.message for err in result.errors
+    ), [err.message for err in result.errors]
+
+
+def test_struct_element_with_explicit_count_passes(tmp_path: Path) -> None:
+    """With an explicit `count`, a struct element is fine even if the
+    struct happens to be fixed-size — demonstrates that struct elements
+    work in both count-modes."""
+    schema = {
+        "message_type": "TEST",
+        "type_id": "TEST",
+        "introduced_in": "v1",
+        "description": "Synthetic test.",
+        "body_size": 24,
+        "fields": [
+            {
+                "name": "entries",
+                "type": "array",
+                "element_type": {
+                    "type": "struct",
+                    "fields": [
+                        {
+                            "name": "id",
+                            "type": "uint32",
+                            "description": "Entry ID.",
+                        },
+                        {
+                            "name": "value",
+                            "type": "float64",
+                            "description": "Value.",
+                        },
+                    ],
+                },
+                "count": 2,
+                "description": "Exactly 2 entries of 12 bytes each = 24 bytes.",
+            }
+        ],
+    }
+    path = _write_schema(tmp_path, "test.json", schema)
+    [result] = validate_schemas([path])
+    assert result.ok, [f"{e.location}: {e.message}" for e in result.errors]

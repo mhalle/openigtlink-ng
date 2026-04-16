@@ -13,6 +13,8 @@ from oigt_corpus_tools.schema.emit import (
     generate_meta_schema,
 )
 from oigt_corpus_tools.schema.model import (
+    CountSource,
+    ElementDescriptor,
     Encoding,
     Endianness,
     ExtendedHeader,
@@ -26,6 +28,8 @@ from oigt_corpus_tools.schema.model import (
 
 __all__ = [
     "CompactJsonSchema",
+    "CountSource",
+    "ElementDescriptor",
     "Encoding",
     "Endianness",
     "ExtendedHeader",

@@ -70,6 +70,15 @@
           "description": "Optional. Elements are normally documented via the parent field's description; use this only when per-element docs would add clarity.",
           "title": "Description",
           "type": "string"
+        },
+        "fields": {
+          "default": null,
+          "description": "For ``struct`` elements: ordered list of named sub-fields. Each sub-field is a full FieldSchema (primitive, array, or nested struct). Required when ``type`` is ``struct`` and MUST NOT be set for other types.",
+          "items": {
+            "$ref": "#/$defs/FieldSchema"
+          },
+          "title": "Fields",
+          "type": "array"
         }
       },
       "required": [
@@ -272,14 +281,15 @@
       "type": "object"
     },
     "FieldType": {
-      "description": "Composite field types \u2014 everything that isn't a numeric primitive.\n\n``trailing_string`` consumes all remaining body bytes and MUST be the\nlast field in its message. ``length_prefixed_string`` requires a\n``length_prefix_type``. ``fixed_string`` requires ``size_bytes``.",
+      "description": "Composite field types \u2014 everything that isn't a numeric primitive.\n\n- ``fixed_string`` requires ``size_bytes``.\n- ``length_prefixed_string`` requires a ``length_prefix_type``.\n- ``trailing_string`` consumes all remaining body bytes; MUST be the\n  last field in its message.\n- ``fixed_bytes`` requires ``size_bytes``.\n- ``array`` holds a variable number of elements of a single type;\n  element count is given by ``count`` or ``count_from``.\n- ``struct_array`` \u2014 historical alias for ``array`` with a struct\n  element; kept for symmetry with upstream terminology.\n- ``struct`` \u2014 composite element with a named ``fields`` list. Used\n  as an array element to describe per-entry layouts like POINT's\n  136-byte element or TDATA's 70-byte element.",
       "enum": [
         "fixed_string",
         "length_prefixed_string",
         "trailing_string",
         "fixed_bytes",
         "array",
-        "struct_array"
+        "struct_array",
+        "struct"
       ],
       "title": "FieldType",
       "type": "string"
