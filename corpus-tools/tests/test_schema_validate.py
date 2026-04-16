@@ -2,9 +2,10 @@
 
 Validation logic is exercised directly through the pure
 :func:`validate_schemas` function rather than through the CLI, so tests
-don't have to construct argparse namespaces or capture stdout. Two small
-integration tests confirm that the real repository meta-schema and
-exemplar schema load and validate together.
+don't have to construct argparse namespaces or capture stdout. Two
+integration tests confirm that (a) the real repository's exemplar
+schemas all validate, and (b) the committed ``spec/meta-schema.json`` is
+in sync with the Pydantic source of truth.
 """
 
 from __future__ import annotations
@@ -14,12 +15,19 @@ from pathlib import Path
 
 import pytest
 
-from oigt_corpus_tools.commands.schema import validate_schemas
-from oigt_corpus_tools.paths import find_repo_root, meta_schema_path, schemas_dir
+from oigt_corpus_tools.commands.schema import (
+    _render_meta_schema,
+    validate_schemas,
+)
+from oigt_corpus_tools.paths import (
+    find_repo_root,
+    meta_schema_path,
+    schemas_dir,
+)
 
 
 # ---------------------------------------------------------------------------
-# Real-repo integration: exemplar schemas validate against the real meta-schema
+# Real-repo integration
 # ---------------------------------------------------------------------------
 
 
@@ -28,22 +36,32 @@ def repo_root() -> Path:
     return find_repo_root()
 
 
-@pytest.fixture(scope="module")
-def real_meta_schema(repo_root: Path) -> Path:
-    return meta_schema_path(repo_root)
-
-
-def test_all_real_schemas_validate(repo_root: Path, real_meta_schema: Path) -> None:
-    """Every schema under ``spec/schemas/`` must validate against the meta-schema."""
+def test_all_real_schemas_validate(repo_root: Path) -> None:
+    """Every schema under ``spec/schemas/`` must validate against the Pydantic model."""
     paths = sorted(schemas_dir(repo_root).glob("*.json"))
     assert paths, "no schemas found to validate — did spec/schemas/ become empty?"
 
-    results = validate_schemas(paths, real_meta_schema)
+    results = validate_schemas(paths)
     failures = [r for r in results if not r.ok]
 
     assert not failures, "\n".join(
         f"{r.path.name}: " + "; ".join(f"{e.location}: {e.message}" for e in r.errors)
         for r in failures
+    )
+
+
+def test_meta_schema_on_disk_in_sync_with_models(repo_root: Path) -> None:
+    """The committed ``spec/meta-schema.json`` must match what the Pydantic models emit.
+
+    Equivalent to running ``oigt-corpus schema emit-meta --check``; this
+    test form gives a useful diff when pytest's ``-vv`` mode is used.
+    """
+    expected = _render_meta_schema()
+    actual = meta_schema_path(repo_root).read_text()
+
+    assert actual == expected, (
+        "spec/meta-schema.json is out of sync with the Pydantic models. "
+        "Run 'uv run oigt-corpus schema emit-meta' to regenerate."
     )
 
 
@@ -58,9 +76,7 @@ def _write_schema(dir_: Path, name: str, contents: dict) -> Path:
     return path
 
 
-def test_well_formed_synthetic_schema_passes(
-    tmp_path: Path, real_meta_schema: Path
-) -> None:
+def test_well_formed_synthetic_schema_passes(tmp_path: Path) -> None:
     """A minimally-valid schema with all required fields must pass."""
     schema = {
         "message_type": "TEST",
@@ -71,13 +87,11 @@ def test_well_formed_synthetic_schema_passes(
         "fields": [],
     }
     path = _write_schema(tmp_path, "test.json", schema)
-    [result] = validate_schemas([path], real_meta_schema)
+    [result] = validate_schemas([path])
     assert result.ok, [f"{e.location}: {e.message}" for e in result.errors]
 
 
-def test_missing_required_top_level_field_fails(
-    tmp_path: Path, real_meta_schema: Path
-) -> None:
+def test_missing_required_top_level_field_fails(tmp_path: Path) -> None:
     """Omitting a required top-level field must produce a root-level error."""
     schema = {
         # "description" deliberately omitted
@@ -88,7 +102,7 @@ def test_missing_required_top_level_field_fails(
         "fields": [],
     }
     path = _write_schema(tmp_path, "test.json", schema)
-    [result] = validate_schemas([path], real_meta_schema)
+    [result] = validate_schemas([path])
 
     assert not result.ok
     assert any("description" in err.message for err in result.errors), [
@@ -96,9 +110,7 @@ def test_missing_required_top_level_field_fails(
     ]
 
 
-def test_field_missing_description_fails(
-    tmp_path: Path, real_meta_schema: Path
-) -> None:
+def test_field_missing_description_fails(tmp_path: Path) -> None:
     """Every field in the schema is required to have a non-empty description."""
     schema = {
         "message_type": "TEST",
@@ -115,7 +127,7 @@ def test_field_missing_description_fails(
         ],
     }
     path = _write_schema(tmp_path, "test.json", schema)
-    [result] = validate_schemas([path], real_meta_schema)
+    [result] = validate_schemas([path])
 
     assert not result.ok
     assert any("description" in err.message for err in result.errors)
@@ -125,9 +137,7 @@ def test_field_missing_description_fails(
     ]
 
 
-def test_invalid_field_name_pattern_fails(
-    tmp_path: Path, real_meta_schema: Path
-) -> None:
+def test_invalid_field_name_pattern_fails(tmp_path: Path) -> None:
     """Field names must match ``^[a-z][a-z0-9_]*$`` — CamelCase is rejected."""
     schema = {
         "message_type": "TEST",
@@ -144,7 +154,7 @@ def test_invalid_field_name_pattern_fails(
         ],
     }
     path = _write_schema(tmp_path, "test.json", schema)
-    [result] = validate_schemas([path], real_meta_schema)
+    [result] = validate_schemas([path])
 
     assert not result.ok
     assert any(err.location.startswith("fields/0/name") for err in result.errors), [
@@ -152,10 +162,8 @@ def test_invalid_field_name_pattern_fails(
     ]
 
 
-def test_unknown_top_level_key_fails(
-    tmp_path: Path, real_meta_schema: Path
-) -> None:
-    """Top-level ``additionalProperties: false`` rejects unknown keys."""
+def test_unknown_top_level_key_fails(tmp_path: Path) -> None:
+    """Top-level ``extra='forbid'`` rejects unknown keys."""
     schema = {
         "message_type": "TEST",
         "type_id": "TEST",
@@ -166,9 +174,99 @@ def test_unknown_top_level_key_fails(
         "totally_made_up_key": "oops",
     }
     path = _write_schema(tmp_path, "test.json", schema)
-    [result] = validate_schemas([path], real_meta_schema)
+    [result] = validate_schemas([path])
 
     assert not result.ok
     assert any(
         "totally_made_up_key" in err.message for err in result.errors
+    ), [err.message for err in result.errors]
+
+
+# ---------------------------------------------------------------------------
+# Cross-field validators (new with Pydantic migration)
+# ---------------------------------------------------------------------------
+
+
+def test_trailing_string_must_be_last_field(tmp_path: Path) -> None:
+    """A trailing_string placed before another field must be rejected."""
+    schema = {
+        "message_type": "TEST",
+        "type_id": "TEST",
+        "introduced_in": "v1",
+        "description": "Synthetic test.",
+        "body_size": "variable",
+        "fields": [
+            {
+                "name": "early_trailing",
+                "type": "trailing_string",
+                "encoding": "ascii",
+                "description": "Disallowed: not the last field.",
+            },
+            {
+                "name": "after",
+                "type": "uint32",
+                "description": "This field follows a trailing_string, which is wrong.",
+            },
+        ],
+    }
+    path = _write_schema(tmp_path, "test.json", schema)
+    [result] = validate_schemas([path])
+
+    assert not result.ok
+    assert any(
+        "trailing_string" in err.message and "last" in err.message
+        for err in result.errors
+    ), [err.message for err in result.errors]
+
+
+def test_fixed_string_requires_size_bytes(tmp_path: Path) -> None:
+    """A fixed_string field without size_bytes must be rejected."""
+    schema = {
+        "message_type": "TEST",
+        "type_id": "TEST",
+        "introduced_in": "v1",
+        "description": "Synthetic test.",
+        "body_size": "variable",
+        "fields": [
+            {
+                "name": "name",
+                "type": "fixed_string",
+                # "size_bytes" deliberately omitted
+                "description": "Disallowed: fixed_string without size_bytes.",
+            }
+        ],
+    }
+    path = _write_schema(tmp_path, "test.json", schema)
+    [result] = validate_schemas([path])
+
+    assert not result.ok
+    assert any(
+        "size_bytes" in err.message for err in result.errors
+    ), [err.message for err in result.errors]
+
+
+def test_length_prefixed_string_requires_length_prefix_type(tmp_path: Path) -> None:
+    """A length_prefixed_string field without length_prefix_type must be rejected."""
+    schema = {
+        "message_type": "TEST",
+        "type_id": "TEST",
+        "introduced_in": "v1",
+        "description": "Synthetic test.",
+        "body_size": "variable",
+        "fields": [
+            {
+                "name": "message",
+                "type": "length_prefixed_string",
+                # "length_prefix_type" deliberately omitted
+                "encoding": "utf-8",
+                "description": "Disallowed: no length_prefix_type.",
+            }
+        ],
+    }
+    path = _write_schema(tmp_path, "test.json", schema)
+    [result] = validate_schemas([path])
+
+    assert not result.ok
+    assert any(
+        "length_prefix_type" in err.message for err in result.errors
     ), [err.message for err in result.errors]

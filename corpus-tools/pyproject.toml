@@ -9,7 +9,7 @@ authors = [
     { name = "openigtlink-ng contributors" },
 ]
 dependencies = [
-    "jsonschema>=4.21",
+    "pydantic>=2.5",
 ]
 
 [project.optional-dependencies]
