@@ -1,0 +1,111 @@
+{
+  "$schema": "../meta-schema.json",
+
+  "message_type": "VIDEOMETA",
+  "type_id": "VIDEOMETA",
+  "introduced_in": "v3",
+
+  "description": "Advertises the set of VIDEO sources available on a server. Each element describes one video stream's name, device suffix, patient identity, camera parameters (zoom level and focal length), frame-plane orientation matrix, frame dimensions, and pixel type. A client uses VIDEOMETA to populate a video source list without subscribing to any stream first.",
+
+  "rationale": "Video sources carry both patient-identifying metadata (like IMGMETA) and camera-specific parameters (zoom, focal length) that a consumer needs to interpret the resulting VIDEO frames. The per-element matrix captures frame-plane orientation the same way IMAGE does, so a video frame can be placed in 3D scene space without a separate TRANSFORM lookup. VIDEOMETA is to VIDEO what IMGMETA is to IMAGE.",
+
+  "spec_reference": {
+    "section": "Body (VIDEOMETA)",
+    "document": "protocol/v3.md"
+  },
+
+  "body_size": "variable",
+
+  "fields": [
+    {
+      "name": "videos",
+      "type": "array",
+      "element_type": {
+        "type": "struct",
+        "fields": [
+          {
+            "name": "name",
+            "type": "fixed_string",
+            "size_bytes": 64,
+            "encoding": "ascii",
+            "null_padded": true,
+            "description": "Human-readable video stream name or description, null-padded to 64 bytes."
+          },
+          {
+            "name": "device_name",
+            "type": "fixed_string",
+            "size_bytes": 64,
+            "encoding": "ascii",
+            "null_padded": true,
+            "description": "Device-name suffix used to retrieve this VIDEO via GET_VIDEO (and associated COLORT). Note the 64-byte width, wider than the 20-byte device_name suffix used by IMGMETA and LBMETA. Forms the authoritative key for this metadata entry."
+          },
+          {
+            "name": "patient_name",
+            "type": "fixed_string",
+            "size_bytes": 64,
+            "encoding": "ascii",
+            "null_padded": true,
+            "description": "Patient name, null-padded to 64 bytes. This is PHI; implementations SHOULD treat the field as sensitive and MAY omit or redact it depending on deployment policy."
+          },
+          {
+            "name": "patient_id",
+            "type": "fixed_string",
+            "size_bytes": 64,
+            "encoding": "ascii",
+            "null_padded": true,
+            "description": "Patient identifier (e.g. MRN), null-padded to 64 bytes. Also PHI; same treatment guidance as patient_name."
+          },
+          {
+            "name": "zoom_level",
+            "type": "int16",
+            "description": "Camera zoom level as a signed 16-bit integer. Units and reference-point semantics are device-specific; consumers SHOULD treat this as an opaque device-reported value unless they have prior calibration knowledge of the source."
+          },
+          {
+            "name": "focal_length",
+            "type": "float64",
+            "description": "Camera focal length in millimeters."
+          },
+          {
+            "name": "size",
+            "type": "array",
+            "element_type": "uint16",
+            "count": 3,
+            "description": "Video frame dimensions in pixels: (Ri, Rj, Rk). For a 2D video source, Rk is typically 1; three-axis sizes are preserved here for consistency with IMAGE."
+          },
+          {
+            "name": "matrix",
+            "type": "array",
+            "element_type": "float32",
+            "count": 12,
+            "description": "Frame-plane orientation and origin, laid out as four float32[3] groups in row order: (TX,TY,TZ) = norm_i * pixel_size_i, (SX,SY,SZ) = norm_j * pixel_size_j, (NX,NY,NZ) = norm_k * pixel_size_k, (PX,PY,PZ) = origin (center of the frame in millimeters). Same convention as IMGMETA-adjacent IMAGE orientation, minus the scalar-type-dependent encoding variant."
+          },
+          {
+            "name": "scalar_type",
+            "type": "uint8",
+            "description": "Pixel scalar type, matching VIDEO's scalar_type codes (and IMAGE's): 2=int8, 3=uint8, 4=int16, 5=uint16, 6=int32, 7=uint32, 10=float32, 11=float64. Receivers MUST accept unknown values without rejection."
+          },
+          {
+            "name": "reserved",
+            "type": "uint8",
+            "description": "Reserved; senders SHOULD write 0 and receivers MUST ignore."
+          }
+        ]
+      },
+      "count_from": "remaining",
+      "description": "Array of 322-byte VIDEOMETA elements. Element count is derived as body_size / 322; a body whose size is not a multiple of 322 is malformed and MUST be rejected."
+    }
+  ],
+
+  "metadata_allowed": true,
+
+  "legacy_notes": [
+    "Total body size is exactly 322 * N where N is the number of video entries. An empty VIDEOMETA body (N=0, body_size=0) is legal and means 'no video sources available'.",
+    "VIDEOMETA was introduced in protocol v3.1 (July 2017), later than most element-based messages. The bundled reference test vector `igtl_test_data_videometa.h` carries a v3 extended header but advertises version=2 in the fixed header — senders targeting the modern protocol MUST use version=3.",
+    "Patient name and patient ID fields carry PHI, same treatment guidance as IMGMETA: redact or reject on unencrypted transports per deployment policy. The wire format provides no redaction indicator; null-padded empty strings are the de facto redaction.",
+    "The `device_name` inside the element is 64 bytes, unlike the 20-byte device_name used by IMGMETA / LBMETA / POINT / TRAJECTORY. Clients constructing GET_VIDEO requests by copying this field MUST truncate to the fixed-header device_name width (20 bytes) or reject entries whose device_name would not fit.",
+    "Upstream `igtl_videometa_convert_byte_order` (pinned SHA 94244fe) carries an explicit TODO noting a possible segmentation fault when compiled with `-ftree-vectorize` (enabled by `-O3`) on 64-bit Linux. The pattern is a stack array of 12 uint32 swapped in a loop; a conformant reimplementation SHOULD byte-swap each matrix element in place without the temporary-array round-trip.",
+    "Upstream C++ library (at pinned SHA 94244fe) iterates `nitem` elements without verifying the body is large enough. A conformant implementation MUST reject any VIDEOMETA message whose body_size is not a multiple of 322."
+  ],
+
+  "see_also": ["IMGMETA", "VIDEO", "COLORTABLE", "IMAGE"]
+}
