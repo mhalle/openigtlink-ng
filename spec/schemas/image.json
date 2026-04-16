@@ -1,0 +1,95 @@
+{
+  "$schema": "../meta-schema.json",
+
+  "message_type": "IMAGE",
+  "type_id": "IMAGE",
+  "introduced_in": "v1",
+
+  "description": "Delivers image pixel data — 2D frames or 3D volumes — together with orientation, origin, scalar type, and optional partial-volume windowing. The body is a 72-byte image header followed by a byte array of pixel data. Supports streaming a full volume in one message or splitting it across multiple messages via the subvolume offset/size window.",
+
+  "rationale": "IMAGE is the workhorse of OpenIGTLink traffic for imaging modalities (CT, MR, US). The fixed 72-byte header carries everything a receiver needs to interpret the trailing pixel bytes — component count, scalar type, byte order, coordinate convention, extent, and a 3x4 orientation matrix — plus an optional subvolume window that lets a sender stream slices or tiles of a larger volume through a sequence of IMAGE messages. Putting orientation and extent in-band means the receiver can scale, rotate, and place each frame in 3D scene space without waiting for an accompanying TRANSFORM.",
+
+  "spec_reference": {
+    "section": "Body (IMAGE)",
+    "document": "protocol/v3.md"
+  },
+
+  "body_size": "variable",
+
+  "fields": [
+    {
+      "name": "header_version",
+      "type": "uint16",
+      "description": "IMAGE header format version, currently 1. This is the per-message-type format version, not the OpenIGTLink protocol version. Receivers MUST reject headers whose `header_version` they do not implement; upstream C++ UnpackContent returns 0 (failure) on mismatch."
+    },
+    {
+      "name": "num_components",
+      "type": "uint8",
+      "description": "Number of scalar components per pixel (e.g. 1 for grayscale, 3 for RGB, 3 for vector displacement fields). Must be > 0. Senders typically set 1 (scalar) or 3 (vector)."
+    },
+    {
+      "name": "scalar_type",
+      "type": "uint8",
+      "description": "Pixel scalar type code: 2=int8, 3=uint8, 4=int16, 5=uint16, 6=int32, 7=uint32, 10=float32, 11=float64. Receivers MUST reject unknown values rather than silently treating them as 0-byte scalars — the latter is how upstream C `igtl_image_get_data_size` silently under-reports payload size for float types (see U-7)."
+    },
+    {
+      "name": "endian",
+      "type": "uint8",
+      "description": "Byte order of the pixel data only (not the header, which is always big-endian / network order): 1=big, 2=little. Allows a sender to ship already-native-layout pixels to a known-matching receiver without swapping, at the cost of the receiver having to detect and conditionally swap."
+    },
+    {
+      "name": "coord",
+      "type": "uint8",
+      "description": "Coordinate-system convention for the matrix and origin: 1=RAS (right/anterior/superior, Slicer-style), 2=LPS (left/posterior/superior, DICOM-style). Receivers MUST accept both and convert as needed; unknown values SHOULD be treated as RAS for forward compatibility."
+    },
+    {
+      "name": "size",
+      "type": "array",
+      "element_type": "uint16",
+      "count": 3,
+      "description": "Entire volume extent in voxels: (Sx, Sy, Sz). For a 2D image, Sz=1. This is the total logical volume; the actual pixels carried in this message are bounded by `subvol_offset` + `subvol_size`."
+    },
+    {
+      "name": "matrix",
+      "type": "array",
+      "element_type": "float32",
+      "count": 12,
+      "description": "Orientation and origin, laid out as four float32[3] groups in row order: matrix[0..2] = norm_i * pixel_size_i, matrix[3..5] = norm_j * pixel_size_j, matrix[6..8] = norm_k * pixel_size_k, matrix[9..11] = origin (coordinates of the volume's reference point in millimeters, per `coord` convention). The matrix fills the upper 3x4 of a 4x4 homogeneous transform; the bottom row is always (0, 0, 0, 1) and is not transmitted."
+    },
+    {
+      "name": "subvol_offset",
+      "type": "array",
+      "element_type": "uint16",
+      "count": 3,
+      "description": "Starting voxel of the sub-region carried by this message within the full volume: (Ox, Oy, Oz). (0, 0, 0) means 'start at the origin voxel'. For a full-volume transfer, offset is (0,0,0) and subvol_size equals size."
+    },
+    {
+      "name": "subvol_size",
+      "type": "array",
+      "element_type": "uint16",
+      "count": 3,
+      "description": "Extent of the sub-region carried by this message: (Wx, Wy, Wz). The trailing `pixels` array MUST contain exactly num_components * Wx * Wy * Wz * sizeof(scalar_type) bytes. Receivers MUST verify subvol_offset + subvol_size <= size (componentwise) and MUST reject the message on overflow; unchecked arithmetic on attacker-controlled subvol_size caused the legacy library to miscompute payload length in 32-bit intermediate form (see U-8)."
+    },
+    {
+      "name": "pixels",
+      "type": "array",
+      "element_type": "uint8",
+      "count_from": "remaining",
+      "description": "Raw pixel payload — num_components * subvol_size[0] * subvol_size[1] * subvol_size[2] scalars of `scalar_type`, laid out in i-fastest order, in the byte order declared by `endian`. Receivers MUST verify len(pixels) equals the product formula above (in 64-bit arithmetic); any deviation is a malformed message and MUST be rejected. When splitting a volume across messages, senders SHOULD keep each message under ~1 MiB body so receivers can buffer safely."
+    }
+  ],
+
+  "metadata_allowed": true,
+
+  "legacy_notes": [
+    "The 72-byte fixed header is followed immediately by pixel bytes — there is no separator, no length prefix, and no trailing padding. The sender's responsibility is to set body_size (in the outer OpenIGTLink header) to exactly 72 + num_components * prod(subvol_size) * sizeof(scalar_type).",
+    "Upstream C++ `ImageMessage::UnpackContent` does NOT validate body_size against `IGTL_IMAGE_HEADER_SIZE` before casting m_Content to igtl_image_header*. A body smaller than 72 bytes causes a 72-(body_size) byte OOB read in the byte-swap pass. A conformant implementation MUST reject any IMAGE message whose body_size < 72, before any header field access.",
+    "Upstream C++ `ImageMessage::UnpackContent` does NOT validate that body_size >= 72 + expected_pixel_bytes before exposing m_Image to the caller. A malicious sender with body_size = 72 but subvol_size claiming 1GiB of pixels leaves m_Image pointing at unmapped memory; a subsequent caller reading through it is exploitable. A conformant implementation MUST verify len(pixels) exactly equals the header-derived expected size.",
+    "The `size` field is a uint16[3]; the theoretical maximum volume is 65535^3 voxels. Combined with num_components = 255 and scalar_type = float64 (8 bytes), the theoretical maximum IMAGE payload is 255 * 65535^3 * 8 ≈ 574 exabytes — far beyond any reasonable buffer. Receivers SHOULD enforce an implementation-defined maximum on num_components * prod(subvol_size) * sizeof(scalar_type) before allocating.",
+    "Upstream `igtl_image_convert_byte_order` (pinned SHA 94244fe) carries a TODO note about `-ftree-vectorize` possibly causing segfaults on 64-bit Linux — same construct as VIDEOMETA's byte-swap. A conformant reimplementation SHOULD byte-swap matrix elements in place without the stack uint32[12] round-trip.",
+    "There is no separate 'IMAGE2' message type in the protocol; the file `Testing/img/igtlTestImage2.raw` in the upstream tree is simply the second test image used by the test suite.",
+    "The `coord` field is rendering guidance, not a pixel transform: the pixel data itself is always laid out in i-fastest order regardless of coord system. Changing coord from RAS to LPS flips the interpretation of the matrix's orientation axes, not the pixel buffer layout."
+  ],
+
+  "see_also": ["IMGMETA", "COLORTABLE", "VIDEO", "TRANSFORM", "POSITION"]
+}
