@@ -1,0 +1,14 @@
+{
+  "$schema": "../meta-schema.json",
+  "message_type": "GET_LBMETA",
+  "type_id": "GET_LBMETA",
+  "introduced_in": "v1",
+  "description": "Request the LBMETA listing.",
+  "body_size": 0,
+  "fields": [],
+  "metadata_allowed": false,
+  "see_also": [
+    "LBMETA",
+    "IMAGE"
+  ]
+}

@@ -1,0 +1,14 @@
+{
+  "$schema": "../meta-schema.json",
+  "message_type": "GET_VMETA",
+  "type_id": "GET_VMETA",
+  "introduced_in": "v1",
+  "description": "Request the VIDEOMETA listing.",
+  "body_size": 0,
+  "fields": [],
+  "metadata_allowed": false,
+  "see_also": [
+    "VIDEOMETA",
+    "VIDEO"
+  ]
+}

@@ -1,0 +1,13 @@
+{
+  "$schema": "../meta-schema.json",
+  "message_type": "STT_TRANS",
+  "type_id": "STT_TRANS",
+  "introduced_in": "v1",
+  "description": "Start streaming TRANSFORM messages at the server's default rate.",
+  "body_size": 0,
+  "fields": [],
+  "metadata_allowed": false,
+  "see_also": [
+    "TRANSFORM"
+  ]
+}

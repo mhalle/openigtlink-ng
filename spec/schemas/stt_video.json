@@ -1,0 +1,35 @@
+{
+  "$schema": "../meta-schema.json",
+
+  "message_type": "STT_VIDEO",
+  "type_id": "STT_VIDEO",
+  "introduced_in": "v3",
+
+  "description": "Start streaming VIDEO frames with a specified codec and update interval. The server responds with periodic VIDEO messages until a STP_VIDEO is received.",
+
+  "body_size": 8,
+
+  "fields": [
+    {
+      "name": "codec",
+      "type": "fixed_string",
+      "size_bytes": 4,
+      "encoding": "ascii",
+      "null_padded": false,
+      "description": "Requested FourCC codec: 'I420' (uncompressed YUV), 'H264', 'VP90' (VP9), 'X265', 'O265' (OpenHEVC), 'AV10' (AV1). All four bytes significant. The server SHOULD honor the request or reject with an error status."
+    },
+    {
+      "name": "time_interval",
+      "type": "uint32",
+      "description": "Minimum time between consecutive VIDEO frames, in milliseconds. 0 means 'as fast as possible'."
+    }
+  ],
+
+  "metadata_allowed": false,
+
+  "legacy_notes": [
+    "Upstream defines IGTL_STT_VIDEO_SIZE as 9, but the igtl_stt_video struct under #pragma pack(1) is 8 bytes (char[4] + uint32). The CRC function uses IGTL_STT_VIDEO_SIZE=9, computing CRC over one byte past the struct — likely a latent bug. A conformant implementation SHOULD use body_size=8."
+  ],
+
+  "see_also": ["VIDEO", "STP_VIDEO", "VIDEOMETA"]
+}

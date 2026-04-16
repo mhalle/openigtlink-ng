@@ -1,0 +1,13 @@
+{
+  "$schema": "../meta-schema.json",
+  "message_type": "STP_POSITION",
+  "type_id": "STP_POSITIO",
+  "introduced_in": "v1",
+  "description": "Stop streaming POSITION messages previously started by STT_POSITION.",
+  "body_size": 0,
+  "fields": [],
+  "metadata_allowed": false,
+  "see_also": [
+    "POSITION"
+  ]
+}

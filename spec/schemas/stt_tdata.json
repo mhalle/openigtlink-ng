@@ -1,0 +1,30 @@
+{
+  "$schema": "../meta-schema.json",
+
+  "message_type": "STT_TDATA",
+  "type_id": "STT_TDATA",
+  "introduced_in": "v1",
+
+  "description": "Start streaming TDATA (tracking data) messages at a specified update interval, in a named coordinate system. The server responds with periodic TDATA messages until a STP_TDATA is received.",
+
+  "body_size": 36,
+
+  "fields": [
+    {
+      "name": "resolution",
+      "type": "int32",
+      "description": "Minimum time between consecutive TDATA messages, in milliseconds. 0 means 'as fast as possible'. If 50 is specified, the maximum update rate is 20 Hz. The server MAY send slower than the requested rate but SHOULD NOT send faster."
+    },
+    {
+      "name": "coord_name",
+      "type": "fixed_string",
+      "size_bytes": 32,
+      "encoding": "ascii",
+      "null_padded": true,
+      "description": "Name of the coordinate system for reported tracking data (e.g. 'Tracker', 'Patient'). Null-padded to 32 bytes. An empty string (all nulls) means 'server default'."
+    }
+  ],
+
+  "metadata_allowed": false,
+  "see_also": ["TDATA", "STP_TDATA", "RTS_TDATA"]
+}

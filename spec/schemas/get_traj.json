@@ -1,0 +1,13 @@
+{
+  "$schema": "../meta-schema.json",
+  "message_type": "GET_TRAJ",
+  "type_id": "GET_TRAJ",
+  "introduced_in": "v1",
+  "description": "Request the TRAJECTORY set for the device named in the header.",
+  "body_size": 0,
+  "fields": [],
+  "metadata_allowed": false,
+  "see_also": [
+    "TRAJECTORY"
+  ]
+}

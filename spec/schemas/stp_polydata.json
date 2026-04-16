@@ -1,0 +1,13 @@
+{
+  "$schema": "../meta-schema.json",
+  "message_type": "STP_POLYDAT",
+  "type_id": "STP_POLYDAT",
+  "introduced_in": "v1",
+  "description": "Stop streaming POLYDATA previously started by STT_POLYDATA.",
+  "body_size": 0,
+  "fields": [],
+  "metadata_allowed": false,
+  "see_also": [
+    "POLYDATA"
+  ]
+}

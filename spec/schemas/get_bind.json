@@ -1,0 +1,54 @@
+{
+  "$schema": "../meta-schema.json",
+
+  "message_type": "GET_BIND",
+  "type_id": "GET_BIND",
+  "introduced_in": "v1",
+
+  "description": "Request specific child messages from a BIND server. When body_size is 0, the server returns all available data. When body_size > 0, the body carries a selective request: a header table of type_ids (without body_sizes) plus a name table, specifying which children to include.",
+
+  "rationale": "A selective GET_BIND lets a client request only the subset of children it cares about rather than fetching the entire BIND bundle. The body reuses the BIND header/name-table format minus the body_size-per-child entries (since the client is requesting, not sending, data).",
+
+  "body_size": "variable",
+
+  "fields": [
+    {
+      "name": "ncmessages",
+      "type": "uint16",
+      "description": "Number of child message types being requested. When the outer body_size is 0, this field is absent (the entire GET_BIND body is empty, meaning 'request all')."
+    },
+    {
+      "name": "type_ids",
+      "type": "array",
+      "element_type": {
+        "type": "fixed_string",
+        "size_bytes": 12,
+        "encoding": "ascii",
+        "null_padded": true
+      },
+      "count": "ncmessages",
+      "description": "Array of N × 12-byte type_id strings identifying which child message types to include in the response. Unlike the BIND header_entries, there are no body_size fields here (this is a request, not a container)."
+    },
+    {
+      "name": "nametable_size",
+      "type": "uint16",
+      "description": "Byte length of the name table. MUST be even."
+    },
+    {
+      "name": "name_table",
+      "type": "array",
+      "element_type": "uint8",
+      "count": "nametable_size",
+      "description": "Packed device names — ncmessages null-terminated ASCII strings, 2-byte-aligned."
+    }
+  ],
+
+  "metadata_allowed": false,
+
+  "legacy_notes": [
+    "An empty body (body_size=0) is legal and means 'request all available children'. Receivers MUST handle this case before attempting to parse the ncmessages field.",
+    "The selective-request layout differs from BIND's header_entries: it carries only type_id[12] per entry (no body_size uint64). This is a request/response asymmetry — the client says 'which types', the server decides the sizes."
+  ],
+
+  "see_also": ["BIND", "STT_BIND", "STP_BIND", "RTS_BIND"]
+}

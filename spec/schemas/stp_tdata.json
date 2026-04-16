@@ -1,0 +1,13 @@
+{
+  "$schema": "../meta-schema.json",
+  "message_type": "STP_TDATA",
+  "type_id": "STP_TDATA",
+  "introduced_in": "v1",
+  "description": "Stop streaming TDATA messages previously started by STT_TDATA.",
+  "body_size": 0,
+  "fields": [],
+  "metadata_allowed": false,
+  "see_also": [
+    "TDATA"
+  ]
+}

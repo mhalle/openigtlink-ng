@@ -1,0 +1,13 @@
+{
+  "$schema": "../meta-schema.json",
+  "message_type": "GET_CAPABIL",
+  "type_id": "GET_CAPABIL",
+  "introduced_in": "v1",
+  "description": "Request a CAPABILITY listing from the remote peer.",
+  "body_size": 0,
+  "fields": [],
+  "metadata_allowed": false,
+  "see_also": [
+    "CAPABILITY"
+  ]
+}

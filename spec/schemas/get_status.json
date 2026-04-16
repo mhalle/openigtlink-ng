@@ -1,0 +1,13 @@
+{
+  "$schema": "../meta-schema.json",
+  "message_type": "GET_STATUS",
+  "type_id": "GET_STATUS",
+  "introduced_in": "v1",
+  "description": "Request the current STATUS for the device named in the header.",
+  "body_size": 0,
+  "fields": [],
+  "metadata_allowed": false,
+  "see_also": [
+    "STATUS"
+  ]
+}

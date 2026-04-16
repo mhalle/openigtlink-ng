@@ -1,0 +1,13 @@
+{
+  "$schema": "../meta-schema.json",
+  "message_type": "STT_IMAGE",
+  "type_id": "STT_IMAGE",
+  "introduced_in": "v1",
+  "description": "Start streaming IMAGE messages at the server's default rate.",
+  "body_size": 0,
+  "fields": [],
+  "metadata_allowed": false,
+  "see_also": [
+    "IMAGE"
+  ]
+}

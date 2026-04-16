@@ -1,0 +1,19 @@
+{
+  "$schema": "../meta-schema.json",
+  "message_type": "RTS_POLYDAT",
+  "type_id": "RTS_POLYDAT",
+  "introduced_in": "v1",
+  "description": "Server's return status for a POLYDATA query (GET/STT/STP). A single int8: 0 = success, 1 = error.",
+  "body_size": 1,
+  "fields": [
+    {
+      "name": "status",
+      "type": "int8",
+      "description": "0 = success (the requested operation completed). 1 = error (the request was rejected or failed). Other values are reserved; receivers SHOULD treat any non-zero value as error."
+    }
+  ],
+  "metadata_allowed": false,
+  "see_also": [
+    "POLYDATA"
+  ]
+}

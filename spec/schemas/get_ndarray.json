@@ -1,0 +1,13 @@
+{
+  "$schema": "../meta-schema.json",
+  "message_type": "GET_NDARRAY",
+  "type_id": "GET_NDARRAY",
+  "introduced_in": "v1",
+  "description": "Request the current NDARRAY for the device named in the header.",
+  "body_size": 0,
+  "fields": [],
+  "metadata_allowed": false,
+  "see_also": [
+    "NDARRAY"
+  ]
+}

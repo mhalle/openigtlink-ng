@@ -1,0 +1,30 @@
+{
+  "$schema": "../meta-schema.json",
+
+  "message_type": "STT_QTDATA",
+  "type_id": "STT_QTDATA",
+  "introduced_in": "v1",
+
+  "description": "Start streaming QTDATA (quaternion tracking data) messages at a specified update interval, in a named coordinate system. Identical body layout to STT_TDATA.",
+
+  "body_size": 36,
+
+  "fields": [
+    {
+      "name": "resolution",
+      "type": "int32",
+      "description": "Minimum time between consecutive QTDATA messages, in milliseconds. 0 means 'as fast as possible'."
+    },
+    {
+      "name": "coord_name",
+      "type": "fixed_string",
+      "size_bytes": 32,
+      "encoding": "ascii",
+      "null_padded": true,
+      "description": "Name of the coordinate system for reported tracking data. Null-padded to 32 bytes. Empty string means 'server default'."
+    }
+  ],
+
+  "metadata_allowed": false,
+  "see_also": ["QTDATA", "STP_QTDATA", "RTS_QTDATA"]
+}

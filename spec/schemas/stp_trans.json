@@ -1,0 +1,13 @@
+{
+  "$schema": "../meta-schema.json",
+  "message_type": "STP_TRANS",
+  "type_id": "STP_TRANS",
+  "introduced_in": "v1",
+  "description": "Stop streaming TRANSFORM messages previously started by STT_TRANS.",
+  "body_size": 0,
+  "fields": [],
+  "metadata_allowed": false,
+  "see_also": [
+    "TRANSFORM"
+  ]
+}

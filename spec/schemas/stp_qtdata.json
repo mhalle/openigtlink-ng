@@ -1,0 +1,13 @@
+{
+  "$schema": "../meta-schema.json",
+  "message_type": "STP_QTDATA",
+  "type_id": "STP_QTDATA",
+  "introduced_in": "v1",
+  "description": "Stop streaming QTDATA messages previously started by STT_QTDATA.",
+  "body_size": 0,
+  "fields": [],
+  "metadata_allowed": false,
+  "see_also": [
+    "QTDATA"
+  ]
+}

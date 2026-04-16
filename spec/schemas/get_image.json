@@ -1,0 +1,14 @@
+{
+  "$schema": "../meta-schema.json",
+  "message_type": "GET_IMAGE",
+  "type_id": "GET_IMAGE",
+  "introduced_in": "v1",
+  "description": "Request the current IMAGE for the device named in the header. If the header device name is empty, the server returns a default image.",
+  "body_size": 0,
+  "fields": [],
+  "metadata_allowed": false,
+  "see_also": [
+    "IMAGE",
+    "IMGMETA"
+  ]
+}

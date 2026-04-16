@@ -1,0 +1,13 @@
+{
+  "$schema": "../meta-schema.json",
+  "message_type": "STP_IMAGE",
+  "type_id": "STP_IMAGE",
+  "introduced_in": "v1",
+  "description": "Stop streaming IMAGE messages previously started by STT_IMAGE.",
+  "body_size": 0,
+  "fields": [],
+  "metadata_allowed": false,
+  "see_also": [
+    "IMAGE"
+  ]
+}

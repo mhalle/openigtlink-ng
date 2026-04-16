@@ -1,0 +1,47 @@
+{
+  "$schema": "../meta-schema.json",
+
+  "message_type": "RTS_COMMAND",
+  "type_id": "RTS_COMMAND",
+  "introduced_in": "v3",
+
+  "description": "Reply to a COMMAND message. Reuses the COMMAND body layout — the command_id echoes the original request's ID so the sender can correlate, and the command_name field carries an error description when the command failed. The command payload in the reply typically contains the result or diagnostic output.",
+
+  "body_size": "variable",
+
+  "fields": [
+    {
+      "name": "command_id",
+      "type": "uint32",
+      "description": "Echoed command ID from the original COMMAND message. The sender uses this to match the reply to its outstanding request."
+    },
+    {
+      "name": "command_name",
+      "type": "fixed_string",
+      "size_bytes": 128,
+      "encoding": "ascii",
+      "null_padded": true,
+      "description": "On success: echoes the original command name. On error: carries an error name or description string. Null-padded to 128 bytes."
+    },
+    {
+      "name": "encoding",
+      "type": "uint16",
+      "description": "IANA MIBenum code for the character encoding of the `command` payload (same as COMMAND)."
+    },
+    {
+      "name": "length",
+      "type": "uint32",
+      "description": "Byte length of the trailing `command` field."
+    },
+    {
+      "name": "command",
+      "type": "array",
+      "element_type": "uint8",
+      "count": "length",
+      "description": "Reply payload — result data or error diagnostic, exactly `length` bytes. Typically XML. Interpreted per `encoding`."
+    }
+  ],
+
+  "metadata_allowed": true,
+  "see_also": ["COMMAND"]
+}

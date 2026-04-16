@@ -1,0 +1,13 @@
+{
+  "$schema": "../meta-schema.json",
+  "message_type": "GET_POINT",
+  "type_id": "GET_POINT",
+  "introduced_in": "v1",
+  "description": "Request the POINT set for the device named in the header.",
+  "body_size": 0,
+  "fields": [],
+  "metadata_allowed": false,
+  "see_also": [
+    "POINT"
+  ]
+}

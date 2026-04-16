@@ -1,0 +1,13 @@
+{
+  "$schema": "../meta-schema.json",
+  "message_type": "STP_VIDEO",
+  "type_id": "STP_VIDEO",
+  "introduced_in": "v1",
+  "description": "Stop streaming VIDEO frames previously started by STT_VIDEO.",
+  "body_size": 0,
+  "fields": [],
+  "metadata_allowed": false,
+  "see_also": [
+    "VIDEO"
+  ]
+}

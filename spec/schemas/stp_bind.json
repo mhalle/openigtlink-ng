@@ -1,0 +1,13 @@
+{
+  "$schema": "../meta-schema.json",
+  "message_type": "STP_BIND",
+  "type_id": "STP_BIND",
+  "introduced_in": "v1",
+  "description": "Stop streaming BIND messages previously started by STT_BIND.",
+  "body_size": 0,
+  "fields": [],
+  "metadata_allowed": false,
+  "see_also": [
+    "BIND"
+  ]
+}
