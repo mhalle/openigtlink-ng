@@ -1,0 +1,32 @@
+{
+  "$schema": "../meta-schema.json",
+
+  "message_type": "UNIT",
+  "type_id": "UNIT",
+  "introduced_in": "v1",
+
+  "description": "Physical unit encoding — a 8-byte (uint64) packed representation of an SI unit with a metric prefix. This is a field-level encoding used inside SENSOR messages (and potentially other message types), not a standalone wire message type. Modeled here so a codec can interpret the `unit` field in SENSOR's element struct. The uint64 packs a 4-bit prefix, up to 6 base/derived unit codes (6 bits each), and 6 signed exponents (4 bits each, range [-7, 7]).",
+
+  "rationale": "Sensor data is meaningless without units. Rather than using a string ('mm/s²') which requires parsing, the protocol encodes units as a compact 8-byte integer using SI base and derived unit codes with exponents. This lets a receiver determine whether two sensor readings are compatible (same units) without string comparison, and lets it convert between prefixes (milli vs. micro) by comparing the prefix nibble.",
+
+  "body_size": 8,
+
+  "fields": [
+    {
+      "name": "packed",
+      "type": "uint64",
+      "description": "Packed unit representation. Bit layout (MSB to LSB): bits [63:60] = prefix (4 bits, e.g. 0x0=none, 0x3=kilo, 0xB=milli), then 6 × (unit[6 bits] + exponent[4 bits]) pairs occupying bits [59:0]. Each unit code is an SI base unit (0x01=meter, 0x02=gram, 0x03=second, 0x04=ampere, 0x05=kelvin, 0x06=mole, 0x07=candela) or derived unit (0x08=radian through 0x1B=sievert). Each exponent is a signed 4-bit value in [-7, 7] representing the power of that unit. Unused unit/exponent slots MUST be zeroed. The packed value 0x0000000000000000 means 'dimensionless' or 'unspecified'."
+    }
+  ],
+
+  "metadata_allowed": false,
+
+  "legacy_notes": [
+    "This schema describes a field-level encoding, not a message body. The SENSOR message carries a `unit` field (uint64) in its fixed header that is interpreted using this packing.",
+    "The upstream igtl_unit_data struct represents the unpacked form: prefix (uint8), unit[6] (uint8 array), exp[6] (int8 array). The pack/unpack functions in igtl_unit.c convert between the 8-byte wire form and this struct.",
+    "The 6 unit/exponent pairs allow compound units like 'meter/second²' (unit[0]=meter exp=1, unit[1]=second exp=-2, rest zeroed). The prefix applies to the entire compound unit, not to individual base units.",
+    "Exponent range [-7, 7] fits in 4 bits as a signed nibble. Values outside this range cannot be represented — a conformant implementation MUST reject them at pack time."
+  ],
+
+  "see_also": ["SENSOR"]
+}

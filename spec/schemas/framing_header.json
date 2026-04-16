@@ -1,0 +1,59 @@
+{
+  "$schema": "../meta-schema.json",
+
+  "message_type": "HEADER",
+  "type_id": "HEADER",
+  "introduced_in": "v1",
+
+  "description": "The 58-byte fixed header that precedes every OpenIGTLink message on the wire. This is protocol framing, not a message type — it has no wire type_id of its own (it IS the structure that carries the type_id). Modeled here so a generic codec can parse/emit headers from the same schema infrastructure used for message bodies.",
+
+  "body_size": 58,
+
+  "fields": [
+    {
+      "name": "version",
+      "type": "uint16",
+      "description": "Protocol version: 1, 2, or 3. Determines whether the body contains an extended header (v3) or metadata block (v2/v3). Receivers MUST reject unknown version values."
+    },
+    {
+      "name": "type",
+      "type": "fixed_string",
+      "size_bytes": 12,
+      "encoding": "ascii",
+      "null_padded": true,
+      "description": "Message type identifier — the 12-byte ASCII string that dispatches to a body schema (e.g. 'TRANSFORM', 'IMAGE', 'GET_TDATA'). Case-sensitive. Implementations MUST treat this as fixed-width bytes and null-terminate before any use as a C string."
+    },
+    {
+      "name": "device_name",
+      "type": "fixed_string",
+      "size_bytes": 20,
+      "encoding": "ascii",
+      "null_padded": true,
+      "description": "Device name identifying the source or target of this message. Empty (all nulls) means 'default' or 'all'. Used by GET_* messages to specify which device to query, and by data messages to identify the sender."
+    },
+    {
+      "name": "timestamp",
+      "type": "uint64",
+      "description": "Message timestamp: upper 32 bits = seconds since Unix epoch (1970-01-01T00:00:00Z), lower 32 bits = fraction of second (0x00000000 = 0.0, 0x80000000 = 0.5, 0xFFFFFFFF ≈ 1.0). A value of 0 means 'unspecified'. Implementations SHOULD use NTP-synchronized clocks where available."
+    },
+    {
+      "name": "body_size",
+      "type": "uint64",
+      "description": "Total byte size of the body that follows this header. In v3, body_size includes the extended header and metadata block. In v1/v2, body_size is the content size plus any trailing metadata. The receiver allocates body_size bytes for the body buffer. Implementations MUST impose an implementation-defined ceiling on body_size before allocating."
+    },
+    {
+      "name": "crc",
+      "type": "uint64",
+      "description": "CRC-64 of the entire body (body_size bytes). Polynomial is ECMA-182 (same as xz/lzma). Implementations MUST verify CRC before acting on any body content — a mismatch is a hard rejection with no partial parsing."
+    }
+  ],
+
+  "metadata_allowed": false,
+
+  "legacy_notes": [
+    "This schema describes protocol framing, not a message body. A codec uses it to parse/emit the header independently of the body schema dispatched by the `type` field.",
+    "The 58-byte size is invariant across all protocol versions. The body layout varies by version, but the header does not.",
+    "The timestamp encoding splits seconds and fraction across a single uint64. The fraction field uses all 32 bits for sub-second resolution (~0.23 nanosecond granularity). Some implementations incorrectly treat the high bit of the fraction as a sign bit — this MUST NOT be relied on.",
+    "Multiple upstream audit findings (U-1 through U-10) stem from implementations that trust body_size without validation. A conformant implementation MUST validate body_size against message-type-specific expected ranges before any body access."
+  ]
+}

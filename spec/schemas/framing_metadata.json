@@ -1,0 +1,61 @@
+{
+  "$schema": "../meta-schema.json",
+
+  "message_type": "METADATA",
+  "type_id": "METADATA",
+  "introduced_in": "v2",
+
+  "description": "The metadata block that carries arbitrary key/value pairs, present in v2 and v3 messages. This is protocol framing — not a message type. The block has two sections: a fixed-stride index table (8 bytes per entry) and a packed body of key/value byte runs. In v3, sizes are declared in the extended header; in v2, the metadata is located by subtracting the known content size from body_size.",
+
+  "body_size": "variable",
+
+  "fields": [
+    {
+      "name": "count",
+      "type": "uint16",
+      "description": "Number of key/value entries in the metadata block. 0 means no metadata (the rest of the block is empty). This is the first field of the metadata index section."
+    },
+    {
+      "name": "index_entries",
+      "type": "array",
+      "element_type": {
+        "type": "struct",
+        "fields": [
+          {
+            "name": "key_size",
+            "type": "uint16",
+            "description": "Byte length of the key string. MUST be > 0."
+          },
+          {
+            "name": "value_encoding",
+            "type": "uint16",
+            "description": "IANA MIBenum character encoding for the value (3=US-ASCII, 106=UTF-8). Keys are always UTF-8 regardless of this field."
+          },
+          {
+            "name": "value_size",
+            "type": "uint32",
+            "description": "Byte length of the value."
+          }
+        ]
+      },
+      "count": "count",
+      "description": "Index table — count × 8-byte entries, each declaring one key/value pair's sizes and encoding. The index is read first; then key/value bytes are read sequentially from the metadata body section in the same order."
+    },
+    {
+      "name": "body",
+      "type": "array",
+      "element_type": "uint8",
+      "count_from": "remaining",
+      "description": "Packed key/value byte runs, no separators or padding. For each entry i in index order: key_size[i] bytes of key (UTF-8, no null terminator), then value_size[i] bytes of value (encoded per value_encoding[i]). Total byte count MUST equal sum(key_size[i] + value_size[i]). Receivers MUST validate this sum against the declared metadata_size before accessing any key/value data."
+    }
+  ],
+
+  "metadata_allowed": false,
+
+  "legacy_notes": [
+    "This schema describes protocol framing, not a message body. A codec uses it to parse/emit the metadata block independently of the message-type-specific content.",
+    "The metadata index section occupies 2 + count*8 bytes. The metadata body section occupies the declared metadata_size bytes. In v3 these sizes come from the extended header; in v2 the receiver must compute them.",
+    "Keys SHOULD be unique within a message. Behavior on duplicate keys is implementation-defined — upstream C++ keeps the last value.",
+    "Several upstream audit findings relate to missing integer-overflow checks on key_size / value_size sums. A conformant implementation MUST verify that the sum of all key_size + value_size values equals the declared metadata body size, using overflow-safe arithmetic, before accessing any key/value data."
+  ]
+}

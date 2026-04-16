@@ -1,0 +1,51 @@
+{
+  "$schema": "../meta-schema.json",
+
+  "message_type": "STT_BIND",
+  "type_id": "STT_BIND",
+  "introduced_in": "v1",
+
+  "description": "Start streaming BIND messages. Prepends a uint64 time resolution to the GET_BIND selective-request layout. When the request portion has body_size 0 (after the resolution field), all available children are streamed.",
+
+  "body_size": "variable",
+
+  "fields": [
+    {
+      "name": "resolution",
+      "type": "uint64",
+      "description": "Minimum time between consecutive BIND messages, encoded in the OpenIGTLink timestamp format (upper 32 bits = seconds, lower 32 bits = fraction). 0 means 'as fast as possible'."
+    },
+    {
+      "name": "ncmessages",
+      "type": "uint16",
+      "description": "Number of child message types being requested. When the body after the resolution field is empty (body_size=8), this and all following fields are absent, meaning 'stream all available children'."
+    },
+    {
+      "name": "type_ids",
+      "type": "array",
+      "element_type": {
+        "type": "fixed_string",
+        "size_bytes": 12,
+        "encoding": "ascii",
+        "null_padded": true
+      },
+      "count": "ncmessages",
+      "description": "Array of N × 12-byte type_id strings identifying which child types to include."
+    },
+    {
+      "name": "nametable_size",
+      "type": "uint16",
+      "description": "Byte length of the name table. MUST be even."
+    },
+    {
+      "name": "name_table",
+      "type": "array",
+      "element_type": "uint8",
+      "count": "nametable_size",
+      "description": "Packed device names — ncmessages null-terminated ASCII strings, 2-byte-aligned."
+    }
+  ],
+
+  "metadata_allowed": false,
+  "see_also": ["BIND", "GET_BIND", "STP_BIND", "RTS_BIND"]
+}

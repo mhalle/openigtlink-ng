@@ -1,0 +1,43 @@
+{
+  "$schema": "../meta-schema.json",
+
+  "message_type": "EXTENDED_HEADER",
+  "type_id": "EXT_HEADER",
+  "introduced_in": "v3",
+
+  "description": "The v3 extended header, located at the start of the message body. Carries sizes for the metadata sections and a sender-assigned message ID. This is protocol framing — not a message type. Present only when the outer header's version field is >= 3. A codec uses this to locate the content, metadata index, and metadata body regions within the overall body.",
+
+  "body_size": "variable",
+
+  "fields": [
+    {
+      "name": "ext_header_size",
+      "type": "uint16",
+      "description": "Total size of this extended header in bytes. Currently 12 for the base fields; future revisions may extend it. Receivers MUST skip any bytes beyond offset 12 up to ext_header_size without error, to allow forward-compatible extension."
+    },
+    {
+      "name": "metadata_header_size",
+      "type": "uint16",
+      "description": "Byte size of the metadata index section (the key-size / encoding / value-size table). 0 means no metadata. Located at body offset (body_size - metadata_header_size - metadata_size)."
+    },
+    {
+      "name": "metadata_size",
+      "type": "uint32",
+      "description": "Byte size of the metadata body section (the actual key/value bytes). 0 means no metadata. Located at body offset (body_size - metadata_size)."
+    },
+    {
+      "name": "message_id",
+      "type": "uint32",
+      "description": "Sender-assigned message identifier. Opaque to the protocol — the sender uses it for internal tracking (e.g. correlating responses). 0 is a legal value meaning 'unspecified'."
+    }
+  ],
+
+  "metadata_allowed": false,
+
+  "legacy_notes": [
+    "This schema describes the base 12-byte v3 extended header. A conformant implementation MUST read ext_header_size first and skip (ext_header_size - 12) bytes of unknown extension fields before reading the message content.",
+    "The content region starts at body offset ext_header_size and extends to body offset (body_size - metadata_header_size - metadata_size). A codec computes: content_size = body_size - ext_header_size - metadata_header_size - metadata_size.",
+    "The extended header's own byte order is big-endian (network order), consistent with the outer header.",
+    "When version < 3, this structure is absent — the body starts directly with message content."
+  ]
+}
