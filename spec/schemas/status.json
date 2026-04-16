@@ -1,0 +1,60 @@
+{
+  "$schema": "../meta-schema.json",
+
+  "message_type": "STATUS",
+  "type_id": "STATUS",
+  "introduced_in": "v1",
+
+  "description": "Reports the operational status of a device or the outcome of a request. Carries a numeric status code, a device-specific subcode, a short error name, and an optional free-text status message.",
+
+  "rationale": "Provides a structured, machine-readable way for devices to report success, errors, and lifecycle events (starting up, shutting down, manual mode, hardware failure, etc.) to their peers. The subcode is intentionally device-specific so vendors can encode additional detail without standardizing new status codes.",
+
+  "spec_reference": {
+    "section": "Body (STATUS)",
+    "document": "protocol/v3.md"
+  },
+
+  "body_size": "variable",
+
+  "fields": [
+    {
+      "name": "code",
+      "type": "uint16",
+      "description": "Status code. See the STATUS code table in protocol/v3.md. 0 = invalid, 1 = OK, 2 = unknown error, and values up to 19 for specific failure modes. Receivers MUST accept unknown code values rather than rejecting the message, so the set can grow without breaking compatibility."
+    },
+    {
+      "name": "subcode",
+      "type": "int64",
+      "description": "Device-specific subcode providing additional detail about the status condition. Not centrally standardized; interpretation is defined by the sending device's documentation."
+    },
+    {
+      "name": "error_name",
+      "type": "fixed_string",
+      "size_bytes": 20,
+      "encoding": "ascii",
+      "null_padded": true,
+      "description": "Short human-readable name for the error condition, null-padded to 20 bytes. Optional: implementations may leave this empty (all zeros). MUST NOT be relied upon for machine dispatch — use `code` and `subcode` for that.",
+      "legacy_notes": [
+        "Upstream C++ library (at pinned SHA 94244fe) writes this field with strncpy(dst, src, 20) without guaranteeing null termination if the input is 20 or more characters. A conformant implementation MUST either reserve byte 19 as a hard null terminator (accepting a 19-character effective limit) or treat the field as fixed 20 bytes without any null-termination expectation. Receivers MUST defensively null-terminate before using the field as a C string."
+      ]
+    },
+    {
+      "name": "status_message",
+      "type": "trailing_string",
+      "encoding": "ascii",
+      "null_terminated": true,
+      "description": "Free-text human-readable status message. Occupies all remaining bytes of the body after the 30-byte fixed header. The final byte on the wire MUST be 0x00; the string value is the bytes before that terminator (which may be empty). Total body size = 30 + len(status_message) + 1.",
+      "legacy_notes": [
+        "Upstream C++ library (at pinned SHA 94244fe) will silently discard the status_message on unpack if the trailing null is missing, but still produces garbage from an undersized body. Conformant receivers MUST reject messages whose body_size < 31 and MUST reject messages whose last content byte is non-null."
+      ]
+    }
+  ],
+
+  "metadata_allowed": true,
+
+  "legacy_notes": [
+    "The fixed portion of the body is 30 bytes: uint16 code + int64 subcode + char[20] error_name, struct-packed with no padding. Implementations MUST NOT rely on #pragma pack or equivalent for serialization; emit the three fields in order with the exact sizes declared here."
+  ],
+
+  "see_also": ["COMMAND", "STRING"]
+}

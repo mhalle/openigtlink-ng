@@ -165,13 +165,14 @@
               "enum": [
                 "fixed_string",
                 "length_prefixed_string",
+                "trailing_string",
                 "fixed_bytes",
                 "array",
                 "struct_array"
               ]
             }
           ],
-          "description": "Field type. Primitives are encoded in the order declared. Composite types require additional fields (count, element_type, size_bytes, etc.)."
+          "description": "Field type. Primitives are encoded in the order declared. Composite types require additional fields (count, element_type, size_bytes, etc.). 'trailing_string' consumes all remaining body bytes after preceding fields; it MUST be the last field in the message."
         },
 
         "description": {
@@ -238,6 +239,11 @@
         "null_padded": {
           "type": "boolean",
           "description": "For fixed_string: whether values shorter than size_bytes are padded with null bytes (true) or the full region is treated as the string (false). Defaults to true."
+        },
+
+        "null_terminated": {
+          "type": "boolean",
+          "description": "For trailing_string: whether the final byte of the field on the wire MUST be 0x00. When true, the null is part of the field bytes (so a non-empty string occupies length+1 bytes on the wire) and the string value is the bytes excluding the final null. Defaults to false."
         },
 
         "legacy_notes": {
