@@ -1,0 +1,55 @@
+{
+  "$schema": "../meta-schema.json",
+
+  "message_type": "SENSOR",
+  "type_id": "SENSOR",
+  "introduced_in": "v1",
+
+  "description": "Reports a vector of scalar sensor readings with an attached SI unit-of-measure descriptor. Typical use: multi-channel physiological monitors, force/torque sensors, analog-to-digital acquisition devices.",
+
+  "rationale": "Separates 'how many samples' (larray), 'what they mean' (the unit descriptor), and 'their values' (the float64 array) so a receiver can interpret readings without device-specific context. The unit field is bit-packed into a single uint64 so every reading is self-describing with a minimum of wire overhead.",
+
+  "spec_reference": {
+    "section": "Body (SENSOR)",
+    "document": "protocol/v3.md"
+  },
+
+  "body_size": "variable",
+
+  "fields": [
+    {
+      "name": "larray",
+      "type": "uint8",
+      "description": "Number of float64 sensor values that follow. Range 0..255. Caps the maximum body size at 10 + 255*8 = 2050 bytes."
+    },
+    {
+      "name": "status",
+      "type": "uint8",
+      "description": "Reserved sensor-status byte. No standardized values; receivers SHOULD ignore unrecognized values and MUST NOT reject a message based on its content."
+    },
+    {
+      "name": "unit",
+      "type": "uint64",
+      "description": "Bit-packed SI-unit descriptor encoding a decimal prefix and up to six (SI-base or SI-derived) unit codes with signed exponents. See the unit-packing section of protocol/v3.md for the bit layout. A unit value of 0 is treated as 'unspecified'. Treated at the wire level as a single big-endian uint64; the bit layout is the codec's concern, not the parser's.",
+      "legacy_notes": [
+        "The unit field's internal layout is defined by igtl_unit_pack / igtl_unit_unpack in the reference library (igtl_unit.h). Prefix in the high bits, then 6 * 4-bit unit codes, then 6 * 4-bit signed exponents (range -7..7). Conformant implementations MUST preserve the uint64 on the wire exactly; decoding the substructure is optional and can be deferred to a helper."
+      ]
+    },
+    {
+      "name": "data",
+      "type": "array",
+      "element_type": "float64",
+      "count": "larray",
+      "description": "Array of `larray` big-endian IEEE-754 float64 sensor readings. Units are given by the preceding `unit` field; the readings are numerically meaningful only in that unit."
+    }
+  ],
+
+  "metadata_allowed": true,
+
+  "legacy_notes": [
+    "Total body size is always 10 + larray * 8. An empty sensor reading (larray=0) is legal and gives a 10-byte body.",
+    "Upstream C++ library (at pinned SHA 94244fe) unpacks this message without verifying that body_size >= 10 + larray * 8 before calling igtl_sensor_convert_byte_order, which byte-swaps `larray` float64s in place. A conformant implementation MUST reject any SENSOR message whose body_size is less than 10 + larray*8 before any data-array access. Otherwise an attacker-controlled larray with a short body causes OOB read/write of up to 2040 bytes past the receive buffer."
+  ],
+
+  "see_also": ["TDATA", "QTDATA"]
+}
