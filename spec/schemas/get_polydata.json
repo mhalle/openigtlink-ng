@@ -1,7 +1,7 @@
 {
   "$schema": "../meta-schema.json",
-  "message_type": "GET_POLYDAT",
-  "type_id": "GET_POLYDAT",
+  "message_type": "GET_POLYDATA",
+  "type_id": "GET_POLYDATA",
   "introduced_in": "v1",
   "description": "Request the current POLYDATA mesh for the device named in the header.",
   "body_size": 0,

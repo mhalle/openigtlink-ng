@@ -1,0 +1,13 @@
+{
+  "$schema": "../meta-schema.json",
+  "message_type": "STP_NDARRAY",
+  "type_id": "STP_NDARRAY",
+  "introduced_in": "v1",
+  "description": "Stop streaming NDARRAY messages previously started by STT_NDARRAY.",
+  "body_size": 0,
+  "fields": [],
+  "metadata_allowed": false,
+  "see_also": [
+    "NDARRAY"
+  ]
+}

@@ -1,0 +1,13 @@
+{
+  "$schema": "../meta-schema.json",
+  "message_type": "STT_NDARRAY",
+  "type_id": "STT_NDARRAY",
+  "introduced_in": "v1",
+  "description": "Start streaming NDARRAY messages. Per query.md, body is empty; streaming cadence is server-determined.",
+  "body_size": 0,
+  "fields": [],
+  "metadata_allowed": false,
+  "see_also": [
+    "NDARRAY"
+  ]
+}

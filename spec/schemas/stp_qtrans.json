@@ -1,0 +1,13 @@
+{
+  "$schema": "../meta-schema.json",
+  "message_type": "STP_QTRANS",
+  "type_id": "STP_QTRANS",
+  "introduced_in": "v3",
+  "description": "Stop streaming QTRANS messages previously started by STT_QTRANS.",
+  "body_size": 0,
+  "fields": [],
+  "metadata_allowed": false,
+  "see_also": [
+    "QTRANS"
+  ]
+}

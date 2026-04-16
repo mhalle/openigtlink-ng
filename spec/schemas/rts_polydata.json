@@ -1,7 +1,7 @@
 {
   "$schema": "../meta-schema.json",
-  "message_type": "RTS_POLYDAT",
-  "type_id": "RTS_POLYDAT",
+  "message_type": "RTS_POLYDATA",
+  "type_id": "RTS_POLYDATA",
   "introduced_in": "v1",
   "description": "Server's return status for a POLYDATA query (GET/STT/STP). A single int8: 0 = success, 1 = error.",
   "body_size": 1,

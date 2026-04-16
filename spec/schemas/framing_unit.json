@@ -15,7 +15,7 @@
     {
       "name": "packed",
       "type": "uint64",
-      "description": "Packed unit representation. Bit layout (MSB to LSB): bits [63:60] = prefix (4 bits, e.g. 0x0=none, 0x3=kilo, 0xB=milli), then 6 × (unit[6 bits] + exponent[4 bits]) pairs occupying bits [59:0]. Each unit code is an SI base unit (0x01=meter, 0x02=gram, 0x03=second, 0x04=ampere, 0x05=kelvin, 0x06=mole, 0x07=candela) or derived unit (0x08=radian through 0x1B=sievert). Each exponent is a signed 4-bit value in [-7, 7] representing the power of that unit. Unused unit/exponent slots MUST be zeroed. The packed value 0x0000000000000000 means 'dimensionless' or 'unspecified'."
+      "description": "Packed unit representation. Bit layout (MSB to LSB): bits [63:60] = prefix (4 bits, e.g. 0x0=none, 0x3=kilo, 0xB=milli), then 6 × (unit[6 bits] + exponent[4 bits]) pairs occupying bits [59:0]. Each unit code is an SI base unit (0x01=meter, 0x02=gram, 0x03=second, 0x04=ampere, 0x05=kelvin, 0x06=mole, 0x07=candela) or derived unit (0x08=radian through 0x1B=sievert). Each exponent is a 4-bit value encoded via a specific lookup (NOT two's-complement signed): 0x0..0x7 → +0..+7, 0xA..0xF → -6..-1 (specifically 0xF=-1, 0xE=-2, 0xD=-3, 0xC=-4, 0xB=-5, 0xA=-6); 0x8 and 0x9 are reserved and MUST NOT be used. Representable exponent range is therefore [-6, +7]. Unused unit/exponent slots MUST be zeroed. The packed value 0x0000000000000000 means 'dimensionless' or 'unspecified'."
     }
   ],
 
@@ -25,7 +25,7 @@
     "This schema describes a field-level encoding, not a message body. The SENSOR message carries a `unit` field (uint64) in its fixed header that is interpreted using this packing.",
     "The upstream igtl_unit_data struct represents the unpacked form: prefix (uint8), unit[6] (uint8 array), exp[6] (int8 array). The pack/unpack functions in igtl_unit.c convert between the 8-byte wire form and this struct.",
     "The 6 unit/exponent pairs allow compound units like 'meter/second²' (unit[0]=meter exp=1, unit[1]=second exp=-2, rest zeroed). The prefix applies to the entire compound unit, not to individual base units.",
-    "Exponent range [-7, 7] fits in 4 bits as a signed nibble. Values outside this range cannot be represented — a conformant implementation MUST reject them at pack time."
+    "Exponent encoding is a specific 16-value lookup, NOT two's-complement signed nibble: 0x0..0x7 map to +0..+7, 0xA..0xF map to -6..-1, and 0x8/0x9 are reserved. A conformant implementation MUST reject values 0x8 and 0x9 at decode time, and MUST use the lookup (not bitwise sign extension) for negative values."
   ],
 
   "see_also": ["SENSOR"]

@@ -1,7 +1,7 @@
 {
   "$schema": "../meta-schema.json",
   "message_type": "RTS_POSITION",
-  "type_id": "RTS_POSITIO",
+  "type_id": "RTS_POSITION",
   "introduced_in": "v1",
   "description": "Server's return status for a POSITION query (GET/STT/STP). A single int8: 0 = success, 1 = error.",
   "body_size": 1,

@@ -1,0 +1,13 @@
+{
+  "$schema": "../meta-schema.json",
+  "message_type": "STT_QTRANS",
+  "type_id": "STT_QTRANS",
+  "introduced_in": "v3",
+  "description": "Start streaming QTRANS messages at the server's default rate.",
+  "body_size": 0,
+  "fields": [],
+  "metadata_allowed": false,
+  "see_also": [
+    "QTRANS"
+  ]
+}

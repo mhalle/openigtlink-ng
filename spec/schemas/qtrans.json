@@ -1,0 +1,45 @@
+{
+  "$schema": "../meta-schema.json",
+
+  "message_type": "QTRANS",
+  "type_id": "QTRANS",
+  "introduced_in": "v3",
+
+  "description": "Position + full quaternion orientation in 28 bytes fixed. Wire-level equivalent to the 28-byte variant of POSITION, but distinct at the type_id level so receivers can dispatch deterministically without reading body_size to choose between POSITION variants. Useful for high-rate tracking where the 19% size saving over TRANSFORM matters and where senders prefer a fixed-layout message with no size-discriminated variants.",
+
+  "rationale": "POSITION's three body-size variants (12/24/28) require receivers to inspect body_size before dispatching to the right byte-swap routine — error-prone and a frequent source of framing bugs. QTRANS commits to the full-quaternion form in a single fixed layout, which is safer for dispatch and friendlier to codegen. It is listed as a distinct wire type_id in Documents/Protocol/qtransform.md (v3.0, January 2017) even though the upstream C++ reference implementation does not provide a dedicated class for it (users of the upstream library emit POSITION with the 28-byte variant instead).",
+
+  "spec_reference": {
+    "section": "Body (QTRANS)",
+    "document": "protocol/v3.md"
+  },
+
+  "body_size": 28,
+
+  "fields": [
+    {
+      "name": "position",
+      "type": "array",
+      "element_type": "float32",
+      "count": 3,
+      "description": "Position coordinates (x, y, z) in millimeters."
+    },
+    {
+      "name": "quaternion",
+      "type": "array",
+      "element_type": "float32",
+      "count": 4,
+      "description": "Orientation as quaternion (qx, qy, qz, qw). The sender SHOULD normalize before transmission; the receiver MUST normalize before use."
+    }
+  ],
+
+  "metadata_allowed": true,
+
+  "legacy_notes": [
+    "QTRANS is a spec-level wire message type (v3.0, qtransform.md) but has no dedicated class in the upstream C++ library as of SHA 94244fe. Upstream implementations send an equivalent payload as POSITION with body_size=28. Receivers that want full spec compatibility SHOULD accept both type_ids and treat them as semantically equivalent.",
+    "Unlike POSITION, QTRANS has no size variants — the body is always exactly 28 bytes. Receivers MUST reject any QTRANS message with body_size != 28.",
+    "The field layout matches POSITION's 28-byte variant byte-for-byte: the first 12 bytes are position, the next 16 are quaternion. A receiver that decodes POSITION's 28-byte variant can decode QTRANS with identical code."
+  ],
+
+  "see_also": ["POSITION", "TRANSFORM", "QTDATA"]
+}

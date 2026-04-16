@@ -1,0 +1,19 @@
+{
+  "$schema": "../meta-schema.json",
+  "message_type": "RTS_STRING",
+  "type_id": "RTS_STRING",
+  "introduced_in": "v1",
+  "description": "Server's return status for a STRING query (GET/STT/STP). Per Documents/Protocol/query.md, every message type has an RTS_ form for error returns. A single int8: 0 = success, 1 = error.",
+  "body_size": 1,
+  "fields": [
+    {
+      "name": "status",
+      "type": "int8",
+      "description": "0 = success (the requested operation completed). 1 = error (request rejected or failed). Other values are reserved; receivers SHOULD treat any non-zero value as error."
+    }
+  ],
+  "metadata_allowed": false,
+  "see_also": [
+    "STRING"
+  ]
+}

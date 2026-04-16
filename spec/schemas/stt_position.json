@@ -1,7 +1,7 @@
 {
   "$schema": "../meta-schema.json",
   "message_type": "STT_POSITION",
-  "type_id": "STT_POSITIO",
+  "type_id": "STT_POSITION",
   "introduced_in": "v1",
   "description": "Start streaming POSITION messages at the server's default rate.",
   "body_size": 0,
