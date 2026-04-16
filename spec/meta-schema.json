@@ -1,0 +1,255 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://openigtlink-ng.org/spec/meta-schema.json",
+  "title": "OpenIGTLink Message Schema",
+  "description": "Meta-schema that validates the shape of every file under spec/schemas/. Each message-type schema describes one OpenIGTLink wire message and is consumed by codegen tools across all language ports.",
+
+  "type": "object",
+  "required": [
+    "message_type",
+    "type_id",
+    "introduced_in",
+    "description",
+    "body_size",
+    "fields"
+  ],
+  "additionalProperties": false,
+
+  "properties": {
+    "message_type": {
+      "type": "string",
+      "pattern": "^[A-Z][A-Z0-9_]*$",
+      "description": "Canonical logical name for this message type (e.g. 'TRANSFORM'). Used to construct language-native type names during codegen."
+    },
+
+    "type_id": {
+      "type": "string",
+      "minLength": 1,
+      "maxLength": 12,
+      "pattern": "^[A-Z0-9_]+$",
+      "description": "Wire type identifier. Written as a 12-byte ASCII field, null-padded on the right. The string value here contains the significant bytes only; padding is applied during encoding."
+    },
+
+    "introduced_in": {
+      "enum": ["v1", "v2", "v3", "v4"],
+      "description": "Protocol version in which this message type was first defined."
+    },
+
+    "deprecated_in": {
+      "enum": ["v2", "v3", "v4"],
+      "description": "Protocol version in which this message type was deprecated, if any. Deprecated types must still round-trip correctly for wire compatibility."
+    },
+
+    "description": {
+      "type": "string",
+      "minLength": 1,
+      "description": "Concise human-readable summary. Required. Flows into every language port's generated API documentation."
+    },
+
+    "rationale": {
+      "type": "string",
+      "description": "Optional prose explaining *why* the message type or its wire layout is shaped the way it is. Historical or design-decision context, not behavioral contract."
+    },
+
+    "spec_reference": {
+      "type": "object",
+      "required": ["section"],
+      "additionalProperties": false,
+      "properties": {
+        "section": {
+          "type": "string",
+          "description": "Section identifier in the prose spec document (e.g. '4.3.2')."
+        },
+        "document": {
+          "type": "string",
+          "description": "Prose spec document this entry references (e.g. 'protocol/v3.md'). Defaults to the document matching 'introduced_in'."
+        },
+        "url": {
+          "type": "string",
+          "format": "uri",
+          "description": "Optional canonical URL for the spec section."
+        }
+      }
+    },
+
+    "body_size": {
+      "oneOf": [
+        {
+          "type": "integer",
+          "minimum": 0,
+          "description": "Fixed body size in bytes."
+        },
+        {
+          "const": "variable",
+          "description": "Body size is determined by the fields themselves and declared via the header's body_size."
+        }
+      ],
+      "description": "Total body size in bytes if fixed, or the string 'variable' if determined by the fields at encode time."
+    },
+
+    "fields": {
+      "type": "array",
+      "minItems": 0,
+      "items": { "$ref": "#/$defs/field" },
+      "description": "Ordered list of fields in the message body. Fields are parsed in order."
+    },
+
+    "extended_header": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "required": {
+          "type": "boolean",
+          "description": "Whether the v3 extended header is required for this message type."
+        },
+        "fields": {
+          "type": "array",
+          "items": { "$ref": "#/$defs/field" }
+        }
+      },
+      "description": "V3 extended-header layout for this message type, if non-default."
+    },
+
+    "metadata_allowed": {
+      "type": "boolean",
+      "description": "Whether this message type accepts a trailing metadata block in v2/v3. Defaults to true.",
+      "default": true
+    },
+
+    "legacy_notes": {
+      "type": "array",
+      "items": { "type": "string" },
+      "description": "Historical quirks that must be preserved for wire compatibility. These are contract, not documentation — every entry represents a decision that a new implementation must match. Prefix with a version tag where relevant (e.g. 'v2.1:')."
+    },
+
+    "notes": {
+      "type": "array",
+      "items": { "type": "string" },
+      "description": "Other prose notes that do not fit rationale, spec_reference, or legacy_notes."
+    },
+
+    "see_also": {
+      "type": "array",
+      "items": {
+        "type": "string",
+        "pattern": "^[A-Z][A-Z0-9_]*$"
+      },
+      "description": "Logical names of related message types."
+    }
+  },
+
+  "$defs": {
+    "primitive_type": {
+      "enum": [
+        "uint8", "uint16", "uint32", "uint64",
+        "int8", "int16", "int32", "int64",
+        "float32", "float64"
+      ]
+    },
+
+    "field": {
+      "type": "object",
+      "required": ["name", "type", "description"],
+      "additionalProperties": false,
+      "properties": {
+        "name": {
+          "type": "string",
+          "pattern": "^[a-z][a-z0-9_]*$",
+          "description": "Field name, snake_case. Used as-is in codegen (language ports may apply idiomatic conversions)."
+        },
+
+        "type": {
+          "oneOf": [
+            { "$ref": "#/$defs/primitive_type" },
+            {
+              "enum": [
+                "fixed_string",
+                "length_prefixed_string",
+                "fixed_bytes",
+                "array",
+                "struct_array"
+              ]
+            }
+          ],
+          "description": "Field type. Primitives are encoded in the order declared. Composite types require additional fields (count, element_type, size_bytes, etc.)."
+        },
+
+        "description": {
+          "type": "string",
+          "minLength": 1,
+          "description": "Required. Concise description of the field's meaning."
+        },
+
+        "rationale": {
+          "type": "string",
+          "description": "Optional. Why this field is shaped this way."
+        },
+
+        "introduced_in": {
+          "enum": ["v1", "v2", "v3", "v4"],
+          "description": "Protocol version in which this field first appeared, if different from the message's introduced_in."
+        },
+
+        "endianness": {
+          "enum": ["big", "little"],
+          "default": "big",
+          "description": "Byte order. Defaults to big-endian (OpenIGTLink convention). Rarely overridden; if overridden, document the reason in rationale."
+        },
+
+        "size_bytes": {
+          "oneOf": [
+            { "type": "integer", "minimum": 0 },
+            { "const": "variable" }
+          ],
+          "description": "Size in bytes on the wire. Required for fixed_string, fixed_bytes; optional for others if derivable from type."
+        },
+
+        "count": {
+          "oneOf": [
+            { "type": "integer", "minimum": 0 },
+            { "type": "string", "pattern": "^[a-z][a-z0-9_]*$" }
+          ],
+          "description": "For array/struct_array types: either a fixed integer count, or the name of a sibling field that carries the count."
+        },
+
+        "element_type": {
+          "oneOf": [
+            { "$ref": "#/$defs/primitive_type" },
+            { "type": "string", "pattern": "^[A-Z][A-Z0-9_]*$" }
+          ],
+          "description": "For array types: the element's primitive type. For struct_array types: the name of a struct defined inline (not yet supported)."
+        },
+
+        "layout": {
+          "type": "string",
+          "description": "Optional hint about the semantic layout of the field (e.g. 'column_major_3x4' for TRANSFORM's matrix). Codegen may use this for helper methods; it has no effect on wire encoding."
+        },
+
+        "length_prefix_type": {
+          "$ref": "#/$defs/primitive_type",
+          "description": "For length_prefixed_string: the integer type used to encode the length."
+        },
+
+        "encoding": {
+          "enum": ["ascii", "utf-8", "binary"],
+          "description": "For string types: the expected text encoding."
+        },
+
+        "null_padded": {
+          "type": "boolean",
+          "description": "For fixed_string: whether values shorter than size_bytes are padded with null bytes (true) or the full region is treated as the string (false). Defaults to true."
+        },
+
+        "legacy_notes": {
+          "type": "array",
+          "items": { "type": "string" }
+        },
+
+        "notes": {
+          "type": "array",
+          "items": { "type": "string" }
+        }
+      }
+    }
+  }
+}

@@ -1,0 +1,43 @@
+{
+  "$schema": "../meta-schema.json",
+
+  "message_type": "TRANSFORM",
+  "type_id": "TRANSFORM",
+  "introduced_in": "v1",
+
+  "description": "4x4 homogeneous transformation matrix in a right-handed coordinate system. Used to communicate a single rigid-body pose — for example, a tracked tool's position and orientation.",
+
+  "rationale": "Only the upper 3x4 submatrix is transmitted (12 floats = 48 bytes). The bottom row of a homogeneous transformation is always [0, 0, 0, 1] for rigid transforms, so omitting it saves bandwidth at 60Hz+ tracking rates with no loss of information.",
+
+  "spec_reference": {
+    "section": "Body (TRANSFORM)",
+    "document": "protocol/v3.md"
+  },
+
+  "body_size": 48,
+
+  "fields": [
+    {
+      "name": "matrix",
+      "type": "array",
+      "element_type": "float32",
+      "count": 12,
+      "size_bytes": 48,
+      "layout": "column_major_3x4",
+      "description": "Twelve 32-bit floats in column-major order, encoding the upper 3x4 of a 4x4 homogeneous transformation matrix. Wire order is R11, R21, R31, R12, R22, R32, R13, R23, R33, TX, TY, TZ — that is, three rotation-matrix columns followed by the translation column.",
+      "rationale": "Column-major ordering chosen in v1 for alignment with graphics-convention matrix storage. The 3x4 convention (rather than 4x3) makes translation the final three floats, which some hand-decoded test traces rely on.",
+      "legacy_notes": [
+        "v1: wire order is column-major. At least one independent implementation (openigtlink-rust prior to v0.4.0) initially encoded row-major and produced bytes incompatible with the C++ reference. This is the single most common interop bug for new implementations and is pinned by the conformance corpus."
+      ]
+    }
+  ],
+
+  "metadata_allowed": true,
+
+  "legacy_notes": [
+    "The implicit bottom row [0, 0, 0, 1] is NOT transmitted. Implementations that receive a TRANSFORM message and hold a full 4x4 must set the bottom row explicitly after decoding. Implementations that expose a 3x4-only API can skip this step.",
+    "The 48-byte body size is constant across v1, v2, and v3 for this message type. In v2 and v3, metadata may follow the body content; in v3 an extended header may precede it."
+  ],
+
+  "see_also": ["POSITION", "QTRANS", "TDATA", "QTDATA"]
+}

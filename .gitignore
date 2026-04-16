@@ -1,0 +1,78 @@
+# Build artifacts
+build/
+build-*/
+_build/
+out/
+cmake-build-*/
+CMakeFiles/
+CMakeCache.txt
+cmake_install.cmake
+CTestTestfile.cmake
+Makefile
+*.o
+*.obj
+*.a
+*.lib
+*.so
+*.so.*
+*.dylib
+*.dll
+*.exe
+*.pdb
+*.ilk
+*.exp
+compile_commands.json
+
+# Python
+__pycache__/
+*.py[cod]
+*.egg-info/
+*.egg
+.venv/
+venv/
+.pytest_cache/
+.mypy_cache/
+.ruff_cache/
+.tox/
+
+# Rust
+target/
+**/*.rs.bk
+Cargo.lock.bak
+
+# IDEs and editors
+.vscode/
+.idea/
+.vs/
+*.swp
+*.swo
+*~
+.DS_Store
+Thumbs.db
+*.sublime-*
+.cache/
+.ccls-cache/
+
+# Fuzzing artifacts
+crash-*
+leak-*
+oom-*
+timeout-*
+slow-unit-*
+fuzz-*.log
+corpus-tools/fuzz-corpus/
+corpus-tools/fuzz-output/
+
+# Conformance corpus working copies (real corpus is under spec/corpus/)
+*.bin.tmp
+*.pcap
+
+# Generated code (code generation output goes under build/, not source tree)
+generated/
+
+# OS junk
+.DS_Store
+.AppleDouble
+.LSOverride
+Icon
+._*
