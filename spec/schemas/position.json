@@ -1,0 +1,47 @@
+{
+  "$schema": "../meta-schema.json",
+
+  "message_type": "POSITION",
+  "type_id": "POSITION",
+  "introduced_in": "v1",
+
+  "description": "3D position with an optional orientation quaternion. The body carries a float32[3] position vector always, plus 0, 3, or 4 additional float32 values for orientation. Body size is exactly 12 (position only), 24 (position + 3-element compressed quaternion), or 28 (position + full 4-element quaternion). Any other body size is malformed.",
+
+  "rationale": "POSITION predates TRANSFORM and was intended for the common case of a single tracked tool or pointer. Its three body-size variants let a sender omit orientation when it has no rotational information (12 bytes) or send a compressed quaternion when the fourth component is reconstructible from unit-norm constraint (24 bytes). In practice, most modern deployments send the full 28-byte form or use TRANSFORM instead. The message type is preserved for backward compatibility.",
+
+  "spec_reference": {
+    "section": "Body (POSITION)",
+    "document": "protocol/v3.md"
+  },
+
+  "body_size": "variable",
+
+  "fields": [
+    {
+      "name": "position",
+      "type": "array",
+      "element_type": "float32",
+      "count": 3,
+      "description": "Position coordinates (x, y, z) in millimeters. Always present regardless of body size."
+    },
+    {
+      "name": "quaternion",
+      "type": "array",
+      "element_type": "float32",
+      "count_from": "remaining",
+      "description": "Orientation quaternion. The number of elements depends on body_size: 0 elements (body=12, position only — no orientation), 3 elements (body=24, compressed quaternion: (qx, qy, qz) with qw reconstructed as sqrt(1 - qx² - qy² - qz²)), or 4 elements (body=28, full quaternion: (qx, qy, qz, qw)). Any other count (1, 2, 5+) is malformed and MUST be rejected. Receivers MUST normalize the reconstructed or received quaternion before use."
+    }
+  ],
+
+  "metadata_allowed": true,
+
+  "legacy_notes": [
+    "Valid body sizes are exactly {12, 24, 28}. A conformant implementation MUST reject any POSITION message whose body_size is not in this set before any field access. The schema expresses this via count_from=remaining on the quaternion field; the receiver additionally validates the resulting element count ∈ {0, 3, 4}.",
+    "Upstream C provides three separate byte_order functions: igtl_position_convert_byte_order (28 B, swaps position[3] + quaternion[4]), igtl_position_convert_byte_order_position_only (12 B, swaps position[3]), igtl_position_convert_byte_order_quaternion3 (24 B, swaps position[3] + quaternion[3]). The caller must select the correct variant based on body_size; there is no dispatch wrapper. A conformant reimplementation SHOULD dispatch in one function conditioned on body_size.",
+    "Upstream igtl_position_get_crc always computes CRC over IGTL_POSITION_MESSAGE_DEFAULT_SIZE (28 bytes) regardless of actual body_size. This means the CRC for a 12- or 24-byte message includes uninitialized trailing bytes — a bug. A conformant implementation MUST compute CRC over exactly body_size bytes.",
+    "Upstream PositionMessage::UnpackContent (at pinned SHA 94244fe) does not validate body_size before reading fields. A body shorter than 12 bytes causes an OOB read. The 24 vs. 28 discrimination is done after reading all 28 bytes, meaning a 24-byte message reads 4 bytes past the body end.",
+    "The QTRANS message type (used internally by some codepaths for compact quaternion+translation) is a utility concept, not a distinct wire message type. Its wire representation is a subset of POSITION's 24-byte variant."
+  ],
+
+  "see_also": ["TRANSFORM", "TDATA", "QTDATA"]
+}

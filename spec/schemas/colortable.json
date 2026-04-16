@@ -1,0 +1,51 @@
+{
+  "$schema": "../meta-schema.json",
+
+  "message_type": "COLORTABLE",
+  "type_id": "COLORT",
+  "introduced_in": "v1",
+
+  "description": "Color lookup table that maps integer pixel values to display colors. The body is a 2-byte header (index type + map type) followed by a raw byte array carrying the table entries. The table dimensions are fully determined by the two header fields: index type sets the number of entries (256 for uint8, 65536 for uint16) and map type sets the bytes per entry (1 for uint8, 2 for uint16, 3 for RGB).",
+
+  "rationale": "Label-map IMAGEs store integer pixel values, not colors. COLORTABLE ships the mapping from those integers to display colors — a standard technique in medical imaging (DICOM supplies equivalent functionality via LUT descriptors). A single COLORTABLE can serve multiple label maps as long as they share the same index range. Separating the LUT from the image keeps IMAGE messages compact for streaming and lets the LUT be updated independently.",
+
+  "spec_reference": {
+    "section": "Body (COLORTABLE)",
+    "document": "protocol/v3.md"
+  },
+
+  "body_size": "variable",
+
+  "fields": [
+    {
+      "name": "index_type",
+      "type": "int8",
+      "description": "Index type — determines the number of table entries: 3 = uint8 (256 entries), 5 = uint16 (65536 entries). These values match the scalar_type codes used elsewhere in the protocol. Receivers MUST reject any value other than 3 or 5."
+    },
+    {
+      "name": "map_type",
+      "type": "int8",
+      "description": "Map type — determines the bytes per entry: 3 = uint8 (1 byte per entry), 5 = uint16 (2 bytes per entry), 19 = RGB (3 bytes per entry: R, G, B in that order). Receivers MUST reject values not in {3, 5, 19}."
+    },
+    {
+      "name": "table",
+      "type": "array",
+      "element_type": "uint8",
+      "count_from": "remaining",
+      "description": "Raw color table data — N × S bytes where N is the entry count from index_type (256 or 65536) and S is the bytes per entry from map_type (1, 2, or 3). The schema models this as raw bytes (uint8[]) because the per-entry width depends on map_type. Receivers MUST verify len(table) exactly equals N × S; a mismatch means the body_size is inconsistent with the header and the message MUST be rejected."
+    }
+  ],
+
+  "metadata_allowed": true,
+
+  "legacy_notes": [
+    "Expected body_size = 2 + N × S where N ∈ {256, 65536} and S ∈ {1, 2, 3}. The six valid table sizes are: 256 (uint8/uint8), 512 (uint8/uint16), 768 (uint8/RGB), 65536 (uint16/uint8), 131072 (uint16/uint16), 196608 (uint16/RGB). Maximum body is 196610 bytes (~192 KiB) — comfortably bounded.",
+    "The wire type_id is 'COLORT' (6 chars), not 'COLORTABLE'; the 12-byte type field null-pads the remainder. The logical message_type name in this schema uses the full 'COLORTABLE' for clarity.",
+    "index_type and map_type are int8 on the wire (signed), matching the upstream C struct. The actual values (3, 5, 19) are all positive and fit in either int8 or uint8; the signed-ness has no practical effect but is preserved for wire fidelity.",
+    "Upstream igtl_colortable_convert_byte_order only byte-swaps when mapType is uint16 (value 5), which is correct: uint8 and RGB entries are single-byte values that don't need swapping. A conformant implementation MUST match this behavior.",
+    "Upstream igtl_colortable_get_table_size uses a fallthrough pattern: any index_type other than 3 is treated as uint16 (65536 entries), and any map_type other than 3 or 5 is treated as RGB (3 bytes). A conformant implementation MUST NOT rely on this fallthrough and SHOULD reject unknown values explicitly.",
+    "Upstream C library does NOT validate body_size against the expected table_size before accessing the table region. A conformant implementation MUST verify body_size == 2 + expected_table_bytes before any table access."
+  ],
+
+  "see_also": ["IMAGE", "LBMETA", "IMGMETA", "VIDEOMETA"]
+}

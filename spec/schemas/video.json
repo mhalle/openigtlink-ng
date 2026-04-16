@@ -1,0 +1,97 @@
+{
+  "$schema": "../meta-schema.json",
+
+  "message_type": "VIDEO",
+  "type_id": "VIDEO",
+  "introduced_in": "v3",
+
+  "description": "Compressed video frame with in-band orientation. The body is a 76-byte frame header followed by the codec-compressed frame payload. Structurally similar to IMAGE but with a FourCC codec identifier instead of scalar_type/num_components, and no meaningful byte-count relationship between subvol_size and the compressed frame data (the frame payload size is determined by the codec, not by the pixel dimensions).",
+
+  "rationale": "Streaming uncompressed video over OpenIGTLink (via IMAGE messages) wastes bandwidth for real-time endoscopy, laparoscopy, and ultrasound use cases. VIDEO wraps a codec-compressed frame (H.264, VP9, AV1, etc.) with the same spatial metadata (matrix, subvolume) as IMAGE so a receiver can place the decoded frame in 3D scene space. The FourCC codec field lets a receiver identify the decompressor needed before reading any frame bytes.",
+
+  "spec_reference": {
+    "section": "Body (VIDEO)",
+    "document": "protocol/v3.md"
+  },
+
+  "body_size": "variable",
+
+  "fields": [
+    {
+      "name": "header_version",
+      "type": "uint16",
+      "description": "VIDEO header format version, currently 1. Distinct from the OpenIGTLink protocol version. Receivers MUST reject values they do not implement."
+    },
+    {
+      "name": "endian",
+      "type": "uint8",
+      "description": "Byte order of the decoded pixel data: 1=big, 2=little. Applies to the pixel interpretation after codec decompression, not to the compressed frame payload itself (which is opaque bytes)."
+    },
+    {
+      "name": "codec",
+      "type": "fixed_string",
+      "size_bytes": 4,
+      "encoding": "ascii",
+      "null_padded": false,
+      "description": "FourCC codec identifier: 'I420' (uncompressed YUV 4:2:0), 'H264' (H.264/AVC), 'VP90' (VP9), 'X265' (H.265/HEVC via x265), 'O265' (H.265/HEVC via OpenHEVC), 'AV10' (AV1). Receivers MUST reject unknown codec values with STATUS rather than attempting to interpret the frame data."
+    },
+    {
+      "name": "frame_type",
+      "type": "uint16",
+      "description": "Codec-specific frame type indicator (e.g. I-frame, P-frame, B-frame). Semantics depend on the codec identified by `codec`; the protocol treats this as an opaque hint. 0 is a safe default for codecs that don't distinguish frame types."
+    },
+    {
+      "name": "coord",
+      "type": "uint8",
+      "description": "Coordinate-system convention: 1=RAS, 2=LPS. Same semantics as IMAGE's `coord` field."
+    },
+    {
+      "name": "size",
+      "type": "array",
+      "element_type": "uint16",
+      "count": 3,
+      "description": "Full video frame dimensions in pixels: (Sx, Sy, Sz). For 2D video, Sz=1."
+    },
+    {
+      "name": "matrix",
+      "type": "array",
+      "element_type": "float32",
+      "count": 12,
+      "description": "Frame-plane orientation and origin. Same layout as IMAGE: four float32[3] groups — norm_i·pixel_size_i, norm_j·pixel_size_j, norm_k·pixel_size_k, origin (mm)."
+    },
+    {
+      "name": "subvol_offset",
+      "type": "array",
+      "element_type": "uint16",
+      "count": 3,
+      "description": "Sub-region offset within the full frame: (Ox, Oy, Oz). Same semantics as IMAGE's subvol_offset."
+    },
+    {
+      "name": "subvol_size",
+      "type": "array",
+      "element_type": "uint16",
+      "count": 3,
+      "description": "Sub-region extent: (Wx, Wy, Wz). Unlike IMAGE, the trailing frame_data byte count is NOT derivable from subvol_size because the data is codec-compressed. Receivers determine frame_data length from body_size - 76."
+    },
+    {
+      "name": "frame_data",
+      "type": "array",
+      "element_type": "uint8",
+      "count_from": "remaining",
+      "description": "Codec-compressed frame payload. Byte count = body_size - 76. The receiver must decompress this using the codec identified by the `codec` field. For 'I420' (uncompressed), the byte count has a fixed relationship to subvol_size; for all other codecs it does not."
+    }
+  ],
+
+  "metadata_allowed": true,
+
+  "legacy_notes": [
+    "VIDEO was introduced in protocol v3 alongside the VideoStreaming extension. The 76-byte header mirrors IMAGE's 72-byte header with two changes: (1) scalar_type/num_components are replaced by a 4-byte FourCC codec field + a 2-byte frame_type, and (2) the header_version and endian fields are reordered.",
+    "Total body_size = 76 + compressed_frame_bytes. An empty frame (body_size = 76, 0 bytes of frame_data) is legal and may indicate 'no new frame available' or a signaling-only message.",
+    "The `codec` field is a 4-byte ASCII FourCC, NOT null-padded — all four bytes are significant. 'VP90' means VP9 (trailing zero is part of the code), 'AV10' means AV1. Implementations MUST compare all four bytes.",
+    "Upstream igtl_frame_convert_byte_order (at pinned SHA 94244fe) does NOT validate body_size before reading the 76-byte header. A body shorter than 76 bytes causes an OOB read in the byte-swap pass. A conformant implementation MUST reject body_size < 76 before any header access.",
+    "The frame_type field's semantics are codec-dependent and not standardized by the protocol. Upstream code uses values like 0x0001 for I-frame; consumers SHOULD NOT rely on specific frame_type values without knowing the codec.",
+    "STT_VIDEO (start streaming) is a companion message type with its own 9-byte body: codec[4] (FourCC) + time_interval (uint32, milliseconds between frames) + a reserved byte. It is NOT part of the VIDEO schema but is documented here for completeness."
+  ],
+
+  "see_also": ["IMAGE", "VIDEOMETA", "TRANSFORM"]
+}

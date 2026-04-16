@@ -1,0 +1,57 @@
+{
+  "$schema": "../meta-schema.json",
+
+  "message_type": "NDARRAY",
+  "type_id": "NDARRAY",
+  "introduced_in": "v1",
+
+  "description": "Variable-rank N-dimensional numerical array. The body carries a 2-byte fixed header (scalar type + dimension count), a variable-length size table of uint16 values (one per axis), and then the raw array data as bytes. The data section contains product(size[0..dim-1]) elements of the declared scalar type, in row-major (C-contiguous) order.",
+
+  "rationale": "NDARRAY generalizes the pattern shared by IMAGE and SENSOR: it can transport any dense multi-dimensional numeric array without the spatial-orientation overhead of IMAGE. Typical uses include numerical results (Jacobians, Hessians, registration parameters), non-image grids (dose distributions), and generic matrix data. The variable rank and per-axis uint16 sizes make it flexible enough to handle 1D vectors through 255D tensors (though practical use rarely exceeds 4D).",
+
+  "spec_reference": {
+    "section": "Body (NDARRAY)",
+    "document": "protocol/v3.md"
+  },
+
+  "body_size": "variable",
+
+  "fields": [
+    {
+      "name": "scalar_type",
+      "type": "uint8",
+      "description": "Scalar type code: 2=int8, 3=uint8, 4=int16, 5=uint16, 6=int32, 7=uint32, 10=float32, 11=float64, 13=complex (two float64 per element, 16 bytes). Receivers MUST reject unknown values; the upstream default branch returns bytes_per_element=0 for unknown types, which silently computes a data_size of 0."
+    },
+    {
+      "name": "dim",
+      "type": "uint8",
+      "description": "Number of dimensions (rank). Must be >= 1 for a meaningful array. dim=0 is legal on the wire (0 size entries, data section is empty) but degenerate. Determines the length of the following `size` array."
+    },
+    {
+      "name": "size",
+      "type": "array",
+      "element_type": "uint16",
+      "count": "dim",
+      "description": "Per-axis extent: size[i] is the number of elements along the i-th axis. The total element count is the product of all size entries. Receivers MUST compute this product in 64-bit arithmetic (worst case: 255 axes of size 65535 each would overflow any smaller type) and MUST impose an implementation-defined ceiling before allocating."
+    },
+    {
+      "name": "data",
+      "type": "array",
+      "element_type": "uint8",
+      "count_from": "remaining",
+      "description": "Raw array data — product(size[0..dim-1]) elements of `scalar_type`, stored in row-major order with the byte order determined by the OpenIGTLink convention (network / big-endian). The byte count MUST equal product(size) * bytes_per_scalar(scalar_type); receivers MUST verify this before accessing the data. The schema models the data as raw bytes (uint8[]) because the per-element width is determined dynamically by `scalar_type`."
+    }
+  ],
+
+  "metadata_allowed": true,
+
+  "legacy_notes": [
+    "Total body_size = 2 + dim*2 + product(size) * bytes_per_scalar(scalar_type). The size table occupies dim × 2 bytes immediately after the 2-byte fixed header.",
+    "NDARRAY adds scalar type code 13 (complex: two float64, 16 bytes per element) beyond the set shared by IMAGE / SENSOR / VIDEOMETA. Receivers that do not support complex SHOULD reject with STATUS rather than silently treating the data as 0-byte elements.",
+    "Upstream igtl_ndarray_unpack (at pinned SHA 94244fe) carries an explicit TODO: '/* TODO: check if the pack size is valid */'. It does NOT validate pack_size against expected body size before reading the size table or the data section. An attacker setting dim=255 with body_size=2 causes a 510-byte OOB read of the size table alone, plus an unbounded OOB of the data section computed from the wild size values.",
+    "Upstream igtl_ndarray_alloc_info computes len = product(size[i]) in a loop with uint64 intermediates but does not check for multiplication overflow. With dim=4 and all sizes=65535, len = 65535^4 ≈ 1.8×10^19 which overflows uint64. A conformant implementation MUST detect overflow and reject.",
+    "The upstream byte-swap pass in igtl_ndarray_unpack modifies the receive buffer in place ('/* Change byte order -- this overwrites memory area for the pack !! */') and then 'restores' it afterward. This destructive in-place swap means the function is NOT idempotent; calling it twice on the same buffer produces corrupted data. A conformant reimplementation SHOULD swap into a separate output buffer."
+  ],
+
+  "see_also": ["IMAGE", "SENSOR"]
+}
