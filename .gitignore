@@ -63,6 +63,11 @@ fuzz-*.log
 corpus-tools/fuzz-corpus/
 corpus-tools/fuzz-output/
 
+# Local clones of reference libraries — re-cloneable from their remotes
+# per spec/corpus/ORACLE_VERSION.md; never committed to this repo.
+corpus-tools/reference-libs/*
+!corpus-tools/reference-libs/README.md
+
 # Conformance corpus working copies (real corpus is under spec/corpus/)
 *.bin.tmp
 *.pcap
