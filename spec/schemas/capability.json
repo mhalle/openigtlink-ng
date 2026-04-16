@@ -1,0 +1,43 @@
+{
+  "$schema": "../meta-schema.json",
+
+  "message_type": "CAPABILITY",
+  "type_id": "CAPABILITY",
+  "introduced_in": "v1",
+
+  "description": "Advertises the list of OpenIGTLink message types that a device accepts. Typically sent in response to a GET_CAPABIL query during connection setup; peers use the advertised list to decide which features to use on the session.",
+
+  "rationale": "A bare array of 12-byte type-id strings is the simplest and most forward-compatible way to express 'what this device speaks.' No leading count field is needed because the number of entries is implicit in the body size (body_size = 12 * N), and a body whose size is not a multiple of 12 is definitionally malformed.",
+
+  "spec_reference": {
+    "section": "Body (CAPABILITY)",
+    "document": "protocol/v3.md"
+  },
+
+  "body_size": "variable",
+
+  "fields": [
+    {
+      "name": "supported_types",
+      "type": "array",
+      "element_type": {
+        "type": "fixed_string",
+        "size_bytes": 12,
+        "encoding": "ascii",
+        "null_padded": true
+      },
+      "count_from": "remaining",
+      "description": "Ordered array of OpenIGTLink message-type identifiers. Each element is a 12-byte ASCII string, null-padded on the right, matching the 12-byte `type` field of the outer message header. The number of entries is derived at parse time as body_size / 12; a body whose size is not a multiple of 12 MUST be rejected."
+    }
+  ],
+
+  "metadata_allowed": true,
+
+  "legacy_notes": [
+    "Total body size is exactly 12 * N where N is the number of supported types. An empty CAPABILITY body (N=0, body_size=0) is legal but unusual — it means 'no types supported'. Upstream C++ library (at pinned SHA 94244fe) treats an empty body as an error in CapabilityMessage::UnpackContent (igtlCapabilityMessage.cxx:133-136) and returns 0; a conformant implementation MAY accept or reject an empty list but MUST NOT crash.",
+    "Partial-element bodies (body_size not a multiple of 12) are rejected by upstream via the explicit `pack_size % IGTL_HEADER_TYPE_SIZE > 0` check in igtl_capability_unpack (igtl_capability.c:108). Conformant implementations MUST preserve this rejection.",
+    "Type identifiers inside the list follow the same 12-byte null-padded convention as the outer header's `type` field (see 'Message type strings' in protocol/v3.md). Duplicates in the list are not defined; receivers SHOULD treat the list as a set, not a multiset."
+  ],
+
+  "see_also": ["STATUS", "BIND"]
+}

@@ -13,6 +13,71 @@
       "title": "CountSource",
       "type": "string"
     },
+    "ElementDescriptor": {
+      "additionalProperties": false,
+      "description": "Inline description of an array's element type.\n\nUsed when an array / struct_array field has elements that are more\ncomplex than a single primitive but simpler than a full referenced\nstruct \u2014 for example, CAPABILITY's array of 12-byte null-padded\nASCII strings, where each element is a ``fixed_string`` with\n``size_bytes: 12``.\n\nAn ElementDescriptor carries only the *wire-shape* attributes\n(``type``, ``size_bytes``, ``encoding``, etc.) \u2014 not field-level\nattributes like ``name`` or top-level attributes like ``count``,\nsince it describes what a single element looks like, not a field in\nits own right. Descriptions and notes are optional: an element is\ntypically documented at its parent field's description.",
+      "properties": {
+        "type": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/PrimitiveType"
+            },
+            {
+              "$ref": "#/$defs/FieldType"
+            }
+          ],
+          "description": "Wire type of the element. Primitives are the common case; ``fixed_string`` / ``fixed_bytes`` let an array carry uniformly-sized structured elements.",
+          "title": "Type"
+        },
+        "size_bytes": {
+          "anyOf": [
+            {
+              "minimum": 0,
+              "type": "integer"
+            },
+            {
+              "const": "variable",
+              "type": "string"
+            }
+          ],
+          "default": null,
+          "description": "Element byte size. Required when ``type`` is ``fixed_string`` or ``fixed_bytes``.",
+          "title": "Size Bytes"
+        },
+        "encoding": {
+          "$ref": "#/$defs/Encoding",
+          "default": null,
+          "description": "For string-typed elements: the expected text encoding."
+        },
+        "endianness": {
+          "$ref": "#/$defs/Endianness",
+          "default": null,
+          "description": "Byte order. Defaults to big-endian (OpenIGTLink convention)."
+        },
+        "null_padded": {
+          "default": null,
+          "description": "For ``fixed_string`` elements: whether values shorter than ``size_bytes`` are null-padded. Defaults to true.",
+          "title": "Null Padded",
+          "type": "boolean"
+        },
+        "length_prefix_type": {
+          "$ref": "#/$defs/PrimitiveType",
+          "default": null,
+          "description": "For ``length_prefixed_string`` elements: the integer type of the length prefix."
+        },
+        "description": {
+          "default": null,
+          "description": "Optional. Elements are normally documented via the parent field's description; use this only when per-element docs would add clarity.",
+          "title": "Description",
+          "type": "string"
+        }
+      },
+      "required": [
+        "type"
+      ],
+      "title": "ElementDescriptor",
+      "type": "object"
+    },
     "Encoding": {
       "description": "Text encoding for string-typed fields.",
       "enum": [
@@ -138,6 +203,9 @@
           "anyOf": [
             {
               "$ref": "#/$defs/PrimitiveType"
+            },
+            {
+              "$ref": "#/$defs/ElementDescriptor"
             },
             {
               "pattern": "^[A-Z][A-Z0-9_]*$",

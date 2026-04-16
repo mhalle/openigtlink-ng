@@ -378,3 +378,156 @@ def test_count_from_rejects_unknown_source(tmp_path: Path) -> None:
     assert any(
         err.location.endswith("count_from") for err in result.errors
     ), [err.location for err in result.errors]
+
+
+# ---------------------------------------------------------------------------
+# ElementDescriptor: inline element specifications
+# ---------------------------------------------------------------------------
+
+
+def test_array_with_inline_fixed_string_element_passes(tmp_path: Path) -> None:
+    """An array whose element_type is an inline ElementDescriptor is valid.
+
+    This is the shape used by CAPABILITY: an array of 12-byte
+    null-padded ASCII strings.
+    """
+    schema = {
+        "message_type": "TEST",
+        "type_id": "TEST",
+        "introduced_in": "v1",
+        "description": "Synthetic test of inline fixed_string element.",
+        "body_size": "variable",
+        "fields": [
+            {
+                "name": "types",
+                "type": "array",
+                "element_type": {
+                    "type": "fixed_string",
+                    "size_bytes": 12,
+                    "encoding": "ascii",
+                    "null_padded": True,
+                },
+                "count_from": "remaining",
+                "description": "Array of 12-byte type-id strings.",
+            }
+        ],
+    }
+    path = _write_schema(tmp_path, "test.json", schema)
+    [result] = validate_schemas([path])
+    assert result.ok, [f"{e.location}: {e.message}" for e in result.errors]
+
+
+def test_inline_fixed_string_element_requires_size_bytes(tmp_path: Path) -> None:
+    """An inline fixed_string element without size_bytes must be rejected."""
+    schema = {
+        "message_type": "TEST",
+        "type_id": "TEST",
+        "introduced_in": "v1",
+        "description": "Synthetic test.",
+        "body_size": "variable",
+        "fields": [
+            {
+                "name": "types",
+                "type": "array",
+                "element_type": {
+                    "type": "fixed_string",
+                    # size_bytes missing — element descriptor must reject
+                    "encoding": "ascii",
+                },
+                "count_from": "remaining",
+                "description": "Disallowed: fixed_string element without size_bytes.",
+            }
+        ],
+    }
+    path = _write_schema(tmp_path, "test.json", schema)
+    [result] = validate_schemas([path])
+
+    assert not result.ok
+    assert any(
+        "size_bytes" in err.message for err in result.errors
+    ), [err.message for err in result.errors]
+
+
+def test_trailing_string_cannot_be_array_element(tmp_path: Path) -> None:
+    """trailing_string makes no sense as an element; must be rejected."""
+    schema = {
+        "message_type": "TEST",
+        "type_id": "TEST",
+        "introduced_in": "v1",
+        "description": "Synthetic test.",
+        "body_size": "variable",
+        "fields": [
+            {
+                "name": "items",
+                "type": "array",
+                "element_type": {
+                    "type": "trailing_string",
+                    "encoding": "ascii",
+                },
+                "count_from": "remaining",
+                "description": "Disallowed: trailing_string element.",
+            }
+        ],
+    }
+    path = _write_schema(tmp_path, "test.json", schema)
+    [result] = validate_schemas([path])
+
+    assert not result.ok
+    assert any(
+        "trailing_string" in err.message for err in result.errors
+    ), [err.message for err in result.errors]
+
+
+def test_count_from_remaining_with_variable_element_rejected(tmp_path: Path) -> None:
+    """count_from=remaining is invalid when element size is not static.
+
+    A struct reference (UpperIdentifier) is the canonical case: struct
+    layouts are not yet resolvable at schema-validation time, so we
+    cannot compute body_size / element_size.
+    """
+    schema = {
+        "message_type": "TEST",
+        "type_id": "TEST",
+        "introduced_in": "v1",
+        "description": "Synthetic test.",
+        "body_size": "variable",
+        "fields": [
+            {
+                "name": "items",
+                "type": "struct_array",
+                "element_type": "SOME_STRUCT",
+                "count_from": "remaining",
+                "description": "Disallowed until struct sizes are resolvable.",
+            }
+        ],
+    }
+    path = _write_schema(tmp_path, "test.json", schema)
+    [result] = validate_schemas([path])
+
+    assert not result.ok
+    assert any(
+        "statically-known" in err.message for err in result.errors
+    ), [err.message for err in result.errors]
+
+
+def test_count_from_remaining_with_primitive_element_passes(tmp_path: Path) -> None:
+    """count_from=remaining is valid when element_type is a primitive."""
+    schema = {
+        "message_type": "TEST",
+        "type_id": "TEST",
+        "introduced_in": "v1",
+        "description": "Synthetic test.",
+        "body_size": "variable",
+        "fields": [
+            {
+                "name": "data",
+                "type": "array",
+                "element_type": "float32",
+                "count_from": "remaining",
+                "description": "Variable-length float32 array.",
+            }
+        ],
+    }
+    path = _write_schema(tmp_path, "test.json", schema)
+    [result] = validate_schemas([path])
+    assert result.ok, [f"{e.location}: {e.message}" for e in result.errors]
