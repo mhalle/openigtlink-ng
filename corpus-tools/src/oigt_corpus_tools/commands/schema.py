@@ -166,9 +166,10 @@ def _register_emit_meta(subparsers: argparse._SubParsersAction) -> None:
         help="Regenerate spec/meta-schema.json from the Pydantic models.",
         description=(
             "Generate spec/meta-schema.json from the Pydantic models in "
-            "oigt_corpus_tools.schema.model. With --check, verify that the "
-            "committed file matches what would be generated and exit "
-            "non-zero if it does not. Without --check, write the file."
+            "oigt_corpus_tools.schema (types / element / field / message). "
+            "With --check, verify that the committed file matches what "
+            "would be generated and exit non-zero if it does not. Without "
+            "--check, write the file."
         ),
     )
     emit_meta.add_argument(

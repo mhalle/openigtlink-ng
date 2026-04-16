@@ -1,7 +1,7 @@
 {
   "$schema": "https://json-schema.org/draft/2020-12/schema",
   "$id": "https://openigtlink-ng.org/spec/meta-schema.json",
-  "$comment": "GENERATED from corpus-tools/src/oigt_corpus_tools/schema/model.py \u2014 do not edit by hand; run 'uv run oigt-corpus schema emit-meta' to regenerate.",
+  "$comment": "GENERATED from the Pydantic models in corpus-tools/src/oigt_corpus_tools/schema/ (types.py, element.py, field.py, message.py) \u2014 do not edit by hand; run 'uv run oigt-corpus schema emit-meta' to regenerate.",
   "title": "OpenIGTLink Message Schema",
   "description": "Meta-schema that validates the shape of every file under spec/schemas/. Each message-type schema describes one OpenIGTLink wire message and is consumed by codegen tools across all language ports.",
   "$defs": {
