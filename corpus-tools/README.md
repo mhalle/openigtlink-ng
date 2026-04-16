@@ -1,41 +1,97 @@
 # corpus-tools
 
-Infrastructure that produces and maintains the conformance corpus in
+Tooling for producing and maintaining the conformance corpus at
 [`../spec/corpus/`](../spec/corpus/).
 
-## Status
+Python module with a single `oigt-corpus` command-line entry point and a
+command / subcommand structure. All Python work in the project uses
+[`uv`](https://github.com/astral-sh/uv); there is no `pip install` path.
 
-Scaffold. Nothing is implemented yet.
+## Installation and first run
 
-## Planned contents
+```bash
+cd corpus-tools
+uv sync --extra dev    # installs the project + test dependencies
+```
 
-- **Corpus generator** — links the reference C++ implementation
-  (hardened fork of the existing OpenIGTLink library), iterates
-  canonical exemplars for every message type at every version, and
-  writes wire bytes + semantic JSON into `../spec/corpus/`.
-- **Schema validator** — checks every `../spec/schemas/*.json` against
-  `../spec/meta-schema.json`, plus additional project-specific
-  invariants (every field has a `description`, every message has a
-  `spec_reference`, etc.).
-- **Live-capture pipeline** — consumes `pcap` dumps from real peers
-  (3D Slicer, PlusServer, scanner research interfaces) and converts
-  them into corpus entries.
-- **Differential harness** — runs an input through two implementations
-  and reports semantic divergence. Basis for the LLM-assisted fuzz
-  triage workflow.
-- **libFuzzer / AFL++ harnesses** — structure-aware fuzzing targets
-  that feed crashes and divergences back into the corpus as negative
-  cases.
-- **LLM orchestration** — scripts that take fuzzer output, cluster
-  crashes, minimize reproducers, and draft corpus entries for human
-  review. The LLM never produces wire bytes directly; bytes go through
-  the reference library.
+After `uv sync`, subsequent invocations reuse the project's virtual
+environment automatically.
 
-## Language
+## CLI
 
-Probably Python (as glue over pybind11 / PyO3 bindings to the
-implementations under test), plus small C++ helpers where needed for
-performance or linking reasons.
+```
+oigt-corpus <command> <subcommand> [options]
+```
+
+### `schema validate`
+
+Validates message schemas under `../spec/schemas/*.json` against
+`../spec/meta-schema.json`.
+
+```bash
+# Validate every schema in the repo
+uv run oigt-corpus schema validate
+
+# Validate specific files
+uv run oigt-corpus schema validate ../spec/schemas/transform.json
+```
+
+Exit codes: `0` if all schemas pass, `1` if any fail validation, `2` on
+setup errors (meta-schema missing, repo root not found, etc.).
+
+On failure, each violating JSON pointer is printed with the validation
+error message — all errors for all files in a single pass rather than
+stopping at the first.
+
+## Tests
+
+```bash
+cd corpus-tools
+uv run pytest
+```
+
+Tests live in `tests/`. Coverage currently includes:
+
+- The repository's real schemas validate against the real meta-schema.
+- Synthetic schemas exercise the validator's required-field,
+  field-name-pattern, and unknown-property rejection paths.
+
+## Planned subcommands
+
+Listed to make the intended scope visible. None are implemented yet.
+
+- `reference sync` — re-clone / re-verify the reference libraries under
+  `reference-libs/` against the pins in `../spec/corpus/ORACLE_VERSION.md`.
+- `reference build` — compile the reference libraries into static
+  objects the generator and differential harness can link.
+- `corpus generate` — produce positive corpus entries by running every
+  message-type schema's canonical exemplars through the patched
+  reference library. Requires patched oracle to be pinned.
+- `corpus differential` — run existing corpus entries through both
+  reference libraries and flag semantic divergences.
+- `fuzz run` — drive libFuzzer / AFL++ campaigns, with LLM-assisted
+  triage of minimized reproducers into the negative corpus.
+
+## Project layout
+
+```
+corpus-tools/
+├── pyproject.toml
+├── src/
+│   └── oigt_corpus_tools/
+│       ├── __init__.py
+│       ├── __main__.py                 # python -m oigt_corpus_tools entry
+│       ├── cli.py                      # argparse dispatcher
+│       ├── paths.py                    # repo-root / spec-path helpers
+│       └── commands/
+│           ├── __init__.py
+│           └── schema.py               # "schema" subcommand
+├── tests/
+│   ├── __init__.py
+│   └── test_schema_validate.py
+└── reference-libs/                     # gitignored; see reference-libs/README.md
+    └── README.md
+```
 
 ## License
 
