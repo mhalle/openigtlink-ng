@@ -1,0 +1,173 @@
+{
+  "$schema": "../meta-schema.json",
+
+  "message_type": "POLYDATA",
+  "type_id": "POLYDATA",
+  "introduced_in": "v1",
+
+  "description": "Polygonal mesh — points, topology (vertices, lines, polygons, triangle strips), and per-point or per-cell attributes. The body carries a 40-byte fixed header declaring counts and byte sizes for each section, followed by the data sections in a fixed order. Modeled after VTK's vtkPolyData.",
+
+  "rationale": "Surface meshes are the lingua franca of surgical planning and intraoperative visualization (organ surfaces, tool models, segmentation boundaries). POLYDATA transports VTK-style polygonal data directly: a point cloud plus topology arrays that index into it, plus optional per-point attributes (scalars, vectors, normals, tensors, texture coordinates, RGBA). Keeping the format VTK-compatible avoids a conversion step in the dominant consumer (3D Slicer).",
+
+  "spec_reference": {
+    "section": "Body (POLYDATA)",
+    "document": "protocol/v3.md"
+  },
+
+  "body_size": "variable",
+
+  "fields": [
+    {
+      "name": "npoints",
+      "type": "uint32",
+      "description": "Number of 3D points. Each point occupies 3 × float32 = 12 bytes in the points section."
+    },
+    {
+      "name": "nvertices",
+      "type": "uint32",
+      "description": "Number of vertex primitives in the vertices topology section. This is the number of VTK-style 'cells' of type vertex, not the number of uint32 values in the section (which is given by size_vertices / 4)."
+    },
+    {
+      "name": "size_vertices",
+      "type": "uint32",
+      "description": "Byte size of the vertices topology section. MUST be a multiple of 4 (each entry is a uint32). The section contains VTK-style connectivity: sequences of (N, i1, i2, ..., iN) where N is the point count per cell and i1..iN are 0-based point indices."
+    },
+    {
+      "name": "nlines",
+      "type": "uint32",
+      "description": "Number of line primitives."
+    },
+    {
+      "name": "size_lines",
+      "type": "uint32",
+      "description": "Byte size of the lines topology section. MUST be a multiple of 4."
+    },
+    {
+      "name": "npolygons",
+      "type": "uint32",
+      "description": "Number of polygon primitives."
+    },
+    {
+      "name": "size_polygons",
+      "type": "uint32",
+      "description": "Byte size of the polygons topology section. MUST be a multiple of 4."
+    },
+    {
+      "name": "ntriangle_strips",
+      "type": "uint32",
+      "description": "Number of triangle-strip primitives."
+    },
+    {
+      "name": "size_triangle_strips",
+      "type": "uint32",
+      "description": "Byte size of the triangle strips topology section. MUST be a multiple of 4."
+    },
+    {
+      "name": "nattributes",
+      "type": "uint32",
+      "description": "Number of per-point or per-cell attribute arrays. Determines the length of the `attribute_headers` array and the number of entries in the trailing attribute name table and data arrays."
+    },
+    {
+      "name": "points",
+      "type": "array",
+      "element_type": {
+        "type": "struct",
+        "fields": [
+          {
+            "name": "x",
+            "type": "float32",
+            "description": "X coordinate in millimeters."
+          },
+          {
+            "name": "y",
+            "type": "float32",
+            "description": "Y coordinate in millimeters."
+          },
+          {
+            "name": "z",
+            "type": "float32",
+            "description": "Z coordinate in millimeters."
+          }
+        ]
+      },
+      "count": "npoints",
+      "description": "Array of npoints × 12-byte (x, y, z) coordinates. Point indices in the topology sections are 0-based offsets into this array."
+    },
+    {
+      "name": "vertices",
+      "type": "array",
+      "element_type": "uint8",
+      "count": "size_vertices",
+      "description": "Vertices topology section — size_vertices raw bytes of VTK-style uint32 connectivity data: sequences of (N, i1, i2, ..., iN). Modeled as raw bytes because the per-cell structure (variable-length runs) cannot be expressed as a uniform array. Receivers MUST interpret as uint32[] in network byte order after verifying size_vertices % 4 == 0."
+    },
+    {
+      "name": "lines",
+      "type": "array",
+      "element_type": "uint8",
+      "count": "size_lines",
+      "description": "Lines topology section — size_lines raw bytes. Same encoding as vertices."
+    },
+    {
+      "name": "polygons",
+      "type": "array",
+      "element_type": "uint8",
+      "count": "size_polygons",
+      "description": "Polygons topology section — size_polygons raw bytes. Same encoding as vertices."
+    },
+    {
+      "name": "triangle_strips",
+      "type": "array",
+      "element_type": "uint8",
+      "count": "size_triangle_strips",
+      "description": "Triangle strips topology section — size_triangle_strips raw bytes. Same encoding as vertices."
+    },
+    {
+      "name": "attribute_headers",
+      "type": "array",
+      "element_type": {
+        "type": "struct",
+        "fields": [
+          {
+            "name": "type",
+            "type": "uint8",
+            "description": "Attribute type: 0x00=POINT_DATA/Scalars, 0x01=POINT_DATA/Vectors, 0x02=POINT_DATA/Normals, 0x03=POINT_DATA/Tensors, 0x04=RGBA, 0x05=Texture Coordinates. Add 0x10 for CELL_DATA variants (0x10=CELL_DATA/Scalars, etc.). Receivers MUST accept unknown values gracefully."
+          },
+          {
+            "name": "ncomponents",
+            "type": "uint8",
+            "description": "Number of scalar components per tuple. 1 for Scalars, 3 for Vectors/Normals, 9 for Tensors. For Scalars, this is the user-specified component count from the sender. For other types, the sender SHOULD write the canonical value but receivers MUST derive the actual component count from `type` if they conflict."
+          },
+          {
+            "name": "n",
+            "type": "uint32",
+            "description": "Number of tuples in this attribute array. The data section for this attribute contains n × ncomponents × sizeof(float32) bytes. For POINT_DATA types, n should equal npoints; for CELL_DATA types, n should equal the relevant cell count."
+          }
+        ]
+      },
+      "count": "nattributes",
+      "description": "Array of nattributes × 6-byte attribute headers. Each entry declares the type, component count, and tuple count for one attribute array. The corresponding names and data follow in the trailing sections."
+    },
+    {
+      "name": "attribute_data",
+      "type": "array",
+      "element_type": "uint8",
+      "count_from": "remaining",
+      "description": "Attribute name table + attribute data arrays, concatenated. The name table comes first: nattributes null-terminated ASCII strings (max 255 chars each), packed together, with a padding byte if the total byte count is odd. Then, for each attribute i in order, n[i] × ncomponents[i] × sizeof(float32) bytes of float32 data in network byte order. Receivers MUST parse using the attribute_headers array to determine boundaries; without it, the blob is not self-describing."
+    }
+  ],
+
+  "metadata_allowed": true,
+
+  "legacy_notes": [
+    "The fixed header is exactly 40 bytes (10 × uint32). Total body_size = 40 + npoints*12 + size_vertices + size_lines + size_polygons + size_triangle_strips + nattributes*6 + attribute_name_table_bytes(padded) + sum(n[i]*ncomponents[i]*4).",
+    "Topology sections use VTK connectivity encoding: a sequence of runs (N, i1, i2, ..., iN) where N is the number of point indices in the cell and i1..iN are 0-based indices into the points array. This is NOT a flat index array; N is interleaved with the indices. The byte sizes in the header (size_vertices etc.) include the N values.",
+    "All topology section sizes MUST be multiples of 4 (uint32 alignment). Upstream igtl_polydata_unpack checks this at lines 349-356 and returns 0 on violation — one of the few actual validation checks in the upstream code.",
+    "Upstream igtl_polydata_unpack (at pinned SHA 94244fe) does NOT validate body_size against the 40-byte header before casting to igtl_polydata_header*. Attacker-controlled npoints with a small body causes igtl_polydata_alloc_info to call malloc(npoints * 12) — a 32-bit uint32 overflow for npoints > ~357M yields an under-sized allocation, followed by an OOB write in the byte-swap loop.",
+    "Attribute name parsing uses strlen(ptr) walking forward with no bounds check against remaining body bytes (lines 397-409). An attacker-crafted message can make the parser walk past the attribute data section into unmapped memory.",
+    "Upstream igtl_polydata_get_crc truncates the uint64 data_size to igtl_uint32 at line 745: `polydata_length = (igtl_uint32)igtl_polydata_get_size(...)`. Any mesh whose body exceeds 4 GiB computes CRC over the wrong byte count. A conformant implementation MUST use the full uint64 size.",
+    "Attribute data is always float32 regardless of attribute type. Scalars, vectors, normals, tensors, texture coordinates, and RGBA are all encoded as float32 arrays. RGBA values are NOT packed uint8[4] — they are 4 × float32 per tuple (likely in [0.0, 1.0] range), consistent with VTK's vtkFloatArray representation.",
+    "Attribute types 0x04 (RGBA) and 0x05 (TCOORDS/Texture Coordinates) are defined in the header but the upstream unpack function does not handle them in its ncomponents switch — they fall through to the TENSOR default (9 components). The pack function handles TCOORDS (3 components) but not RGBA. Conformant implementations SHOULD use: RGBA=4 components, TCOORDS=2 or 3 components (matching VTK)."
+  ],
+
+  "see_also": ["IMAGE", "POINT", "TRANSFORM"]
+}

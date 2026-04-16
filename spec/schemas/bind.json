@@ -1,0 +1,83 @@
+{
+  "$schema": "../meta-schema.json",
+
+  "message_type": "BIND",
+  "type_id": "BIND",
+  "introduced_in": "v1",
+
+  "description": "Multi-message container that bundles N child messages into a single wire message. The body carries a header table (one entry per child, declaring its type_id and body_size), a name table (null-terminated device names, 2-byte aligned), and then the concatenated child bodies (each padded to even length). A receiver splits the trailing body section into per-child payloads by reading the sizes from the header table.",
+
+  "rationale": "BIND exists to atomically deliver a coherent set of messages that belong together — for example, an IMAGE plus its TRANSFORM plus a STATUS, all sharing a single timestamp and arriving as one unit. Without BIND, a receiver might see the IMAGE before the TRANSFORM, briefly rendering the frame at the wrong position. BIND trades the complexity of a container format for guaranteed atomicity on the wire.",
+
+  "spec_reference": {
+    "section": "Body (BIND)",
+    "document": "protocol/v3.md"
+  },
+
+  "body_size": "variable",
+
+  "fields": [
+    {
+      "name": "ncmessages",
+      "type": "uint16",
+      "description": "Number of child messages bundled in this BIND. Determines the length of the `header_entries` array and the number of entries in the name table. 0 is legal but degenerate (empty BIND)."
+    },
+    {
+      "name": "header_entries",
+      "type": "array",
+      "element_type": {
+        "type": "struct",
+        "fields": [
+          {
+            "name": "type_id",
+            "type": "fixed_string",
+            "size_bytes": 12,
+            "encoding": "ascii",
+            "null_padded": true,
+            "description": "Wire type identifier of the i-th child message (e.g. 'IMAGE', 'TRANSFORM'). Same 12-byte null-padded format as the outer OpenIGTLink header's type field."
+          },
+          {
+            "name": "body_size",
+            "type": "uint64",
+            "description": "Byte size of the i-th child message's body (not including the child's own OpenIGTLink header — it has none; the child is embedded raw). Used to find the boundary between child[i] and child[i+1] in the trailing bodies section."
+          }
+        ]
+      },
+      "count": "ncmessages",
+      "description": "Array of N × 20-byte header entries (type_id[12] + body_size[8]). A sequential reader consumes these first, then uses the body_size values to partition the trailing bodies section into per-child payloads."
+    },
+    {
+      "name": "nametable_size",
+      "type": "uint16",
+      "description": "Byte length of the name table section that immediately follows. MUST be even (2-byte aligned); a receiver MUST reject an odd value. The name table contains ncmessages null-terminated device-name strings packed together, with a padding byte appended if the total string bytes (including null terminators) is odd."
+    },
+    {
+      "name": "name_table",
+      "type": "array",
+      "element_type": "uint8",
+      "count": "nametable_size",
+      "description": "Packed device names — ncmessages null-terminated ASCII strings concatenated together, 2-byte-aligned to nametable_size bytes. To extract name[i], walk forward from the start, reading each null-terminated string in sequence. Each name is at most 20 bytes (IGTL_HEADER_NAME_SIZE). An empty name (single null byte) is legal."
+    },
+    {
+      "name": "bodies",
+      "type": "array",
+      "element_type": "uint8",
+      "count_from": "remaining",
+      "description": "Concatenated child message bodies. Child[i] occupies body_size[i] bytes (from header_entries[i]), followed by a 1-byte padding if body_size[i] is odd. A receiver MUST partition this blob using the header_entries array; without it the boundaries are unrecoverable. The total byte count MUST equal sum(ceil_to_even(header_entries[i].body_size) for i in 0..ncmessages-1). Any excess or shortfall is a malformed message."
+    }
+  ],
+
+  "metadata_allowed": true,
+
+  "legacy_notes": [
+    "Total body_size = 2 (ncmessages) + 20*N (header_entries) + 2 (nametable_size) + nametable_size + sum(body_size[i] + body_size[i]%2 for each child). The padding rule (odd child bodies get +1 byte) matches VTK's word-alignment convention.",
+    "Upstream igtl_bind_unpack_normal (at pinned SHA 94244fe) carries an explicit '/** TODO: check the total size of the message? **/' at line 189 — it does NOT validate body_size before iterating ncmessages entries. An attacker setting ncmessages=65535 with a tiny body causes massive OOB reads through the header table loop.",
+    "Upstream igtl_bind_get_size_request (for GET_BIND) computes ntable_size at lines 644-648 but never adds it to the returned size (line 650). GET_BIND messages with non-empty name tables will have an incorrect size, causing CRC mismatches or buffer under-allocation.",
+    "Name table parsing in igtl_bind_unpack_normal iterates N times using strlen() + ptr advance (lines 169-175) with no bounds check against nametable_size. An attacker can make the parser walk past the name table boundary into the bodies section or beyond — classic unbounded strlen on attacker-controlled data.",
+    "The nametable_size field is uint16, limiting the name table to 65534 bytes (even). With N entries of up to 20 characters + null = 21 bytes each, this bounds N to roughly 3120 children before the name table overflows. Practical BIND messages rarely exceed single-digit children.",
+    "Child bodies inside a BIND do NOT carry their own OpenIGTLink headers; they are raw body payloads. The type_id and body_size in the BIND header table serve the role of the child's outer header. A receiver that needs to dispatch the child payload to a type-specific unpacker must use the type_id from the header table, not from the child body itself.",
+    "GET_BIND carries only (ncmessages, type_id[N], nametable_size, name_table) — no body_size per entry and no bodies section. STT_BIND prepends a uint64 time-resolution field before the GET_BIND layout. STP_BIND has an empty body. RTS_BIND is a single uint8 status byte. These variants are not separate schema files; they share the BIND wire type family."
+  ],
+
+  "see_also": ["IMAGE", "TRANSFORM", "STATUS"]
+}
