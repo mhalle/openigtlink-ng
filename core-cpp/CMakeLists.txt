@@ -93,9 +93,21 @@ target_link_libraries(oigtl_messages PUBLIC oigtl_runtime)
 # ---------------------------------------------------------------------------
 # Umbrella target for downstream consumers
 # ---------------------------------------------------------------------------
+# ---------------------------------------------------------------------------
+# Ergonomic client/server facade — the "lovely API" that sits on top
+# of transport + codec. Sync-only, templated on message types.
+# ---------------------------------------------------------------------------
+add_library(oigtl_ergo STATIC
+    src/envelope.cpp
+    src/client.cpp
+    src/server.cpp
+)
+target_include_directories(oigtl_ergo PUBLIC include)
+target_link_libraries(oigtl_ergo PUBLIC oigtl_runtime oigtl_transport)
+
 add_library(oigtl INTERFACE)
 target_link_libraries(oigtl INTERFACE
-    oigtl_runtime oigtl_messages oigtl_transport)
+    oigtl_runtime oigtl_messages oigtl_transport oigtl_ergo)
 
 # ---------------------------------------------------------------------------
 # Tests
@@ -168,6 +180,14 @@ add_executable(oigtl_transport_sync_test
 target_link_libraries(oigtl_transport_sync_test
     PRIVATE oigtl_transport oigtl_runtime)
 add_test(NAME transport_sync COMMAND oigtl_transport_sync_test)
+
+# Ergonomic layer — Envelope, pack/unpack, Client, Server.
+add_executable(oigtl_ergo_test
+    tests/ergo_test.cpp
+)
+target_link_libraries(oigtl_ergo_test PRIVATE oigtl)
+add_test(NAME ergo COMMAND oigtl_ergo_test)
+set_tests_properties(ergo PROPERTIES TIMEOUT 30)
 
 # Oracle CLI — persistent subprocess for `oigtl-corpus fuzz differential`.
 # Reads hex-encoded wire bytes from stdin, emits JSON reports on stdout.
@@ -242,6 +262,14 @@ endif()
 add_executable(oigtl_bench
     benches/bench_codec.cpp
 )
+
+# ---------------------------------------------------------------------------
+# Examples — runnable programs demonstrating the ergonomic API.
+# ---------------------------------------------------------------------------
+add_executable(tracker_pair
+    examples/tracker_pair.cpp
+)
+target_link_libraries(tracker_pair PRIVATE oigtl)
 target_link_libraries(oigtl_bench PRIVATE oigtl)
 target_include_directories(oigtl_bench PRIVATE
     "${IGTL_UPSTREAM_FIXTURES}")
