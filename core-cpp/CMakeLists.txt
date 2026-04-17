@@ -110,6 +110,30 @@ target_link_libraries(oigtl INTERFACE
     oigtl_runtime oigtl_messages oigtl_transport oigtl_ergo)
 
 # ---------------------------------------------------------------------------
+# Upstream-compatibility shim — libigtl_compat.
+#   Phase 5: LightObject + SmartPointer + Object + macros.
+#   Phase 6: message facades (codegen-emitted).
+#   Phase 7: ClientSocket / ServerSocket / Socket over oigtl_transport.
+# Consumers of the upstream API (Slicer, PLUS, …) link against this
+# library plus oigtl_transport + oigtl_messages + oigtl_runtime, no
+# source changes required.
+# ---------------------------------------------------------------------------
+add_library(igtl_compat STATIC
+    compat/src/igtlLightObject.cxx
+    compat/src/igtlObject.cxx
+)
+target_include_directories(igtl_compat PUBLIC compat/include)
+# Upstream's igtlTypeMacro / igtlNewMacro are typically called with
+# a trailing `;` in consumer headers ("igtlTypeMacro(Foo, Bar);").
+# That produces -Wextra-semi diagnostics. For drop-in compatibility
+# we suppress that warning both when building the shim and when
+# consumers include its headers.
+if(CMAKE_CXX_COMPILER_ID MATCHES "GNU|Clang|AppleClang")
+    target_compile_options(igtl_compat PUBLIC -Wno-extra-semi)
+endif()
+# Phase 5 has no transport / codec deps yet; added in Phase 6/7.
+
+# ---------------------------------------------------------------------------
 # Tests
 # ---------------------------------------------------------------------------
 enable_testing()
@@ -180,6 +204,15 @@ add_executable(oigtl_transport_sync_test
 target_link_libraries(oigtl_transport_sync_test
     PRIVATE oigtl_transport oigtl_runtime)
 add_test(NAME transport_sync COMMAND oigtl_transport_sync_test)
+
+# Shim Phase 5 — LightObject + SmartPointer refcount semantics.
+add_executable(igtl_compat_smartpointer_test
+    compat/tests/smartpointer_test.cxx
+)
+target_link_libraries(igtl_compat_smartpointer_test
+    PRIVATE igtl_compat)
+add_test(NAME compat_smartpointer
+         COMMAND igtl_compat_smartpointer_test)
 
 # Ergonomic layer — Envelope, pack/unpack, Client, Server.
 add_executable(oigtl_ergo_test
