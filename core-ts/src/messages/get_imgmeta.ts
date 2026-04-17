@@ -132,8 +132,9 @@ export class GetImgmeta {
         `GET_IMGMETA unpack consumed ${offset}/${bytes.length} bytes`,
       );
     }
-    return new GetImgmeta({
+    const instance = new GetImgmeta({
     });
+    return instance;
   }
 
   pack(): Uint8Array {

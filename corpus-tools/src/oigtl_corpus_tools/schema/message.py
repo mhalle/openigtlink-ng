@@ -168,6 +168,19 @@ class MessageSchema(BaseModel):
             "non-default."
         ),
     )
+    post_unpack_invariant: Optional[str] = Field(
+        default=None,
+        description=(
+            "Name of a cross-field invariant every codec must enforce "
+            "after unpacking, selected from a closed vocabulary defined "
+            "in ``codec/policy.py::POST_UNPACK_INVARIANTS``. These are "
+            "constraints that depend on more than one field's value "
+            "(e.g. ``len(data) == prod(size) * scalar_bytes(scalar_type)`` "
+            "for NDARRAY) and therefore cannot be expressed as a per-"
+            "field type. Four distinct codec runtimes implement the same "
+            "named invariant; the differential fuzzer keeps them aligned."
+        ),
+    )
     metadata_allowed: Optional[bool] = Field(
         default=None,
         description=(

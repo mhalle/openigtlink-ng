@@ -17,6 +17,7 @@ import {
   viewOf,
 } from "../runtime/byte_order.js";
 import { BodyDecodeError } from "../runtime/errors.js";
+import { POST_UNPACK_INVARIANTS } from "../runtime/invariants.js";
 
 // Strict ASCII helpers used for fixed_string fields, struct-array
 // sub-fields, and the encoding="ascii" variants of
@@ -170,7 +171,7 @@ export class ImageMessage {
         `IMAGE unpack consumed ${offset}/${bytes.length} bytes`,
       );
     }
-    return new ImageMessage({
+    const instance = new ImageMessage({
       header_version,
       num_components,
       scalar_type,
@@ -182,6 +183,12 @@ export class ImageMessage {
       subvol_size,
       pixels,
     });
+    // Post-unpack cross-field invariant (schema:
+    //   post_unpack_invariant = "image").
+    // Parallel to python_message.py.jinja + message.cpp.jinja +
+    // corpus-tools codec/policy.py::POST_UNPACK_INVARIANTS.
+    (POST_UNPACK_INVARIANTS["image"] as (m: unknown) => void)(instance);
+    return instance;
   }
 
   pack(): Uint8Array {

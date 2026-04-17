@@ -137,9 +137,10 @@ export class Transform {
         `TRANSFORM unpack consumed ${offset}/${bytes.length} bytes`,
       );
     }
-    return new Transform({
+    const instance = new Transform({
       matrix,
     });
+    return instance;
   }
 
   pack(): Uint8Array {

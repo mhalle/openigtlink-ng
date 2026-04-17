@@ -136,9 +136,10 @@ export class RtsNdarray {
         `RTS_NDARRAY unpack consumed ${offset}/${bytes.length} bytes`,
       );
     }
-    return new RtsNdarray({
+    const instance = new RtsNdarray({
       status,
     });
+    return instance;
   }
 
   pack(): Uint8Array {

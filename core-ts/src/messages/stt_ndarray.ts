@@ -132,8 +132,9 @@ export class SttNdarray {
         `STT_NDARRAY unpack consumed ${offset}/${bytes.length} bytes`,
       );
     }
-    return new SttNdarray({
+    const instance = new SttNdarray({
     });
+    return instance;
   }
 
   pack(): Uint8Array {

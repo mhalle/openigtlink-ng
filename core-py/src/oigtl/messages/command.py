@@ -44,4 +44,5 @@ class Command(BaseModel):
     @classmethod
     def unpack(cls, data: bytes) -> "Command":
         """Decode wire body bytes into a :class:`Command` instance."""
-        return cls.model_validate(unpack_fields(_FIELDS, data))
+        instance = cls.model_validate(unpack_fields(_FIELDS, data))
+        return instance

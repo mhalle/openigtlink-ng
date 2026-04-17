@@ -132,8 +132,9 @@ export class StpQtdata {
         `STP_QTDATA unpack consumed ${offset}/${bytes.length} bytes`,
       );
     }
-    return new StpQtdata({
+    const instance = new StpQtdata({
     });
+    return instance;
   }
 
   pack(): Uint8Array {

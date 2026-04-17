@@ -164,6 +164,7 @@ class MessageTsPlan:
     fields: list[TopField]
     nested_interfaces: list[NestedInterface] = dc_field(default_factory=list)
     body_size_set: Optional[list[int]] = None
+    post_unpack_invariant: Optional[str] = None
 
 
 # ---------------------------------------------------------------------------
@@ -738,4 +739,5 @@ def plan_message(schema: dict[str, Any]) -> MessageTsPlan:
         fields=top_fields,
         nested_interfaces=list(nested_for_field.values()),
         body_size_set=body_size_set,
+        post_unpack_invariant=schema.get("post_unpack_invariant"),
     )

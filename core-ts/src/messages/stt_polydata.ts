@@ -132,8 +132,9 @@ export class SttPolydata {
         `STT_POLYDATA unpack consumed ${offset}/${bytes.length} bytes`,
       );
     }
-    return new SttPolydata({
+    const instance = new SttPolydata({
     });
+    return instance;
   }
 
   pack(): Uint8Array {

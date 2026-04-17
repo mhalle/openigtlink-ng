@@ -17,6 +17,9 @@ import {
   viewOf,
 } from "../runtime/byte_order.js";
 import { BodyDecodeError } from "../runtime/errors.js";
+{% if plan.post_unpack_invariant %}
+import { POST_UNPACK_INVARIANTS } from "../runtime/invariants.js";
+{% endif %}
 
 // Strict ASCII helpers used for fixed_string fields, struct-array
 // sub-fields, and the encoding="ascii" variants of
@@ -163,11 +166,19 @@ export class {{ plan.class_name }} {
         `{{ plan.type_id }} unpack consumed ${offset}/${bytes.length} bytes`,
       );
     }
-    return new {{ plan.class_name }}({
+    const instance = new {{ plan.class_name }}({
 {% for f in plan.fields %}
       {{ f.name }},
 {% endfor %}
     });
+    {% if plan.post_unpack_invariant %}
+    // Post-unpack cross-field invariant (schema:
+    //   post_unpack_invariant = "{{ plan.post_unpack_invariant }}").
+    // Parallel to python_message.py.jinja + message.cpp.jinja +
+    // corpus-tools codec/policy.py::POST_UNPACK_INVARIANTS.
+    (POST_UNPACK_INVARIANTS[{{ plan.post_unpack_invariant|tojson }}] as (m: unknown) => void)(instance);
+    {% endif %}
+    return instance;
   }
 
   pack(): Uint8Array {

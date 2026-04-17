@@ -136,9 +136,10 @@ export class Unit {
         `UNIT unpack consumed ${offset}/${bytes.length} bytes`,
       );
     }
-    return new Unit({
+    const instance = new Unit({
       packed,
     });
+    return instance;
   }
 
   pack(): Uint8Array {

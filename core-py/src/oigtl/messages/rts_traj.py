@@ -30,4 +30,5 @@ class RtsTraj(BaseModel):
     @classmethod
     def unpack(cls, data: bytes) -> "RtsTraj":
         """Decode wire body bytes into a :class:`RtsTraj` instance."""
-        return cls.model_validate(unpack_fields(_FIELDS, data))
+        instance = cls.model_validate(unpack_fields(_FIELDS, data))
+        return instance

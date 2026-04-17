@@ -136,9 +136,10 @@ export class RtsStatus {
         `RTS_STATUS unpack consumed ${offset}/${bytes.length} bytes`,
       );
     }
-    return new RtsStatus({
+    const instance = new RtsStatus({
       status,
     });
+    return instance;
   }
 
   pack(): Uint8Array {

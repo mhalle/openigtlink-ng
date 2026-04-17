@@ -29,4 +29,5 @@ class StpVideo(BaseModel):
     @classmethod
     def unpack(cls, data: bytes) -> "StpVideo":
         """Decode wire body bytes into a :class:`StpVideo` instance."""
-        return cls.model_validate(unpack_fields(_FIELDS, data))
+        instance = cls.model_validate(unpack_fields(_FIELDS, data))
+        return instance

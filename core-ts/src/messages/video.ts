@@ -170,7 +170,7 @@ export class VideoMessage {
         `VIDEO unpack consumed ${offset}/${bytes.length} bytes`,
       );
     }
-    return new VideoMessage({
+    const instance = new VideoMessage({
       header_version,
       endian,
       codec,
@@ -182,6 +182,7 @@ export class VideoMessage {
       subvol_size,
       frame_data,
     });
+    return instance;
   }
 
   pack(): Uint8Array {

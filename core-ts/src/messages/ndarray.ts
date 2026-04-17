@@ -17,6 +17,7 @@ import {
   viewOf,
 } from "../runtime/byte_order.js";
 import { BodyDecodeError } from "../runtime/errors.js";
+import { POST_UNPACK_INVARIANTS } from "../runtime/invariants.js";
 
 // Strict ASCII helpers used for fixed_string fields, struct-array
 // sub-fields, and the encoding="ascii" variants of
@@ -143,12 +144,18 @@ export class Ndarray {
         `NDARRAY unpack consumed ${offset}/${bytes.length} bytes`,
       );
     }
-    return new Ndarray({
+    const instance = new Ndarray({
       scalar_type,
       dim,
       size,
       data,
     });
+    // Post-unpack cross-field invariant (schema:
+    //   post_unpack_invariant = "ndarray").
+    // Parallel to python_message.py.jinja + message.cpp.jinja +
+    // corpus-tools codec/policy.py::POST_UNPACK_INVARIANTS.
+    (POST_UNPACK_INVARIANTS["ndarray"] as (m: unknown) => void)(instance);
+    return instance;
   }
 
   pack(): Uint8Array {

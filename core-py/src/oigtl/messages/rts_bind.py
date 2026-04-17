@@ -30,4 +30,5 @@ class RtsBind(BaseModel):
     @classmethod
     def unpack(cls, data: bytes) -> "RtsBind":
         """Decode wire body bytes into a :class:`RtsBind` instance."""
-        return cls.model_validate(unpack_fields(_FIELDS, data))
+        instance = cls.model_validate(unpack_fields(_FIELDS, data))
+        return instance

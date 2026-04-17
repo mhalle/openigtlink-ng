@@ -142,10 +142,11 @@ export class Position {
         `POSITION unpack consumed ${offset}/${bytes.length} bytes`,
       );
     }
-    return new Position({
+    const instance = new Position({
       position,
       quaternion,
     });
+    return instance;
   }
 
   pack(): Uint8Array {

@@ -132,8 +132,9 @@ export class StpVideo {
         `STP_VIDEO unpack consumed ${offset}/${bytes.length} bytes`,
       );
     }
-    return new StpVideo({
+    const instance = new StpVideo({
     });
+    return instance;
   }
 
   pack(): Uint8Array {

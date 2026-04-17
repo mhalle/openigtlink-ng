@@ -57,4 +57,5 @@ class Position(BaseModel):
                 "POSITION body_size=" + str(len(data))
                 + " is not in the allowed set [12, 24, 28]"
             )
-        return cls.model_validate(unpack_fields(_FIELDS, data))
+        instance = cls.model_validate(unpack_fields(_FIELDS, data))
+        return instance

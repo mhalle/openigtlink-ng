@@ -29,4 +29,5 @@ class GetLbmeta(BaseModel):
     @classmethod
     def unpack(cls, data: bytes) -> "GetLbmeta":
         """Decode wire body bytes into a :class:`GetLbmeta` instance."""
-        return cls.model_validate(unpack_fields(_FIELDS, data))
+        instance = cls.model_validate(unpack_fields(_FIELDS, data))
+        return instance

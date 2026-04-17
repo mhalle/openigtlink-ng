@@ -132,8 +132,9 @@ export class StpImage {
         `STP_IMAGE unpack consumed ${offset}/${bytes.length} bytes`,
       );
     }
-    return new StpImage({
+    const instance = new StpImage({
     });
+    return instance;
   }
 
   pack(): Uint8Array {

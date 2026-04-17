@@ -136,9 +136,10 @@ export class RtsTraj {
         `RTS_TRAJ unpack consumed ${offset}/${bytes.length} bytes`,
       );
     }
-    return new RtsTraj({
+    const instance = new RtsTraj({
       status,
     });
+    return instance;
   }
 
   pack(): Uint8Array {

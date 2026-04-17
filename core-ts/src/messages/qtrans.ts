@@ -142,10 +142,11 @@ export class Qtrans {
         `QTRANS unpack consumed ${offset}/${bytes.length} bytes`,
       );
     }
-    return new Qtrans({
+    const instance = new Qtrans({
       position,
       quaternion,
     });
+    return instance;
   }
 
   pack(): Uint8Array {

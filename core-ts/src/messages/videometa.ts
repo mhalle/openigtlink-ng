@@ -161,9 +161,10 @@ export class Videometa {
         `VIDEOMETA unpack consumed ${offset}/${bytes.length} bytes`,
       );
     }
-    return new Videometa({
+    const instance = new Videometa({
       videos,
     });
+    return instance;
   }
 
   pack(): Uint8Array {

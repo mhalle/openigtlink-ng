@@ -132,8 +132,9 @@ export class GetPosition {
         `GET_POSITION unpack consumed ${offset}/${bytes.length} bytes`,
       );
     }
-    return new GetPosition({
+    const instance = new GetPosition({
     });
+    return instance;
   }
 
   pack(): Uint8Array {

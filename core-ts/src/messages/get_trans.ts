@@ -132,8 +132,9 @@ export class GetTrans {
         `GET_TRANS unpack consumed ${offset}/${bytes.length} bytes`,
       );
     }
-    return new GetTrans({
+    const instance = new GetTrans({
     });
+    return instance;
   }
 
   pack(): Uint8Array {

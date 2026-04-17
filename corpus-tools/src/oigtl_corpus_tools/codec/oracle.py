@@ -36,7 +36,10 @@ from typing import Any
 from oigtl_corpus_tools.codec.crc64 import crc64
 from oigtl_corpus_tools.codec.header import HEADER_SIZE, unpack_header
 from oigtl_corpus_tools.codec.message import load_schema, pack_body, unpack_body
-from oigtl_corpus_tools.codec.policy import check_body_size_set
+from oigtl_corpus_tools.codec.policy import (
+    check_body_size_set,
+    run_post_unpack_invariant,
+)
 
 
 # Minimum extended-header size (4 fields: u16, u16, u32, u32 = 12 bytes).
@@ -280,6 +283,16 @@ def verify_wire_bytes(
         body = unpack_body(schema, content_bytes)
     except Exception as exc:
         result.error = f"unpack failed: {exc}"
+        return result
+
+    # Cross-field invariants (post_unpack_invariant in the schema).
+    # These are constraints like "len(data) == prod(size) × scalar_bytes"
+    # that depend on multiple fields' values — see
+    # codec/policy.py::POST_UNPACK_INVARIANTS.
+    try:
+        run_post_unpack_invariant(schema, body)
+    except ValueError as exc:
+        result.error = f"post-unpack invariant violated: {exc}"
         return result
 
     result.body = body

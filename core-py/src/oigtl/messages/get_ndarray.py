@@ -29,4 +29,5 @@ class GetNdarray(BaseModel):
     @classmethod
     def unpack(cls, data: bytes) -> "GetNdarray":
         """Decode wire body bytes into a :class:`GetNdarray` instance."""
-        return cls.model_validate(unpack_fields(_FIELDS, data))
+        instance = cls.model_validate(unpack_fields(_FIELDS, data))
+        return instance

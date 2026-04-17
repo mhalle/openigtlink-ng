@@ -152,11 +152,12 @@ export class Metadata {
         `METADATA unpack consumed ${offset}/${bytes.length} bytes`,
       );
     }
-    return new Metadata({
+    const instance = new Metadata({
       count,
       index_entries,
       body,
     });
+    return instance;
   }
 
   pack(): Uint8Array {

@@ -132,8 +132,9 @@ export class GetString {
         `GET_STRING unpack consumed ${offset}/${bytes.length} bytes`,
       );
     }
-    return new GetString({
+    const instance = new GetString({
     });
+    return instance;
   }
 
   pack(): Uint8Array {

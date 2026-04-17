@@ -132,9 +132,10 @@ export class Capability {
         `CAPABILITY unpack consumed ${offset}/${bytes.length} bytes`,
       );
     }
-    return new Capability({
+    const instance = new Capability({
       supported_types,
     });
+    return instance;
   }
 
   pack(): Uint8Array {

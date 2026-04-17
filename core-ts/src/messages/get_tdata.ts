@@ -132,8 +132,9 @@ export class GetTdata {
         `GET_TDATA unpack consumed ${offset}/${bytes.length} bytes`,
       );
     }
-    return new GetTdata({
+    const instance = new GetTdata({
     });
+    return instance;
   }
 
   pack(): Uint8Array {

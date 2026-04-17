@@ -136,9 +136,10 @@ export class RtsPolydata {
         `RTS_POLYDATA unpack consumed ${offset}/${bytes.length} bytes`,
       );
     }
-    return new RtsPolydata({
+    const instance = new RtsPolydata({
       status,
     });
+    return instance;
   }
 
   pack(): Uint8Array {

@@ -132,8 +132,9 @@ export class StpBind {
         `STP_BIND unpack consumed ${offset}/${bytes.length} bytes`,
       );
     }
-    return new StpBind({
+    const instance = new StpBind({
     });
+    return instance;
   }
 
   pack(): Uint8Array {

@@ -135,10 +135,11 @@ export class StringMessage {
         `STRING unpack consumed ${offset}/${bytes.length} bytes`,
       );
     }
-    return new StringMessage({
+    const instance = new StringMessage({
       encoding,
       value,
     });
+    return instance;
   }
 
   pack(): Uint8Array {

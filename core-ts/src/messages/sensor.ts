@@ -143,12 +143,13 @@ export class Sensor {
         `SENSOR unpack consumed ${offset}/${bytes.length} bytes`,
       );
     }
-    return new Sensor({
+    const instance = new Sensor({
       larray,
       status,
       unit,
       data,
     });
+    return instance;
   }
 
   pack(): Uint8Array {

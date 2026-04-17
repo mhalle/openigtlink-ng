@@ -29,4 +29,5 @@ class StpQtrans(BaseModel):
     @classmethod
     def unpack(cls, data: bytes) -> "StpQtrans":
         """Decode wire body bytes into a :class:`StpQtrans` instance."""
-        return cls.model_validate(unpack_fields(_FIELDS, data))
+        instance = cls.model_validate(unpack_fields(_FIELDS, data))
+        return instance

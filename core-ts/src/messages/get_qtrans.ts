@@ -132,8 +132,9 @@ export class GetQtrans {
         `GET_QTRANS unpack consumed ${offset}/${bytes.length} bytes`,
       );
     }
-    return new GetQtrans({
+    const instance = new GetQtrans({
     });
+    return instance;
   }
 
   pack(): Uint8Array {

@@ -436,6 +436,12 @@
       "default": null,
       "description": "V3 extended-header layout for this message type, if non-default."
     },
+    "post_unpack_invariant": {
+      "default": null,
+      "description": "Name of a cross-field invariant every codec must enforce after unpacking, selected from a closed vocabulary defined in ``codec/policy.py::POST_UNPACK_INVARIANTS``. These are constraints that depend on more than one field's value (e.g. ``len(data) == prod(size) * scalar_bytes(scalar_type)`` for NDARRAY) and therefore cannot be expressed as a per-field type. Four distinct codec runtimes implement the same named invariant; the differential fuzzer keeps them aligned.",
+      "title": "Post Unpack Invariant",
+      "type": "string"
+    },
     "metadata_allowed": {
       "default": null,
       "description": "Whether this message type accepts a trailing metadata block in v2/v3. Defaults to true.",

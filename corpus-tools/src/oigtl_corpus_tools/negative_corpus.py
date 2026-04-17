@@ -246,6 +246,69 @@ def _content_ndarray_dim_huge() -> bytes:
     return _pack_header(type_id="NDARRAY", body=body) + body
 
 
+def _content_ndarray_invalid_scalar_type() -> bytes:
+    """NDARRAY scalar_type=0 — not in the valid set {2,3,4,5,6,7,10,11,13}.
+
+    Regression for the post_unpack_invariant=ndarray class (surfaced
+    by the upstream 6th-oracle on 2026-04-17). A codec that only
+    enforces body_size_set would parse this cleanly — all field widths
+    resolve — but the cross-field invariant catches the invalid type.
+    """
+    # scalar_type=0 (invalid), dim=1, size=[4], data=[0 0 0 0] (4 bytes)
+    body = bytes([0, 1]) + struct.pack(">H", 4) + b"\x00" * 4
+    return _pack_header(type_id="NDARRAY", body=body) + body
+
+
+def _content_ndarray_data_size_mismatch() -> bytes:
+    """NDARRAY data length doesn't match product(size) × scalar_bytes.
+
+    scalar_type=11 (float64, 8 bytes/elem), dim=1, size=[3] → expects
+    24 data bytes; we supply 16. Buffer is well-formed and body_size
+    is consistent, but the spec-mandated invariant fails.
+    """
+    body = bytes([11, 1]) + struct.pack(">H", 3) + b"\x00" * 16
+    return _pack_header(type_id="NDARRAY", body=body) + body
+
+
+def _content_image_invalid_scalar_type() -> bytes:
+    """IMAGE scalar_type=13 (complex) — valid for NDARRAY, not IMAGE.
+
+    IMAGE only accepts {2,3,4,5,6,7,10,11}; 13 is a forbidden value.
+    """
+    # v=1, ncomp=1, st=13, endian=1, coord=1, size=(1,1,1),
+    # matrix (12 float32 = 48 zero bytes), subvol_offset=(0,0,0),
+    # subvol_size=(1,1,1), pixels=16 bytes
+    body = (
+        struct.pack(">H", 1)    # header_version
+        + bytes([1, 13, 1, 1])  # ncomp, st, endian, coord
+        + struct.pack(">HHH", 1, 1, 1)  # size
+        + b"\x00" * 48          # matrix
+        + struct.pack(">HHH", 0, 0, 0)  # subvol_offset
+        + struct.pack(">HHH", 1, 1, 1)  # subvol_size
+        + b"\x00" * 16          # pixels (would-be-valid if scalar_type were legal)
+    )
+    return _pack_header(type_id="IMAGE", body=body) + body
+
+
+def _content_image_pixel_size_mismatch() -> bytes:
+    """IMAGE pixel region size doesn't match prod(subvol_size)×ncomp×bps.
+
+    scalar_type=3 (uint8, 1 byte), ncomp=1, subvol_size=(4,4,4) → expects
+    64 pixel bytes; we supply 32. Regression for the
+    post_unpack_invariant=image cross-field check.
+    """
+    body = (
+        struct.pack(">H", 1)   # header_version
+        + bytes([1, 3, 1, 1])  # ncomp=1, st=3 (uint8), endian=1, coord=1
+        + struct.pack(">HHH", 4, 4, 4)  # size
+        + b"\x00" * 48         # matrix
+        + struct.pack(">HHH", 0, 0, 0)  # subvol_offset
+        + struct.pack(">HHH", 4, 4, 4)  # subvol_size
+        + b"\x00" * 32         # pixels: only 32 of expected 64
+    )
+    return _pack_header(type_id="IMAGE", body=body) + body
+
+
 def _content_sensor_larray_mismatch() -> bytes:
     """SENSOR claims larray=10 floats but data region has 1 float's worth."""
     # larray(u8), status(u8), unit(u64), data[larray*8]
@@ -452,6 +515,55 @@ _CORPUS: list[_Spec] = [
         error_class="MALFORMED",
         spec_reference="spec/schemas/ndarray.json",
         builder=_content_ndarray_dim_huge,
+    ),
+    _Spec(
+        name="content_ndarray_invalid_scalar_type",
+        path="content/ndarray_invalid_scalar_type.bin",
+        description=(
+            "NDARRAY scalar_type=0; valid set is {2,3,4,5,6,7,10,11,13}. "
+            "Regression for post_unpack_invariant=ndarray."
+        ),
+        error_class="MALFORMED",
+        spec_reference="spec/schemas/ndarray.json",
+        builder=_content_ndarray_invalid_scalar_type,
+    ),
+    _Spec(
+        name="content_ndarray_data_size_mismatch",
+        path="content/ndarray_data_size_mismatch.bin",
+        description=(
+            "NDARRAY data length 16 bytes, expected product(size=[3]) "
+            "× bytes_per_scalar(11)=8 = 24. Regression for "
+            "post_unpack_invariant=ndarray."
+        ),
+        error_class="MALFORMED",
+        spec_reference="spec/schemas/ndarray.json",
+        builder=_content_ndarray_data_size_mismatch,
+    ),
+
+    # --- Content: IMAGE ---
+    _Spec(
+        name="content_image_invalid_scalar_type",
+        path="content/image_invalid_scalar_type.bin",
+        description=(
+            "IMAGE scalar_type=13 (complex); valid IMAGE set is "
+            "{2,3,4,5,6,7,10,11} — complex is NDARRAY-only. "
+            "Regression for post_unpack_invariant=image."
+        ),
+        error_class="MALFORMED",
+        spec_reference="spec/schemas/image.json",
+        builder=_content_image_invalid_scalar_type,
+    ),
+    _Spec(
+        name="content_image_pixel_size_mismatch",
+        path="content/image_pixel_size_mismatch.bin",
+        description=(
+            "IMAGE pixels length 32 bytes, expected product(subvol_size="
+            "[4,4,4])×num_components=1×bytes_per_scalar(3)=1 = 64. "
+            "Regression for post_unpack_invariant=image."
+        ),
+        error_class="MALFORMED",
+        spec_reference="spec/schemas/image.json",
+        builder=_content_image_pixel_size_mismatch,
     ),
 
     # --- Content: SENSOR ---

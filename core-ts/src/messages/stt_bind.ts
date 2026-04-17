@@ -149,13 +149,14 @@ export class SttBind {
         `STT_BIND unpack consumed ${offset}/${bytes.length} bytes`,
       );
     }
-    return new SttBind({
+    const instance = new SttBind({
       resolution,
       ncmessages,
       type_ids,
       nametable_size,
       name_table,
     });
+    return instance;
   }
 
   pack(): Uint8Array {

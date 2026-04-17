@@ -136,9 +136,10 @@ export class RtsImgmeta {
         `RTS_IMGMETA unpack consumed ${offset}/${bytes.length} bytes`,
       );
     }
-    return new RtsImgmeta({
+    const instance = new RtsImgmeta({
       status,
     });
+    return instance;
   }
 
   pack(): Uint8Array {

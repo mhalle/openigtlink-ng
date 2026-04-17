@@ -226,7 +226,7 @@ export class Polydata {
         `POLYDATA unpack consumed ${offset}/${bytes.length} bytes`,
       );
     }
-    return new Polydata({
+    const instance = new Polydata({
       npoints,
       nvertices,
       size_vertices,
@@ -245,6 +245,7 @@ export class Polydata {
       attribute_headers,
       attribute_data,
     });
+    return instance;
   }
 
   pack(): Uint8Array {

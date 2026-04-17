@@ -132,8 +132,9 @@ export class GetVmeta {
         `GET_VMETA unpack consumed ${offset}/${bytes.length} bytes`,
       );
     }
-    return new GetVmeta({
+    const instance = new GetVmeta({
     });
+    return instance;
   }
 
   pack(): Uint8Array {

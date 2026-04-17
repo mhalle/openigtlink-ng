@@ -156,7 +156,7 @@ export class HeaderMessage {
         `HEADER unpack consumed ${offset}/${bytes.length} bytes`,
       );
     }
-    return new HeaderMessage({
+    const instance = new HeaderMessage({
       version,
       type,
       device_name,
@@ -164,6 +164,7 @@ export class HeaderMessage {
       body_size,
       crc,
     });
+    return instance;
   }
 
   pack(): Uint8Array {

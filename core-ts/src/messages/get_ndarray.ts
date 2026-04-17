@@ -132,8 +132,9 @@ export class GetNdarray {
         `GET_NDARRAY unpack consumed ${offset}/${bytes.length} bytes`,
       );
     }
-    return new GetNdarray({
+    const instance = new GetNdarray({
     });
+    return instance;
   }
 
   pack(): Uint8Array {

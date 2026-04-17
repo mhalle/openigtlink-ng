@@ -225,8 +225,40 @@ void process(const std::vector<std::uint8_t>& bytes, Report& r) {
         return;
     }
     std::memcpy(msg->GetPackBodyPointer(), bytes.data() + body_start, body_needed);
+
+    // Upstream quirk (igtlMessageBase::UnpackExtendedHeader): upstream
+    // hardcodes ``sizeof(igtl_extended_header) == 12`` as the offset
+    // where the per-message content begins, regardless of the
+    // ext_header_size value carried on the wire. The spec allows
+    // ``ext_header_size >= 12`` with the extra bytes reserved for
+    // future fields. Our codecs advance to ``offset = ext_header_size``
+    // as declared; upstream does not. Surface this distinctly so the
+    // runner can filter it from the disagreement set — it's a real
+    // upstream limitation, not a cross-codec bug we need to triage.
+    if (r.version >= 2 && body_needed >= 2) {
+        const std::uint16_t declared =
+            (std::uint16_t(bytes[body_start]) << 8) | bytes[body_start + 1];
+        if (declared != 12) {
+            r.ok = true;
+            r.error = "upstream quirk: ext_header_size != 12 not supported";
+            return;
+        }
+    }
+
     int br = msg->Unpack(1);  // 1 = CRC check
     if (!(br & igtl::MessageHeader::UNPACK_BODY)) {
+        // Upstream quirk (igtlMessageBase.cxx::Unpack, v1 path): the
+        // call to UnpackBody is gated on ``GetBufferBodySize() > 0``,
+        // so a v1 message with an empty body silently skips body
+        // unpacking and the UNPACK_BODY flag never gets set. That's
+        // "body unpack not attempted" rather than "rejected"; mark
+        // it distinctly so the runner can filter it from the
+        // disagreement set without treating it as a real reject.
+        if (r.version < 2 && body_needed == 0) {
+            r.ok = true;
+            r.error = "upstream quirk: v1 empty body not unpacked";
+            return;
+        }
         r.error = "upstream body Unpack() rejected input";
         return;
     }

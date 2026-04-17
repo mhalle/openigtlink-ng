@@ -132,8 +132,9 @@ export class StpTrans {
         `STP_TRANS unpack consumed ${offset}/${bytes.length} bytes`,
       );
     }
-    return new StpTrans({
+    const instance = new StpTrans({
     });
+    return instance;
   }
 
   pack(): Uint8Array {

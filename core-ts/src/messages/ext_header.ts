@@ -142,12 +142,13 @@ export class ExtHeaderMessage {
         `EXT_HEADER unpack consumed ${offset}/${bytes.length} bytes`,
       );
     }
-    return new ExtHeaderMessage({
+    const instance = new ExtHeaderMessage({
       ext_header_size,
       metadata_header_size,
       metadata_size,
       message_id,
     });
+    return instance;
   }
 
   pack(): Uint8Array {

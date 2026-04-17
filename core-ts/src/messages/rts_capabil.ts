@@ -136,9 +136,10 @@ export class RtsCapabil {
         `RTS_CAPABIL unpack consumed ${offset}/${bytes.length} bytes`,
       );
     }
-    return new RtsCapabil({
+    const instance = new RtsCapabil({
       status,
     });
+    return instance;
   }
 
   pack(): Uint8Array {

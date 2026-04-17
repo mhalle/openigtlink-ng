@@ -29,4 +29,5 @@ class SttPosition(BaseModel):
     @classmethod
     def unpack(cls, data: bytes) -> "SttPosition":
         """Decode wire body bytes into a :class:`SttPosition` instance."""
-        return cls.model_validate(unpack_fields(_FIELDS, data))
+        instance = cls.model_validate(unpack_fields(_FIELDS, data))
+        return instance

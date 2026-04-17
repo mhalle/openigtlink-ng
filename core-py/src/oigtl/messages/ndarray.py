@@ -9,6 +9,7 @@ from typing import Annotated, Any, ClassVar
 
 from pydantic import BaseModel, ConfigDict, Field, field_validator
 from oigtl_corpus_tools.codec.fields import pack_fields, unpack_fields
+from oigtl_corpus_tools.codec.policy import POST_UNPACK_INVARIANTS
 from oigtl.runtime.arrays import (
     coerce_variable_array,
     empty_variable_array,
@@ -56,4 +57,6 @@ class Ndarray(BaseModel):
     @classmethod
     def unpack(cls, data: bytes) -> "Ndarray":
         """Decode wire body bytes into a :class:`Ndarray` instance."""
-        return cls.model_validate(unpack_fields(_FIELDS, data))
+        instance = cls.model_validate(unpack_fields(_FIELDS, data))
+        POST_UNPACK_INVARIANTS["ndarray"](instance)
+        return instance

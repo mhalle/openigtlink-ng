@@ -30,4 +30,5 @@ class RtsQtrans(BaseModel):
     @classmethod
     def unpack(cls, data: bytes) -> "RtsQtrans":
         """Decode wire body bytes into a :class:`RtsQtrans` instance."""
-        return cls.model_validate(unpack_fields(_FIELDS, data))
+        instance = cls.model_validate(unpack_fields(_FIELDS, data))
+        return instance

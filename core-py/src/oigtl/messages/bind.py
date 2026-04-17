@@ -57,4 +57,5 @@ class Bind(BaseModel):
     @classmethod
     def unpack(cls, data: bytes) -> "Bind":
         """Decode wire body bytes into a :class:`Bind` instance."""
-        return cls.model_validate(unpack_fields(_FIELDS, data))
+        instance = cls.model_validate(unpack_fields(_FIELDS, data))
+        return instance

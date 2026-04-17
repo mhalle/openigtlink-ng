@@ -142,12 +142,13 @@ export class Status {
         `STATUS unpack consumed ${offset}/${bytes.length} bytes`,
       );
     }
-    return new Status({
+    const instance = new Status({
       code,
       subcode,
       error_name,
       status_message,
     });
+    return instance;
   }
 
   pack(): Uint8Array {

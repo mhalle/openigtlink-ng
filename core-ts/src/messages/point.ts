@@ -152,9 +152,10 @@ export class Point {
         `POINT unpack consumed ${offset}/${bytes.length} bytes`,
       );
     }
-    return new Point({
+    const instance = new Point({
       points,
     });
+    return instance;
   }
 
   pack(): Uint8Array {

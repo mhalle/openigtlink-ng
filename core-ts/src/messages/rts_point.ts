@@ -136,9 +136,10 @@ export class RtsPoint {
         `RTS_POINT unpack consumed ${offset}/${bytes.length} bytes`,
       );
     }
-    return new RtsPoint({
+    const instance = new RtsPoint({
       status,
     });
+    return instance;
   }
 
   pack(): Uint8Array {

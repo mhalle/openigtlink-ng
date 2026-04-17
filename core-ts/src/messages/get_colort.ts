@@ -132,8 +132,9 @@ export class GetColort {
         `GET_COLORT unpack consumed ${offset}/${bytes.length} bytes`,
       );
     }
-    return new GetColort({
+    const instance = new GetColort({
     });
+    return instance;
   }
 
   pack(): Uint8Array {

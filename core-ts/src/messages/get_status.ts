@@ -132,8 +132,9 @@ export class GetStatus {
         `GET_STATUS unpack consumed ${offset}/${bytes.length} bytes`,
       );
     }
-    return new GetStatus({
+    const instance = new GetStatus({
     });
+    return instance;
   }
 
   pack(): Uint8Array {

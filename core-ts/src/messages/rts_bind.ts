@@ -136,9 +136,10 @@ export class RtsBind {
         `RTS_BIND unpack consumed ${offset}/${bytes.length} bytes`,
       );
     }
-    return new RtsBind({
+    const instance = new RtsBind({
       status,
     });
+    return instance;
   }
 
   pack(): Uint8Array {

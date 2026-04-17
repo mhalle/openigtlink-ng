@@ -317,6 +317,7 @@ def _compare(reports: dict[str, dict[str, Any]]) -> list[str]:
         if (
             "no codec for this type_id" in error
             or error == "upstream crashed"
+            or error.startswith("upstream quirk:")
         ):
             filtered.pop("upstream")
 

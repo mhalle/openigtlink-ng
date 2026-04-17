@@ -29,4 +29,5 @@ class StpSensor(BaseModel):
     @classmethod
     def unpack(cls, data: bytes) -> "StpSensor":
         """Decode wire body bytes into a :class:`StpSensor` instance."""
-        return cls.model_validate(unpack_fields(_FIELDS, data))
+        instance = cls.model_validate(unpack_fields(_FIELDS, data))
+        return instance

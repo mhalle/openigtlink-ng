@@ -136,9 +136,10 @@ export class RtsQtdata {
         `RTS_QTDATA unpack consumed ${offset}/${bytes.length} bytes`,
       );
     }
-    return new RtsQtdata({
+    const instance = new RtsQtdata({
       status,
     });
+    return instance;
   }
 
   pack(): Uint8Array {

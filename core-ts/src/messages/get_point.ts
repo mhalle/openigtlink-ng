@@ -132,8 +132,9 @@ export class GetPoint {
         `GET_POINT unpack consumed ${offset}/${bytes.length} bytes`,
       );
     }
-    return new GetPoint({
+    const instance = new GetPoint({
     });
+    return instance;
   }
 
   pack(): Uint8Array {

@@ -10,6 +10,9 @@
 #include "oigtl/runtime/ascii.hpp"
 #include "oigtl/runtime/byte_order.hpp"
 #include "oigtl/runtime/error.hpp"
+{% if plan.post_unpack_invariant %}
+#include "oigtl/runtime/invariants.hpp"
+{% endif %}
 
 namespace oigtl::messages {
 
@@ -60,6 +63,13 @@ std::vector<std::uint8_t> {{ plan.class_name }}::pack() const {
     (void)off;
     (void)data;
     (void)length;
+    {% if plan.post_unpack_invariant %}
+    // Post-unpack cross-field invariant (schema:
+    //   post_unpack_invariant = "{{ plan.post_unpack_invariant }}").
+    // Parallel to python_message.py.jinja + ts_message.ts.jinja +
+    // corpus-tools codec/policy.py::POST_UNPACK_INVARIANTS.
+    oigtl::runtime::invariants::check_{{ plan.post_unpack_invariant }}(out);
+    {% endif %}
     return out;
 }
 

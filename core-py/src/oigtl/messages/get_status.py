@@ -29,4 +29,5 @@ class GetStatus(BaseModel):
     @classmethod
     def unpack(cls, data: bytes) -> "GetStatus":
         """Decode wire body bytes into a :class:`GetStatus` instance."""
-        return cls.model_validate(unpack_fields(_FIELDS, data))
+        instance = cls.model_validate(unpack_fields(_FIELDS, data))
+        return instance

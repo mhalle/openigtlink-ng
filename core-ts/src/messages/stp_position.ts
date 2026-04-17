@@ -132,8 +132,9 @@ export class StpPosition {
         `STP_POSITION unpack consumed ${offset}/${bytes.length} bytes`,
       );
     }
-    return new StpPosition({
+    const instance = new StpPosition({
     });
+    return instance;
   }
 
   pack(): Uint8Array {

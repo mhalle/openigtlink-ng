@@ -148,9 +148,10 @@ export class Tdata {
         `TDATA unpack consumed ${offset}/${bytes.length} bytes`,
       );
     }
-    return new Tdata({
+    const instance = new Tdata({
       tools,
     });
+    return instance;
   }
 
   pack(): Uint8Array {

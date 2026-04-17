@@ -132,8 +132,9 @@ export class GetImage {
         `GET_IMAGE unpack consumed ${offset}/${bytes.length} bytes`,
       );
     }
-    return new GetImage({
+    const instance = new GetImage({
     });
+    return instance;
   }
 
   pack(): Uint8Array {

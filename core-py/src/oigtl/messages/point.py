@@ -65,4 +65,5 @@ class Point(BaseModel):
     @classmethod
     def unpack(cls, data: bytes) -> "Point":
         """Decode wire body bytes into a :class:`Point` instance."""
-        return cls.model_validate(unpack_fields(_FIELDS, data))
+        instance = cls.model_validate(unpack_fields(_FIELDS, data))
+        return instance

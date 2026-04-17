@@ -132,8 +132,9 @@ export class GetLbmeta {
         `GET_LBMETA unpack consumed ${offset}/${bytes.length} bytes`,
       );
     }
-    return new GetLbmeta({
+    const instance = new GetLbmeta({
     });
+    return instance;
   }
 
   pack(): Uint8Array {

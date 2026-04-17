@@ -29,4 +29,5 @@ class StpImage(BaseModel):
     @classmethod
     def unpack(cls, data: bytes) -> "StpImage":
         """Decode wire body bytes into a :class:`StpImage` instance."""
-        return cls.model_validate(unpack_fields(_FIELDS, data))
+        instance = cls.model_validate(unpack_fields(_FIELDS, data))
+        return instance

@@ -136,9 +136,10 @@ export class RtsQtrans {
         `RTS_QTRANS unpack consumed ${offset}/${bytes.length} bytes`,
       );
     }
-    return new RtsQtrans({
+    const instance = new RtsQtrans({
       status,
     });
+    return instance;
   }
 
   pack(): Uint8Array {

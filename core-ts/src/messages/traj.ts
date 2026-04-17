@@ -159,9 +159,10 @@ export class Traj {
         `TRAJ unpack consumed ${offset}/${bytes.length} bytes`,
       );
     }
-    return new Traj({
+    const instance = new Traj({
       trajectories,
     });
+    return instance;
   }
 
   pack(): Uint8Array {

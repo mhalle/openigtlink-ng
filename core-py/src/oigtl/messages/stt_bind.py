@@ -46,4 +46,5 @@ class SttBind(BaseModel):
     @classmethod
     def unpack(cls, data: bytes) -> "SttBind":
         """Decode wire body bytes into a :class:`SttBind` instance."""
-        return cls.model_validate(unpack_fields(_FIELDS, data))
+        instance = cls.model_validate(unpack_fields(_FIELDS, data))
+        return instance

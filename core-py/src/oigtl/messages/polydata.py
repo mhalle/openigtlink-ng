@@ -99,4 +99,5 @@ class Polydata(BaseModel):
     @classmethod
     def unpack(cls, data: bytes) -> "Polydata":
         """Decode wire body bytes into a :class:`Polydata` instance."""
-        return cls.model_validate(unpack_fields(_FIELDS, data))
+        instance = cls.model_validate(unpack_fields(_FIELDS, data))
+        return instance

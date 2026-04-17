@@ -23,7 +23,10 @@ from oigtl_corpus_tools.codec.header import (
     unpack_header,
     verify_crc,
 )
-from oigtl_corpus_tools.codec.policy import check_body_size_set
+from oigtl_corpus_tools.codec.policy import (
+    check_body_size_set,
+    run_post_unpack_invariant,
+)
 from oigtl_corpus_tools.paths import find_repo_root, schemas_dir
 
 
@@ -136,6 +139,7 @@ def unpack_message(
     schema = load_schema(header["type"])
     check_body_size_set(schema, len(body_bytes))
     body_values = unpack_body(schema, body_bytes)
+    run_post_unpack_invariant(schema, body_values)
     return header, body_values
 
 

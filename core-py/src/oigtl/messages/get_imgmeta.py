@@ -29,4 +29,5 @@ class GetImgmeta(BaseModel):
     @classmethod
     def unpack(cls, data: bytes) -> "GetImgmeta":
         """Decode wire body bytes into a :class:`GetImgmeta` instance."""
-        return cls.model_validate(unpack_fields(_FIELDS, data))
+        instance = cls.model_validate(unpack_fields(_FIELDS, data))
+        return instance

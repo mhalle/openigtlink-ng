@@ -140,10 +140,11 @@ export class SttVideo {
         `STT_VIDEO unpack consumed ${offset}/${bytes.length} bytes`,
       );
     }
-    return new SttVideo({
+    const instance = new SttVideo({
       codec,
       time_interval,
     });
+    return instance;
   }
 
   pack(): Uint8Array {

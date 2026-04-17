@@ -30,4 +30,5 @@ class RtsString(BaseModel):
     @classmethod
     def unpack(cls, data: bytes) -> "RtsString":
         """Decode wire body bytes into a :class:`RtsString` instance."""
-        return cls.model_validate(unpack_fields(_FIELDS, data))
+        instance = cls.model_validate(unpack_fields(_FIELDS, data))
+        return instance

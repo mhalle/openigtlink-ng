@@ -132,8 +132,9 @@ export class StpSensor {
         `STP_SENSOR unpack consumed ${offset}/${bytes.length} bytes`,
       );
     }
-    return new StpSensor({
+    const instance = new StpSensor({
     });
+    return instance;
   }
 
   pack(): Uint8Array {

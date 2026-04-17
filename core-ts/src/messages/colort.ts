@@ -138,11 +138,12 @@ export class Colort {
         `COLORT unpack consumed ${offset}/${bytes.length} bytes`,
       );
     }
-    return new Colort({
+    const instance = new Colort({
       index_type,
       map_type,
       table,
     });
+    return instance;
   }
 
   pack(): Uint8Array {

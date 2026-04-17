@@ -132,8 +132,9 @@ export class SttQtrans {
         `STT_QTRANS unpack consumed ${offset}/${bytes.length} bytes`,
       );
     }
-    return new SttQtrans({
+    const instance = new SttQtrans({
     });
+    return instance;
   }
 
   pack(): Uint8Array {

@@ -140,10 +140,11 @@ export class SttQtdata {
         `STT_QTDATA unpack consumed ${offset}/${bytes.length} bytes`,
       );
     }
-    return new SttQtdata({
+    const instance = new SttQtdata({
       resolution,
       coord_name,
     });
+    return instance;
   }
 
   pack(): Uint8Array {

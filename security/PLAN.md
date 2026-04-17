@@ -475,27 +475,52 @@ Key design points:
   reported as `no codec for this type_id` and filtered from
   comparison.
 
-**First-run findings (10k iterations, seed 42):** 12 real
-conformance gaps where our four codecs accept bytes upstream
-rejects. Systematic classes:
+**First-run findings (10k iterations, seed 42):** 12 conformance
+disagreements where our codecs accept bytes upstream rejects. All
+triaged and resolved — 100k-iteration rerun (seed 42, all four
+codecs + upstream) shows **0 disagreements**.
 
-1. **NDARRAY** — no enforcement that `data_length ==
-   prod(sizes) × scalar_size`. Our codecs accept an NDARRAY with
-   `scalar_type=0xad` (invalid), `dim=181`, `data_length=140` when
-   `prod(sizes) × scalar_size` is in the trillions.
-2. **IMAGE** — no enforcement that pixel region size ==
-   `prod(sizes) × num_components × scalar_size`. Accepts
-   `scalar_type=145` (invalid), `endian=103` (valid 1/2/3),
-   `coord=154` (valid 1/2), `num_components=117`.
-3. **POINT / TDATA** — accepts empty variable-count bodies
-   (0 elements) where upstream requires at least one.
-4. **IMGMETA** — similar element-count / layout divergence.
+Two classes were real codec-logic gaps — fixed by adding a schema
+``post_unpack_invariant`` field and named validators in each
+runtime:
 
-These are codec-logic gaps, not schema gaps. The schema-generated
-unpack doesn't enforce implicit cross-field invariants beyond
-`body_size_set`. Triage is tracked separately (see todo list);
-each fix lands a negative-corpus entry and tightens the codegen
-for that field shape.
+1. **NDARRAY** (schema: ``post_unpack_invariant: "ndarray"``).
+   Enforces ``scalar_type in {2,3,4,5,6,7,10,11,13}`` and
+   ``len(data) == prod(size) × bytes_per_scalar(scalar_type)``.
+2. **IMAGE** (schema: ``post_unpack_invariant: "image"``).
+   Enforces ``scalar_type in {2,3,4,5,6,7,10,11}``,
+   ``endian ∈ {1,2,3}``, ``coord ∈ {1,2}``,
+   ``subvol_offset[i]+subvol_size[i] ≤ size[i]`` per axis, and
+   ``len(pixels) == prod(subvol_size) × num_components ×
+   bytes_per_scalar(scalar_type)``.
+
+Negative-corpus regressions:
+   content_ndarray_invalid_scalar_type,
+   content_ndarray_data_size_mismatch,
+   content_image_invalid_scalar_type,
+   content_image_pixel_size_mismatch.
+Infrastructure: ``codec/policy.py::POST_UNPACK_INVARIANTS`` +
+``core-cpp/include/oigtl/runtime/invariants.hpp`` +
+``core-ts/src/runtime/invariants.ts``. Codegen emits one
+dispatch call per schema-annotated message.
+
+Two classes were upstream-side quirks, not our bugs — surfaced
+distinctly via the oracle CLI and filtered:
+
+3. **POINT / TDATA / IMGMETA with body_size=0** — upstream v1
+   ``Unpack()`` silently skips ``UnpackBody`` when ``body_size == 0``
+   (gated on ``GetBufferBodySize() > 0`` in igtlMessageBase.cxx),
+   leaving the ``UNPACK_BODY`` flag unset even though the content
+   is a valid empty sequence. CLI emits
+   ``error="upstream quirk: v1 empty body not unpacked"``.
+4. **v2+ messages with ``ext_header_size != 12``** — upstream
+   hardcodes ``sizeof(igtl_extended_header) == 12`` as the content
+   offset regardless of what the wire declares. Spec allows
+   ``ext_header_size >= 12`` with reserved bytes for future
+   extensions; upstream ignores that. CLI emits
+   ``error="upstream quirk: ext_header_size != 12 not supported"``.
+
+Both quirks are filtered in ``fuzz/runner.py::_compare``.
 
 ### Phase 5 — Upstream parity fuzzer — CLOSED (not pursued)
 

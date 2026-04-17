@@ -143,6 +143,9 @@ class MessagePyPlan:
     needs_arrays_runtime: bool = False  # any variable_primitive_et field
     body_size_set: Optional[list[int]] = None  # spec-whitelist body sizes
                                 # (POSITION: {12, 24, 28}); None = any size.
+    post_unpack_invariant: Optional[str] = None  # named cross-field
+                                # validator from codec/policy.py (e.g.
+                                # "ndarray", "image"); None = no extra check.
 
 
 # ---------------------------------------------------------------------------
@@ -443,4 +446,5 @@ def plan_message(schema: dict[str, Any]) -> MessagePyPlan:
         schema_literal=schema_literal,
         needs_arrays_runtime=needs_arrays_runtime,
         body_size_set=body_size_set,
+        post_unpack_invariant=schema.get("post_unpack_invariant"),
     )

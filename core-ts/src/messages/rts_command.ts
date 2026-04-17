@@ -147,13 +147,14 @@ export class RtsCommand {
         `RTS_COMMAND unpack consumed ${offset}/${bytes.length} bytes`,
       );
     }
-    return new RtsCommand({
+    const instance = new RtsCommand({
       command_id,
       command_name,
       encoding,
       length,
       command,
     });
+    return instance;
   }
 
   pack(): Uint8Array {

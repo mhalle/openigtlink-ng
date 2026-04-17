@@ -132,8 +132,9 @@ export class GetTraj {
         `GET_TRAJ unpack consumed ${offset}/${bytes.length} bytes`,
       );
     }
-    return new GetTraj({
+    const instance = new GetTraj({
     });
+    return instance;
   }
 
   pack(): Uint8Array {

@@ -138,11 +138,12 @@ export class Colortable {
         `COLORTABLE unpack consumed ${offset}/${bytes.length} bytes`,
       );
     }
-    return new Colortable({
+    const instance = new Colortable({
       index_type,
       map_type,
       table,
     });
+    return instance;
   }
 
   pack(): Uint8Array {

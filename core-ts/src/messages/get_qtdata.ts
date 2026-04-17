@@ -132,8 +132,9 @@ export class GetQtdata {
         `GET_QTDATA unpack consumed ${offset}/${bytes.length} bytes`,
       );
     }
-    return new GetQtdata({
+    const instance = new GetQtdata({
     });
+    return instance;
   }
 
   pack(): Uint8Array {

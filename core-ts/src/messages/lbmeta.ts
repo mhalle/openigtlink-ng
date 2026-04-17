@@ -154,9 +154,10 @@ export class Lbmeta {
         `LBMETA unpack consumed ${offset}/${bytes.length} bytes`,
       );
     }
-    return new Lbmeta({
+    const instance = new Lbmeta({
       labels,
     });
+    return instance;
   }
 
   pack(): Uint8Array {

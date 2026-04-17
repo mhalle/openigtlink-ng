@@ -50,4 +50,5 @@ class Metadata(BaseModel):
     @classmethod
     def unpack(cls, data: bytes) -> "Metadata":
         """Decode wire body bytes into a :class:`Metadata` instance."""
-        return cls.model_validate(unpack_fields(_FIELDS, data))
+        instance = cls.model_validate(unpack_fields(_FIELDS, data))
+        return instance

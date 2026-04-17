@@ -132,8 +132,9 @@ export class GetPolydata {
         `GET_POLYDATA unpack consumed ${offset}/${bytes.length} bytes`,
       );
     }
-    return new GetPolydata({
+    const instance = new GetPolydata({
     });
+    return instance;
   }
 
   pack(): Uint8Array {

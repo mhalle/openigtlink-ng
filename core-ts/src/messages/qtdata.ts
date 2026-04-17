@@ -151,9 +151,10 @@ export class Qtdata {
         `QTDATA unpack consumed ${offset}/${bytes.length} bytes`,
       );
     }
-    return new Qtdata({
+    const instance = new Qtdata({
       tools,
     });
+    return instance;
   }
 
   pack(): Uint8Array {

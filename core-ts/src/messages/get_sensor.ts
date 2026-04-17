@@ -132,8 +132,9 @@ export class GetSensor {
         `GET_SENSOR unpack consumed ${offset}/${bytes.length} bytes`,
       );
     }
-    return new GetSensor({
+    const instance = new GetSensor({
     });
+    return instance;
   }
 
   pack(): Uint8Array {

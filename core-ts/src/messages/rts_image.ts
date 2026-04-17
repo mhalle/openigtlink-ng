@@ -136,9 +136,10 @@ export class RtsImage {
         `RTS_IMAGE unpack consumed ${offset}/${bytes.length} bytes`,
       );
     }
-    return new RtsImage({
+    const instance = new RtsImage({
       status,
     });
+    return instance;
   }
 
   pack(): Uint8Array {

@@ -835,6 +835,7 @@ class MessagePlan:
     fields: list[FieldPlan]
     nested_structs: list[ElementStructDef]
     body_size_set: Optional[list[int]] = None
+    post_unpack_invariant: Optional[str] = None
 
 
 def plan_message(schema: dict[str, Any]) -> MessagePlan:
@@ -905,4 +906,5 @@ def plan_message(schema: dict[str, Any]) -> MessagePlan:
         fields=field_plans,
         nested_structs=nested_structs,
         body_size_set=body_size_set,
+        post_unpack_invariant=schema.get("post_unpack_invariant"),
     )

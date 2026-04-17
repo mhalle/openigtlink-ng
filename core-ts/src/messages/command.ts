@@ -147,13 +147,14 @@ export class Command {
         `COMMAND unpack consumed ${offset}/${bytes.length} bytes`,
       );
     }
-    return new Command({
+    const instance = new Command({
       command_id,
       command_name,
       encoding,
       length,
       command,
     });
+    return instance;
   }
 
   pack(): Uint8Array {

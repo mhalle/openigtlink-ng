@@ -132,8 +132,9 @@ export class SttImage {
         `STT_IMAGE unpack consumed ${offset}/${bytes.length} bytes`,
       );
     }
-    return new SttImage({
+    const instance = new SttImage({
     });
+    return instance;
   }
 
   pack(): Uint8Array {

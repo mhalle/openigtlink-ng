@@ -132,8 +132,9 @@ export class StpTdata {
         `STP_TDATA unpack consumed ${offset}/${bytes.length} bytes`,
       );
     }
-    return new StpTdata({
+    const instance = new StpTdata({
     });
+    return instance;
   }
 
   pack(): Uint8Array {

@@ -29,4 +29,5 @@ class GetTdata(BaseModel):
     @classmethod
     def unpack(cls, data: bytes) -> "GetTdata":
         """Decode wire body bytes into a :class:`GetTdata` instance."""
-        return cls.model_validate(unpack_fields(_FIELDS, data))
+        instance = cls.model_validate(unpack_fields(_FIELDS, data))
+        return instance

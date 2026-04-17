@@ -136,9 +136,10 @@ export class RtsLbmeta {
         `RTS_LBMETA unpack consumed ${offset}/${bytes.length} bytes`,
       );
     }
-    return new RtsLbmeta({
+    const instance = new RtsLbmeta({
       status,
     });
+    return instance;
   }
 
   pack(): Uint8Array {

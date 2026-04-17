@@ -10,6 +10,9 @@ from typing import Annotated, Any, ClassVar
 from pydantic import BaseModel, ConfigDict, Field{% if plan.needs_arrays_runtime %}, field_validator{% endif %}
 
 from oigtl_corpus_tools.codec.fields import pack_fields, unpack_fields
+{% if plan.post_unpack_invariant %}
+from oigtl_corpus_tools.codec.policy import POST_UNPACK_INVARIANTS
+{% endif %}
 {% if plan.needs_arrays_runtime %}
 from oigtl.runtime.arrays import (
     coerce_variable_array,
@@ -80,4 +83,8 @@ class {{ plan.class_name }}(BaseModel):
                 + " is not in the allowed set {{ plan.body_size_set }}"
             )
         {% endif %}
-        return cls.model_validate(unpack_fields(_FIELDS, data))
+        instance = cls.model_validate(unpack_fields(_FIELDS, data))
+        {% if plan.post_unpack_invariant %}
+        POST_UNPACK_INVARIANTS[{{ plan.post_unpack_invariant|tojson }}](instance)
+        {% endif %}
+        return instance

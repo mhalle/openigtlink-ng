@@ -132,8 +132,9 @@ export class GetCapabil {
         `GET_CAPABIL unpack consumed ${offset}/${bytes.length} bytes`,
       );
     }
-    return new GetCapabil({
+    const instance = new GetCapabil({
     });
+    return instance;
   }
 
   pack(): Uint8Array {

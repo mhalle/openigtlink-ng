@@ -159,13 +159,14 @@ export class Bind {
         `BIND unpack consumed ${offset}/${bytes.length} bytes`,
       );
     }
-    return new Bind({
+    const instance = new Bind({
       ncmessages,
       header_entries,
       nametable_size,
       name_table,
       bodies,
     });
+    return instance;
   }
 
   pack(): Uint8Array {

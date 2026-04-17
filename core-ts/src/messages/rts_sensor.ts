@@ -136,9 +136,10 @@ export class RtsSensor {
         `RTS_SENSOR unpack consumed ${offset}/${bytes.length} bytes`,
       );
     }
-    return new RtsSensor({
+    const instance = new RtsSensor({
       status,
     });
+    return instance;
   }
 
   pack(): Uint8Array {

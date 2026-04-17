@@ -9,6 +9,7 @@ from typing import Annotated, Any, ClassVar
 
 from pydantic import BaseModel, ConfigDict, Field
 from oigtl_corpus_tools.codec.fields import pack_fields, unpack_fields
+from oigtl_corpus_tools.codec.policy import POST_UNPACK_INVARIANTS
 
 _FIELDS = [   {'name': 'header_version', 'type': 'uint16'},
     {'name': 'num_components', 'type': 'uint8'},
@@ -59,4 +60,6 @@ class Image(BaseModel):
     @classmethod
     def unpack(cls, data: bytes) -> "Image":
         """Decode wire body bytes into a :class:`Image` instance."""
-        return cls.model_validate(unpack_fields(_FIELDS, data))
+        instance = cls.model_validate(unpack_fields(_FIELDS, data))
+        POST_UNPACK_INVARIANTS["image"](instance)
+        return instance
