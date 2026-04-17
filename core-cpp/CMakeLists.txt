@@ -41,6 +41,21 @@ add_library(oigtl_runtime STATIC
 target_include_directories(oigtl_runtime PUBLIC include)
 
 # ---------------------------------------------------------------------------
+# Transport library — async Connection + Framer; Phase 1 ships the
+# Future primitive, the Framer interface + v3 impl, and an in-memory
+# loopback Connection for tests. TCP + TLS come in Phase 2/3.
+# ---------------------------------------------------------------------------
+add_library(oigtl_transport STATIC
+    src/transport/framer_v3.cpp
+    src/transport/connection_loopback.cpp
+)
+target_include_directories(oigtl_transport PUBLIC include)
+target_link_libraries(oigtl_transport PUBLIC oigtl_runtime)
+# Future<T> uses condition variables; pthread on Linux.
+find_package(Threads REQUIRED)
+target_link_libraries(oigtl_transport PUBLIC Threads::Threads)
+
+# ---------------------------------------------------------------------------
 # Message library
 # ---------------------------------------------------------------------------
 # Glob the generated message sources. CONFIGURE_DEPENDS makes CMake
@@ -55,7 +70,8 @@ target_link_libraries(oigtl_messages PUBLIC oigtl_runtime)
 # Umbrella target for downstream consumers
 # ---------------------------------------------------------------------------
 add_library(oigtl INTERFACE)
-target_link_libraries(oigtl INTERFACE oigtl_runtime oigtl_messages)
+target_link_libraries(oigtl INTERFACE
+    oigtl_runtime oigtl_messages oigtl_transport)
 
 # ---------------------------------------------------------------------------
 # Tests
@@ -103,6 +119,14 @@ target_link_libraries(oigtl_negative_corpus_test PRIVATE oigtl)
 add_test(NAME negative_corpus COMMAND oigtl_negative_corpus_test)
 set_tests_properties(negative_corpus PROPERTIES
     WORKING_DIRECTORY "${CMAKE_CURRENT_SOURCE_DIR}")
+
+# Transport Phase 1 — loopback Connection + Framer + Future contract.
+add_executable(oigtl_transport_loopback_test
+    tests/transport_loopback_test.cpp
+)
+target_link_libraries(oigtl_transport_loopback_test
+    PRIVATE oigtl_transport oigtl_runtime)
+add_test(NAME transport_loopback COMMAND oigtl_transport_loopback_test)
 
 # Oracle CLI — persistent subprocess for `oigtl-corpus fuzz differential`.
 # Reads hex-encoded wire bytes from stdin, emits JSON reports on stdout.
