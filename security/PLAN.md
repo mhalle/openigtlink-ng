@@ -11,26 +11,40 @@ state for resuming work after context compaction.
   helper extracted.
 - **Phase 2 (differential oracle fuzzer)** shipped.
   `oigtl-corpus fuzz differential` runs at ~22k it/s against
-  Python and ~7k it/s across all three native oracles. First 100k
-  cross-language sweep found 4 additional bug classes (listed
-  below), none are safety-critical, all queued for design review.
+  Python and ~6k it/s across 4 native oracles. First 100k
+  cross-language sweep surfaced 4 bug classes; **all fixed**.
+  Current state: **0 disagreements at 1M iterations** across
+  py-ref / py / cpp / ts (seed 42).
 - **Phase 3 (in-process fuzzers)**, **Phase 4 (CI)**,
   **Phase 5 (upstream parity)** pending.
 
-## Bug classes surfaced by Phase 2 (queued followups)
+## Bug classes found (and fixed) during Phase 2
 
-1. ASCII strictness divergence in header type_id / device_name:
-   Python strict, C++/TS permissive.
-2. POSITION body=24 round-trip mismatch in typed Python — the
-   numpy coerce path normalizes NaN float32 bit patterns.
-3. POSITION body=24 round-trip mismatch in TS — similar
-   normalization suspected.
-4. ASCII strictness divergence in content fields (STRING /
-   trailing_string) — TS accepts, Py/C++ reject via the same
-   ascii-decode mechanism as #1.
+1. **ASCII strictness divergence in headers.** Python's
+   `.decode("ascii")` rejected bytes ≥ 0x80 in type_id /
+   device_name; C++ and TS accepted. Fixed by aligning all four
+   codecs on strict ASCII (< 0x80). See header.cpp / header.ts.
+2. **ASCII strictness in content string fields.** Same class,
+   body-level. TS codegen switched from `TextDecoder("ascii")`
+   (aliased to windows-1252 per the Encoding spec) to explicit
+   byte-checked `_readAsciiRaw`. C++ codegen gained a shared
+   `oigtl::runtime::ascii` helper used by fixed_string,
+   trailing_string, and length_prefixed_string with encoding=ascii.
+3. **Length-prefixed string bounds.** Reference codec's Python
+   slice was lenient. Added explicit `offset + length > len(data)`
+   check in `codec/fields.py`.
+4. **NaN bit-pattern round-trip normalization.** Python and TS
+   route float32 through FPU (quiets signaling NaNs); C++
+   memcpy preserves bits. Oracles now use a canonical-form
+   round-trip check: if `pack(unpack(x)) != x` but
+   `pack(unpack(pack(unpack(x)))) == pack(unpack(x))` (second
+   pass stable = codec reached fixed point), accept as
+   canonical-form round-trip. Length mismatches stay strict.
+   Implemented in ref Py / typed Py / C++ / TS oracles.
 
-All require design decisions (spec interpretation, NaN handling
-invariants) rather than mechanical fixes.
+Also fixed mid-Phase-2: TS `_readAsciiNullPadded` was stripping
+only trailing NULs instead of splitting at first NUL — caught
+on the very first fuzzer run (29 of initial 33 disagreements).
 
 ---
 

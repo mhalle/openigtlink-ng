@@ -7,6 +7,7 @@
 #include <cstring>
 #include <sstream>
 
+#include "oigtl/runtime/ascii.hpp"
 #include "oigtl/runtime/byte_order.hpp"
 #include "oigtl/runtime/error.hpp"
 
@@ -50,8 +51,7 @@ SttQtdata SttQtdata::unpack(const std::uint8_t* data, std::size_t length) {
     if (off + (32) > length) { throw oigtl::error::ShortBufferError("coord_name: short buffer"); }
     {
         constexpr std::size_t n = 32;
-        std::size_t len = 0;
-        while (len < n && data[off + len] != 0) { ++len; }
+        const std::size_t len = oigtl::runtime::ascii::null_padded_length(data + off, n, "coord_name");
         out.coord_name.assign(reinterpret_cast<const char*>(data + off), len);
         off += 32;
     }

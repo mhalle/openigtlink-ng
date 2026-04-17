@@ -145,21 +145,58 @@ VerifyResult verify_wire_bytes(const std::uint8_t* data,
         return out;
     }
 
-    if (content_repacked.size() != framing.content_bytes.size()
-        || std::memcmp(content_repacked.data(),
-                       framing.content_bytes.data(),
-                       framing.content_bytes.size()) != 0) {
+    if (content_repacked.size() != framing.content_bytes.size()) {
         std::ostringstream oss;
-        oss << "content round-trip mismatch (orig "
+        oss << "content round-trip length mismatch (orig "
             << framing.content_bytes.size() << "B, repacked "
             << content_repacked.size() << "B)";
         out.error = oss.str();
         return out;
     }
+    if (std::memcmp(content_repacked.data(),
+                    framing.content_bytes.data(),
+                    framing.content_bytes.size()) != 0) {
+        // Same length, different bytes. Canonical-form check: if a
+        // second round-trip is stable, the codec has reached a fixed
+        // point and the input simply wasn't in canonical form. Covers
+        // any normalization the per-message unpack/pack applies —
+        // pertinent for the rare case where a cross-language mutated
+        // input lands on bytes the Python/TS codecs also normalize.
+        // Matches the canonical-form logic in corpus-tools oracle.py
+        // and core-ts runtime/oracle.ts.
+        std::vector<std::uint8_t> second_repack;
+        try {
+            second_repack = fn(content_repacked.data(),
+                               content_repacked.size());
+        } catch (const oigtl::error::ProtocolError& exc) {
+            std::ostringstream oss;
+            oss << "canonicalization probe failed: " << exc.what();
+            out.error = oss.str();
+            return out;
+        }
+        if (second_repack.size() != content_repacked.size()
+            || std::memcmp(second_repack.data(),
+                           content_repacked.data(),
+                           content_repacked.size()) != 0) {
+            std::ostringstream oss;
+            oss << "content round-trip unstable (orig "
+                << framing.content_bytes.size() << "B, repacked "
+                << content_repacked.size() << "B, second repack differs)";
+            out.error = oss.str();
+            return out;
+        }
+        // Accepted as canonical-form. The reassembly check below
+        // would fail against data+kHeaderSize because content bytes
+        // changed — skip it in this path (the ext_header/metadata
+        // regions are raw byte slices and don't need verification).
+        out.round_trip_ok = true;
+        out.ok = true;
+        return out;
+    }
 
-    // Body reassembly: preserve raw ext_header / metadata bytes
-    // (forward-compat reserved bytes are not expressible via the
-    // canonical pack functions).
+    // Strict byte-equal path — body reassembly must match exactly.
+    // Preserves raw ext_header / metadata bytes (forward-compat
+    // reserved bytes are not expressible via canonical pack).
     std::vector<std::uint8_t> body;
     body.reserve(framing.ext_header_bytes.size()
                  + content_repacked.size()

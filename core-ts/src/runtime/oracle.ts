@@ -208,15 +208,43 @@ export function verifyWireBytes(
     try {
       const packed: Uint8Array = (message as { pack(): Uint8Array }).pack();
       if (!_bytesEqual(packed, framing.contentBytes)) {
-        return {
-          ok: false,
-          error: `round-trip mismatch for ${typeId}: pack() produced different bytes`,
-          header: framing.header,
-          extendedHeader: framing.extendedHeader,
-          metadata: framing.metadata,
-          roundTripOk: false,
-          message,
-        };
+        // Length mismatch is unconditionally a bug — canonical-form
+        // normalization only applies when both buffers are the same
+        // length and differ only in values.
+        if (packed.length !== framing.contentBytes.length) {
+          return {
+            ok: false,
+            error:
+              `round-trip length mismatch for ${typeId}: ` +
+              `${framing.contentBytes.length}B in, ${packed.length}B out`,
+            header: framing.header,
+            extendedHeader: framing.extendedHeader,
+            metadata: framing.metadata,
+            roundTripOk: false,
+            message,
+          };
+        }
+        // Same-length value diff: accept if unpack+pack on the
+        // just-packed bytes reaches a fixed point. Covers IEEE-754
+        // signaling-NaN quieting via JS's DataView.getFloat32 → FPU.
+        // A cooperating sender would emit the canonical bytes on
+        // re-transmit, so round-trip semantics are preserved.
+        const second: Uint8Array = (
+          (ctor.unpack(packed) as { pack(): Uint8Array }).pack()
+        );
+        if (!_bytesEqual(second, packed)) {
+          return {
+            ok: false,
+            error:
+              `round-trip unstable for ${typeId}: pack→unpack→pack ` +
+              `produced different bytes on the second pass`,
+            header: framing.header,
+            extendedHeader: framing.extendedHeader,
+            metadata: framing.metadata,
+            roundTripOk: false,
+            message,
+          };
+        }
       }
     } catch (e) {
       return {

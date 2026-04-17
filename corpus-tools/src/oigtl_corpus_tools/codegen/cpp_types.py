@@ -309,8 +309,8 @@ def _plan_fixed_string(name: str, size: int, null_padded: bool) -> FieldPlan:
             _short_buffer_check(name, str(size)),
             "{",
             f"    constexpr std::size_t n = {size};",
-            "    std::size_t len = 0;",
-            "    while (len < n && data[off + len] != 0) { ++len; }",
+            f'    const std::size_t len = oigtl::runtime::ascii::'
+            f'null_padded_length(data + off, n, "{name}");',
             f"    out.{name}.assign("
             "reinterpret_cast<const char*>(data + off), len);",
             f"    off += {size};",
@@ -319,9 +319,12 @@ def _plan_fixed_string(name: str, size: int, null_padded: bool) -> FieldPlan:
     else:
         # null_padded=false: take the full N bytes verbatim, no NUL strip.
         # Used by VIDEO/STT_VIDEO codec field where the fixed-width
-        # string is meaningful through its full length.
+        # string is meaningful through its full length. Every byte
+        # must still be ASCII.
         plan.unpack_lines += [
             _short_buffer_check(name, str(size)),
+            f'oigtl::runtime::ascii::check_bytes('
+            f'data + off, {size}, "{name}");',
             f"out.{name}.assign("
             f"reinterpret_cast<const char*>(data + off), {size});",
             f"off += {size};",
@@ -329,7 +332,9 @@ def _plan_fixed_string(name: str, size: int, null_padded: bool) -> FieldPlan:
     return plan
 
 
-def _plan_trailing_string(name: str, null_terminated: bool) -> FieldPlan:
+def _plan_trailing_string(
+    name: str, null_terminated: bool, encoding: str = "ascii"
+) -> FieldPlan:
     plan = FieldPlan(
         name=name, cxx_type="std::string", init="",
         static_byte_size=None,
@@ -341,18 +346,32 @@ def _plan_trailing_string(name: str, null_terminated: bool) -> FieldPlan:
         f"std::memcpy(out.data() + off, {name}.data(), {name}.size());",
         f"off += {name}.size();",
     ]
+    ascii_check = encoding == "ascii"
     if null_terminated:
         plan.pack_lines += ["out[off] = 0;", "off += 1;"]
-        plan.unpack_lines += [
+        unpack_lines = [
             "{",
             "    std::size_t end = length;",
             "    if (end > off && data[end - 1] == 0) { --end; }",
+        ]
+        if ascii_check:
+            unpack_lines += [
+                f'    oigtl::runtime::ascii::check_bytes('
+                f'data + off, end - off, "{name}");',
+            ]
+        unpack_lines += [
             f"    out.{name}.assign("
             "reinterpret_cast<const char*>(data + off), end - off);",
             "    off = length;",
             "}",
         ]
+        plan.unpack_lines += unpack_lines
     else:
+        if ascii_check:
+            plan.unpack_lines += [
+                f'oigtl::runtime::ascii::check_bytes('
+                f'data + off, length - off, "{name}");',
+            ]
         plan.unpack_lines += [
             f"out.{name}.assign("
             f"reinterpret_cast<const char*>(data + off), length - off);",
@@ -361,7 +380,9 @@ def _plan_trailing_string(name: str, null_terminated: bool) -> FieldPlan:
     return plan
 
 
-def _plan_length_prefixed_string(name: str, prefix_type: str) -> FieldPlan:
+def _plan_length_prefixed_string(
+    name: str, prefix_type: str, encoding: str = "ascii"
+) -> FieldPlan:
     if prefix_type != "uint16":
         raise NotImplementedError(
             f"length_prefixed_string with length_prefix_type={prefix_type!r} "
@@ -383,6 +404,13 @@ def _plan_length_prefixed_string(name: str, prefix_type: str) -> FieldPlan:
         f"std::uint16_t {name}__len = {_BO}::read_be_u16(data + off);",
         "off += 2;",
         _short_buffer_check(name, f"{name}__len"),
+    ]
+    if encoding == "ascii":
+        plan.unpack_lines += [
+            f'oigtl::runtime::ascii::check_bytes('
+            f'data + off, {name}__len, "{name}");',
+        ]
+    plan.unpack_lines += [
         f"out.{name}.assign("
         f"reinterpret_cast<const char*>(data + off), {name}__len);",
         f"off += {name}__len;",
@@ -464,8 +492,8 @@ def _plan_sub_fixed_string(
         unpack = [
             "{",
             f"    constexpr std::size_t n = {size};",
-            "    std::size_t len = 0;",
-            "    while (len < n && data[off + len] != 0) { ++len; }",
+            f'    const std::size_t len = oigtl::runtime::ascii::'
+            f'null_padded_length(data + off, n, "{name}");',
             f"    elem.{name}.assign("
             "reinterpret_cast<const char*>(data + off), len);",
             f"    off += {size};",
@@ -473,6 +501,8 @@ def _plan_sub_fixed_string(
         ]
     else:
         unpack = [
+            f'oigtl::runtime::ascii::check_bytes('
+            f'data + off, {size}, "{name}");',
             f"elem.{name}.assign("
             f"reinterpret_cast<const char*>(data + off), {size});",
             f"off += {size};",
@@ -740,11 +770,16 @@ def plan_field(f: dict[str, Any]) -> FieldPlan:
 
     if t == "trailing_string":
         return _plan_trailing_string(
-            name, bool(f.get("null_terminated", False))
+            name,
+            bool(f.get("null_terminated", False)),
+            encoding=f.get("encoding", "ascii"),
         )
 
     if t == "length_prefixed_string":
-        return _plan_length_prefixed_string(name, f["length_prefix_type"])
+        return _plan_length_prefixed_string(
+            name, f["length_prefix_type"],
+            encoding=f.get("encoding", "ascii"),
+        )
 
     if t == "fixed_bytes":
         return _plan_fixed_bytes(name, int(f["size_bytes"]))

@@ -7,6 +7,7 @@
 #include <cstring>
 #include <sstream>
 
+#include "oigtl/runtime/ascii.hpp"
 #include "oigtl/runtime/byte_order.hpp"
 #include "oigtl/runtime/error.hpp"
 

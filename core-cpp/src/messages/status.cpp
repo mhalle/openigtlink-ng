@@ -7,6 +7,7 @@
 #include <cstring>
 #include <sstream>
 
+#include "oigtl/runtime/ascii.hpp"
 #include "oigtl/runtime/byte_order.hpp"
 #include "oigtl/runtime/error.hpp"
 
@@ -56,8 +57,7 @@ Status Status::unpack(const std::uint8_t* data, std::size_t length) {
     if (off + (20) > length) { throw oigtl::error::ShortBufferError("error_name: short buffer"); }
     {
         constexpr std::size_t n = 20;
-        std::size_t len = 0;
-        while (len < n && data[off + len] != 0) { ++len; }
+        const std::size_t len = oigtl::runtime::ascii::null_padded_length(data + off, n, "error_name");
         out.error_name.assign(reinterpret_cast<const char*>(data + off), len);
         off += 20;
     }
@@ -65,6 +65,7 @@ Status Status::unpack(const std::uint8_t* data, std::size_t length) {
     {
         std::size_t end = length;
         if (end > off && data[end - 1] == 0) { --end; }
+        oigtl::runtime::ascii::check_bytes(data + off, end - off, "status_message");
         out.status_message.assign(reinterpret_cast<const char*>(data + off), end - off);
         off = length;
     }

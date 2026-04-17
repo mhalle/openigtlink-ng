@@ -158,6 +158,16 @@ def _unpack_field(
     if t == "length_prefixed_string":
         prefix_type = field["length_prefix_type"]
         length, offset = unpack_primitive(prefix_type, data, offset)
+        # Declared length must fit in the remaining buffer. Python's
+        # `data[offset:offset + length]` slice is lenient (returns
+        # fewer bytes when the end exceeds len(data)), which would
+        # silently accept malformed inputs like "STRING length=100
+        # with only 5 bytes of value". Reject explicitly.
+        if offset + length > len(data):
+            raise ValueError(
+                f"field '{field['name']}': declared length {length} "
+                f"exceeds remaining buffer ({len(data) - offset} bytes)"
+            )
         enc = field.get("encoding", "ascii")
         raw = data[offset : offset + length]
         # 'binary' encoding = opaque bytes (STRING's value uses this

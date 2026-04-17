@@ -7,6 +7,7 @@
 #include <cstring>
 #include <sstream>
 
+#include "oigtl/runtime/ascii.hpp"
 #include "oigtl/runtime/byte_order.hpp"
 #include "oigtl/runtime/error.hpp"
 
@@ -69,8 +70,7 @@ Header Header::unpack(const std::uint8_t* data, std::size_t length) {
     if (off + (12) > length) { throw oigtl::error::ShortBufferError("type: short buffer"); }
     {
         constexpr std::size_t n = 12;
-        std::size_t len = 0;
-        while (len < n && data[off + len] != 0) { ++len; }
+        const std::size_t len = oigtl::runtime::ascii::null_padded_length(data + off, n, "type");
         out.type.assign(reinterpret_cast<const char*>(data + off), len);
         off += 12;
     }
@@ -78,8 +78,7 @@ Header Header::unpack(const std::uint8_t* data, std::size_t length) {
     if (off + (20) > length) { throw oigtl::error::ShortBufferError("device_name: short buffer"); }
     {
         constexpr std::size_t n = 20;
-        std::size_t len = 0;
-        while (len < n && data[off + len] != 0) { ++len; }
+        const std::size_t len = oigtl::runtime::ascii::null_padded_length(data + off, n, "device_name");
         out.device_name.assign(reinterpret_cast<const char*>(data + off), len);
         off += 20;
     }

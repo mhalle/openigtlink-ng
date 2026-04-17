@@ -7,6 +7,7 @@
 #include <cstring>
 #include <sstream>
 
+#include "oigtl/runtime/ascii.hpp"
 #include "oigtl/runtime/byte_order.hpp"
 #include "oigtl/runtime/error.hpp"
 
@@ -83,15 +84,13 @@ Traj Traj::unpack(const std::uint8_t* data, std::size_t length) {
             auto& elem = out.trajectories[i];
             {
                 constexpr std::size_t n = 64;
-                std::size_t len = 0;
-                while (len < n && data[off + len] != 0) { ++len; }
+                const std::size_t len = oigtl::runtime::ascii::null_padded_length(data + off, n, "name");
                 elem.name.assign(reinterpret_cast<const char*>(data + off), len);
                 off += 64;
             }
             {
                 constexpr std::size_t n = 32;
-                std::size_t len = 0;
-                while (len < n && data[off + len] != 0) { ++len; }
+                const std::size_t len = oigtl::runtime::ascii::null_padded_length(data + off, n, "group_name");
                 elem.group_name.assign(reinterpret_cast<const char*>(data + off), len);
                 off += 32;
             }
@@ -115,8 +114,7 @@ Traj Traj::unpack(const std::uint8_t* data, std::size_t length) {
             off += 4;
             {
                 constexpr std::size_t n = 20;
-                std::size_t len = 0;
-                while (len < n && data[off + len] != 0) { ++len; }
+                const std::size_t len = oigtl::runtime::ascii::null_padded_length(data + off, n, "owner_name");
                 elem.owner_name.assign(reinterpret_cast<const char*>(data + off), len);
                 off += 20;
             }

@@ -7,6 +7,7 @@
 #include <cstring>
 #include <sstream>
 
+#include "oigtl/runtime/ascii.hpp"
 #include "oigtl/runtime/byte_order.hpp"
 #include "oigtl/runtime/error.hpp"
 
@@ -68,8 +69,7 @@ Bind Bind::unpack(const std::uint8_t* data, std::size_t length) {
             auto& elem = out.header_entries[i];
             {
                 constexpr std::size_t n = 12;
-                std::size_t len = 0;
-                while (len < n && data[off + len] != 0) { ++len; }
+                const std::size_t len = oigtl::runtime::ascii::null_padded_length(data + off, n, "type_id");
                 elem.type_id.assign(reinterpret_cast<const char*>(data + off), len);
                 off += 12;
             }

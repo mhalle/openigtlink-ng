@@ -83,28 +83,38 @@ jq -r '.disagreements + [.reports["py-ref"].error[:60]] | @tsv' \
     security/disagreements/42.jsonl | sort | uniq -c
 ```
 
-#### Known divergence classes
+#### Current state: zero disagreements
 
-100k-iteration sweeps currently surface four bug classes, all
-being triaged:
+1,000,000 iterations (py-ref + py + cpp + ts) and 200,000
+iterations (all five oracles including `py-noarray`) on seed 42
+produce **zero disagreements**. Reject counts match exactly
+across all codecs.
 
-1. **ASCII strictness** — Python's `.decode("ascii")` rejects
-   bytes ≥ 0x80 in `device_name` / `type_id`; C++ and TS accept
-   them. Spec says these fields are ASCII; Python's strictness is
-   closer to the spec letter, but the upstream reference C library
-   is permissive (which real deployed devices may rely on).
-   Decision pending.
-2. **POSITION body=24 round-trip (typed Python)** — the numpy
-   coerce path normalizes NaN bit patterns on pack, producing
-   bytes that don't match the input. Need a NaN-preserving
-   `pack_variable_array` path or a documented-invariant note
-   that NaN float32 inputs are not round-trip-preserved.
-3. **POSITION body=24 round-trip (TS)** — pack produces different
-   bytes than unpack received. Suspected similar numeric
-   canonicalization.
-4. **TS field-level ASCII** — trailing/length-prefixed strings in
-   message bodies decode non-ASCII bytes permissively, diverging
-   from Python which rejects. Same axis as #1.
+This wasn't the starting state — the fuzzer surfaced four real
+bug classes which were all fixed in landing:
+
+1. **ASCII strictness** (both header + body string fields) —
+   unified on strict ASCII (< 0x80) across all codecs.
+   Type_id / device_name / fixed_string / length_prefixed_string
+   (encoding=ascii) / trailing_string (encoding=ascii) all reject
+   non-ASCII at unpack. TS codegen's `TextDecoder("ascii")` is
+   aliased to windows-1252 per the Encoding spec, so it was
+   replaced with a strict `_readAsciiRaw` helper.
+2. **Length-prefixed string bounds** — Python slicing was lenient
+   (`bytes[offset:offset+length]` happily truncates). Added an
+   explicit bounds check in `codec/fields.py`.
+3. **Round-trip canonicalization** — Python's `struct.unpack(">f",
+   ...)` and JS's `DataView.getFloat32` both route float32 values
+   through the FPU which quiets signaling NaNs. C++'s memcpy path
+   doesn't. The oracles now use a **canonical-form** round-trip
+   check: if `pack(unpack(bytes)) != bytes`, accept if
+   `pack(unpack(pack(unpack(bytes)))) == pack(unpack(bytes))`
+   (codec reaches a fixed point). Strict byte-equality is kept
+   for length mismatches; only value normalization is tolerated.
+   Implemented identically in all four codecs.
+4. **TS NUL-handling** — early bug found on the first fuzzer run;
+   TS `_readAsciiNullPadded` was stripping only trailing NULs
+   instead of splitting on the first NUL like Python/C++.
 
 ## Phase 3+ (pending)
 

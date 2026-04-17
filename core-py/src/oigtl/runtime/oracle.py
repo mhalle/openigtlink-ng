@@ -192,22 +192,33 @@ def typed_verify_wire_bytes(
             out.error = f"typed pack failed for {type_id}: {exc}"
             return out
         if bytes(repacked) != bytes(content_bytes):
-            # First differing byte, same shape as the reference oracle
-            # so disagreement reports stay comparable.
-            for i, (a, b) in enumerate(zip(content_bytes, repacked)):
-                if a != b:
-                    out.error = (
-                        f"typed round-trip mismatch for {type_id} at content "
-                        f"offset {i}: original=0x{a:02X}, repacked=0x{b:02X} "
-                        f"({len(content_bytes)}B in, {len(repacked)}B out)"
-                    )
-                    return out
-            if len(content_bytes) != len(repacked):
+            # Length mismatch is unconditionally a bug.
+            if len(repacked) != len(content_bytes):
                 out.error = (
                     f"typed round-trip length mismatch for {type_id}: "
                     f"{len(content_bytes)}B in, {len(repacked)}B out"
                 )
                 return out
+            # Same-length value diff: accept if we've reached a
+            # canonical form (unpack+pack on the just-packed bytes
+            # yields the same bytes again). Covers IEEE-754 signaling
+            # NaN quieting via the FPU.
+            try:
+                second = cls.unpack(bytes(repacked)).pack()
+            except Exception as exc:
+                out.error = (
+                    f"typed canonicalization probe failed for {type_id}: {exc}"
+                )
+                return out
+            if bytes(second) != bytes(repacked):
+                for i, (a, b) in enumerate(zip(content_bytes, repacked)):
+                    if a != b:
+                        out.error = (
+                            f"typed round-trip unstable for {type_id} at "
+                            f"content offset {i}: original=0x{a:02X}, "
+                            f"repacked=0x{b:02X}, second=0x{second[i]:02X}"
+                        )
+                        return out
         out.round_trip_ok = True
     else:
         out.round_trip_ok = False

@@ -7,6 +7,7 @@
 #include <cstring>
 #include <sstream>
 
+#include "oigtl/runtime/ascii.hpp"
 #include "oigtl/runtime/byte_order.hpp"
 #include "oigtl/runtime/error.hpp"
 
@@ -44,6 +45,7 @@ SttVideo SttVideo::unpack(const std::uint8_t* data, std::size_t length) {
     std::size_t off = 0;
     // codec
     if (off + (4) > length) { throw oigtl::error::ShortBufferError("codec: short buffer"); }
+    oigtl::runtime::ascii::check_bytes(data + off, 4, "codec");
     out.codec.assign(reinterpret_cast<const char*>(data + off), 4);
     off += 4;
     // time_interval
