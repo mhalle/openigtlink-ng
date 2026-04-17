@@ -1,0 +1,5 @@
+# Fuzzer disagreement logs — per-run, often large, usually not
+# worth committing. Commit specific entries as regression data by
+# moving them to `spec/corpus/negative/` with a proper builder
+# in `corpus-tools/.../negative_corpus.py`.
+disagreements/

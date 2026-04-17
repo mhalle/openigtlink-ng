@@ -17,7 +17,7 @@ import sys
 from collections.abc import Sequence
 
 from oigtl_corpus_tools import __version__
-from oigtl_corpus_tools.commands import codegen, corpus, fixtures, oracle, schema
+from oigtl_corpus_tools.commands import codegen, corpus, fixtures, fuzz, oracle, schema
 
 
 def _build_parser() -> argparse.ArgumentParser:
@@ -66,6 +66,12 @@ def _build_parser() -> argparse.ArgumentParser:
         help="Generate or verify the negative (must-reject) corpus.",
     )
     corpus.register(corpus_parser)
+
+    fuzz_parser = subparsers.add_parser(
+        "fuzz",
+        help="Run the differential oracle fuzzer across implementations.",
+    )
+    fuzz.register(fuzz_parser)
 
     return parser
 

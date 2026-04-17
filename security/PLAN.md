@@ -1,7 +1,38 @@
 # Security + conformance testing harness — plan
 
-Status: planning document. Durable state for resuming work after
-context compaction.
+Status: **Phase 1 + 2 complete**; Phases 3–5 pending. Durable
+state for resuming work after context compaction.
+
+## Status summary
+
+- **Phase 1 (negative corpus)** shipped. 21 entries under
+  `spec/corpus/negative/`, per-codec parametrized rejection
+  tests. Surfaced 6 codec gaps, all fixed; shared `policy.py`
+  helper extracted.
+- **Phase 2 (differential oracle fuzzer)** shipped.
+  `oigtl-corpus fuzz differential` runs at ~22k it/s against
+  Python and ~7k it/s across all three native oracles. First 100k
+  cross-language sweep found 4 additional bug classes (listed
+  below), none are safety-critical, all queued for design review.
+- **Phase 3 (in-process fuzzers)**, **Phase 4 (CI)**,
+  **Phase 5 (upstream parity)** pending.
+
+## Bug classes surfaced by Phase 2 (queued followups)
+
+1. ASCII strictness divergence in header type_id / device_name:
+   Python strict, C++/TS permissive.
+2. POSITION body=24 round-trip mismatch in typed Python — the
+   numpy coerce path normalizes NaN float32 bit patterns.
+3. POSITION body=24 round-trip mismatch in TS — similar
+   normalization suspected.
+4. ASCII strictness divergence in content fields (STRING /
+   trailing_string) — TS accepts, Py/C++ reject via the same
+   ascii-decode mechanism as #1.
+
+All require design decisions (spec interpretation, NaN handling
+invariants) rather than mechanical fixes.
+
+---
 
 ## Goal
 

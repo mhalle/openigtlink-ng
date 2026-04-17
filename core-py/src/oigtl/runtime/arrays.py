@@ -27,15 +27,27 @@ big-endian bytes before being handed to the codec.
 from __future__ import annotations
 
 import array
+import os
 import sys
 from typing import Any
 
-try:  # pragma: no cover - exercised by both branches in CI
-    import numpy as np
-    _HAS_NUMPY = True
-except ImportError:  # pragma: no cover
+# Set OIGTL_NO_NUMPY=1 to force the stdlib `array.array` fallback
+# even when numpy is installed. Useful for exercising the non-numpy
+# code path in CI / differential fuzzing without maintaining a
+# separate venv. Must be read at import time because `_HAS_NUMPY`
+# is a module-level constant baked into call-site branches.
+_FORCE_NO_NUMPY = os.environ.get("OIGTL_NO_NUMPY", "") == "1"
+
+if _FORCE_NO_NUMPY:
     np = None  # type: ignore[assignment]
     _HAS_NUMPY = False
+else:
+    try:  # pragma: no cover - exercised by both branches in CI
+        import numpy as np
+        _HAS_NUMPY = True
+    except ImportError:  # pragma: no cover
+        np = None  # type: ignore[assignment]
+        _HAS_NUMPY = False
 
 
 # ---------------------------------------------------------------------------

@@ -78,11 +78,19 @@ export function unpackHeader(bytes: Uint8Array): Header {
 }
 
 function _readAsciiNullPadded(bytes: Uint8Array, offset: number, size: number): string {
-  let end = offset + size;
-  // Trim trailing NULs.
-  while (end > offset && bytes[end - 1] === 0) end--;
+  // Read up to the first NUL byte within the field's byte range.
+  // Matches the reference Python and C++ implementations
+  // (`bytes.split(b"\x00", 1)[0]` and the equivalent in core-cpp):
+  // bytes after the first NUL are padding regardless of value, and
+  // must not leak into the decoded string. The previous "strip
+  // only trailing NULs" approach allowed adversarial inputs like
+  // `DeviceName\x00\x00\x00\x80` to round-trip as a 15-char string
+  // while the other codecs produced `"DeviceName"`.
+  const end = offset + size;
+  let stop = offset;
+  while (stop < end && bytes[stop] !== 0) stop++;
   let out = "";
-  for (let i = offset; i < end; i++) out += String.fromCharCode(bytes[i] as number);
+  for (let i = offset; i < stop; i++) out += String.fromCharCode(bytes[i] as number);
   return out;
 }
 

@@ -104,6 +104,14 @@ add_test(NAME negative_corpus COMMAND oigtl_negative_corpus_test)
 set_tests_properties(negative_corpus PROPERTIES
     WORKING_DIRECTORY "${CMAKE_CURRENT_SOURCE_DIR}")
 
+# Oracle CLI — persistent subprocess for `oigtl-corpus fuzz differential`.
+# Reads hex-encoded wire bytes from stdin, emits JSON reports on stdout.
+# Not a test target; built but never invoked by ctest.
+add_executable(oigtl_oracle_cli
+    src/oracle_cli.cpp
+)
+target_link_libraries(oigtl_oracle_cli PRIVATE oigtl)
+
 # Benchmark binary — built but not run by ctest. Invoke manually:
 #   cmake --build build --target oigtl_bench && ./build/oigtl_bench
 # Use a Release build for representative numbers:
