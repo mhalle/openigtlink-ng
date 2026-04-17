@@ -121,8 +121,13 @@ target_link_libraries(oigtl INTERFACE
 add_library(igtl_compat STATIC
     compat/src/igtlLightObject.cxx
     compat/src/igtlObject.cxx
+    compat/src/igtlMath.cxx
+    compat/src/igtlMessageBase.cxx
+    compat/src/igtlTransformMessage.cxx
 )
 target_include_directories(igtl_compat PUBLIC compat/include)
+# Pack/Unpack in the facades goes through our runtime codec.
+target_link_libraries(igtl_compat PUBLIC oigtl_runtime)
 # Upstream's igtlTypeMacro / igtlNewMacro are typically called with
 # a trailing `;` in consumer headers ("igtlTypeMacro(Foo, Bar);").
 # That produces -Wextra-semi diagnostics. For drop-in compatibility
@@ -213,6 +218,27 @@ target_link_libraries(igtl_compat_smartpointer_test
     PRIVATE igtl_compat)
 add_test(NAME compat_smartpointer
          COMMAND igtl_compat_smartpointer_test)
+
+# Byte-parity test against upstream (Phase 6a acceptance gate).
+# Guarded: only builds when upstream is built at the expected path.
+if(EXISTS "${IGTL_UPSTREAM_BUILD}/lib/libOpenIGTLink.a")
+    add_executable(igtl_compat_transform_parity_test
+        compat/tests/transform_parity_test.cxx
+    )
+    target_include_directories(
+        igtl_compat_transform_parity_test PRIVATE
+        "${CMAKE_CURRENT_SOURCE_DIR}/../corpus-tools/reference-libs/openigtlink-upstream/Source"
+        "${CMAKE_CURRENT_SOURCE_DIR}/../corpus-tools/reference-libs/openigtlink-upstream/Source/igtlutil"
+        "${IGTL_UPSTREAM_BUILD}")
+    target_link_libraries(igtl_compat_transform_parity_test PRIVATE
+        igtl_compat
+        "${IGTL_UPSTREAM_BUILD}/lib/libOpenIGTLink.a")
+    # Upstream's headers issue warnings our strict build rejects.
+    target_compile_options(igtl_compat_transform_parity_test PRIVATE
+        -Wno-error -Wno-unused-parameter)
+    add_test(NAME compat_transform_parity
+             COMMAND igtl_compat_transform_parity_test)
+endif()
 
 # Ergonomic layer — Envelope, pack/unpack, Client, Server.
 add_executable(oigtl_ergo_test
