@@ -1,6 +1,30 @@
 # C++ transport + upstream-compatible shim — plan
 
-Status: **draft, pre-implementation.**
+Status: **Phases 1, 2, 4, 4.5, 5, 6 shipped; socket shim + parity
+matrix + docs remain; Noise deferred.**
+
+Quick status (as of 2026-04-17):
+
+| Phase | Scope | State | Commits |
+|---|---|---|---|
+| 1 | Native + loopback | **done** | a0b721b |
+| 2 | TCP via asio | **done** | cf20f14 |
+| 3 | Noise secure transport | **designed, deferred** | — |
+| 4 | Sync bridge | **done** | cd05ba2 |
+| 4.5 | Ergonomic Client/Server facade | **done** | 86b3c5f |
+| 4.75 | send_sync / receive_sync perf path | **done** | d4ce3f5, 4f10a3f |
+| 5 | LightObject + SmartPointer | **done** | c4142e4 |
+| 6a | MessageBase + TransformMessage | **done** | 5e42f26 |
+| 6b-i | Codegen 41 shim headers | **done** | dabbff8 |
+| 6b-ii | 18 hand-written data-message facades (all data types upstream ships) | **done** | c572671, 25cdef9, ff2323d, 189b003, d27c6f3, 4d3c905, c1d2ffd, 9ec0329 |
+| 6b-iii | 25 byte-exact parity cases vs upstream | **done** | 6dc2f48, 6c81b79 |
+| 7 | Socket shims (ClientSocket / ServerSocket / Socket) | pending | — |
+| 8 | Parity test matrix in CI (upstream examples built against shim) | pending | — |
+| 9 | Docs + CMake package | pending | — |
+
+ctest currently: **33/33**. Binary size: libigtl_compat.a 222 KB.
+Throughput: ~490k msg/s on localhost-TCP TRANSFORM streams (~85%
+of upstream). Full summary: see §"Resuming from cold" at the end.
 
 Two goals, co-designed so one doesn't constrain the other:
 
@@ -686,20 +710,180 @@ to own key material, which affects the Noise API shape.
 
 ## Resuming from cold
 
-Key facts for the next session:
+### Where we are (the 60-second handoff)
 
-1. **Two libraries, not one.** `libigtl_transport.a` is our design;
-   `libigtl_compat.a` is a shim matching upstream. They coexist.
-2. **Shim is codegenerated where possible.** The 28 message-facade
-   classes come from the same schemas as our typed library; the
-   shim just uses upstream's class-name conventions + forwarding
-   layer.
-3. **Upstream examples are the parity gate.** If Tracker / Receiver /
-   Imager compile unchanged against the shim and interoperate with
-   upstream, the shim is real. If they don't, it isn't.
-4. **Strict-mode is the invariant escape hatch.** Our post_unpack
-   invariants (NDARRAY / IMAGE / COLORT / POLYDATA / BIND) don't run
-   under the shim by default; they're available for opt-in.
-5. **v4 doesn't block this plan.** The `Framer` interface is the
-   hook for any v4 framing change; messages ride the existing
-   `Connection` API; capability negotiation rides `capability()`.
+**Codec + native transport + shim: shipped. Socket shim, upstream
+example-program parity matrix, and docs: pending.**
+
+Five libraries now exist and build:
+
+```
+liboigtl_runtime.a    ~96 KB   codec + crc + header + metadata + dispatch
+liboigtl_messages.a   ~628 KB  84 generated message-type codecs
+liboigtl_transport.a  ~454 KB  Connection, Framer, TCP, loopback, sync
+liboigtl_ergo.a        ~75 KB  Client, Server, Envelope<T>, pack/unpack
+libigtl_compat.a      ~222 KB  upstream API surface; drop-in replacement
+```
+
+Consumer-level story today:
+- **New C++17 code**: uses `oigtl::Client::connect(host, port)
+  .on<T>(...).run()`. Async `Connection` API is also there.
+- **Upstream consumers** (Slicer, PLUS, custom integrations): link
+  against the five libraries with `-loigtl_compat -loigtl_transport
+  -loigtl_messages -loigtl_runtime`. Everything compiles **except**
+  code that instantiates `igtl::ClientSocket` / `igtl::ServerSocket`
+  — those are Phase 7. Every message class they use is already
+  here and byte-exact with upstream.
+
+### Key facts for the next session
+
+1. **Five libraries, layered.** Consumer picks tier:
+   - `liboigtl_ergo` → new native code, ergonomic Client/Server
+   - `liboigtl_transport` → new async code, direct Connection
+   - `libigtl_compat` → legacy drop-in, upstream-compatible API
+
+2. **25 byte-exact parity cases** across every data-message facade
+   validated via a two-process emitter harness
+   (`compat_emitter_shim` + `compat_emitter_upstream`, cross-
+   compared via `cmp <(A) <(B)` per case). The two-process design
+   avoids ODR collisions that would otherwise make the tests
+   tautological. Rule: every facade's parity test MUST include at
+   least one asymmetric / non-identity input. Identity rotations /
+   zero translations hide layout bugs (caught this twice: TRANSFORM's
+   row-vs-column-major issue and STATUS's missing
+   STATUS_PANICK_MODE=3 enum value).
+
+3. **Shim is hybrid codegen + hand-written.**
+   - Codegen (`uv run oigtl-corpus codegen cpp-compat`) emits 18
+     header-only variants (GET_/STT_/STP_/RTS_ prefixes with no
+     body content).
+   - 19 hand-written data-message facades under
+     `core-cpp/compat/src/` — every type upstream ships in its
+     default MessageFactory registration.
+   - Classes with body-carrying STT_/STP_/RTS_ variants (BindMessage
+     family, RTSCommandMessage, RTSPolyDataMessage) are hand-written
+     alongside their parent in the same header, and excluded from
+     the codegen skip list.
+   - `cpp_compat.py`'s two tables (`_DATA_MESSAGES` empty,
+     `_HEADER_ONLY` with 18 entries) are the authoritative list.
+     The hand-written skip list in `commands/codegen.py` must stay
+     in sync.
+
+4. **Our shim is strictly friendlier than upstream.** Upstream's
+   `ColorTableMessage::PackContent` and `ImageMessage::PackContent`
+   both crash if you call Pack() without first calling
+   `AllocateTable()` / `AllocateScalars()` to set up internal
+   raw-pointer aliases. Our shim uses typed `std::vector`/`std::string`
+   members and `m_Content.assign(need, 0)` at Pack time — any
+   upstream-API pattern works, including the sloppy ones.
+
+5. **Performance path is send_sync / receive_sync.** Default
+   Connection has async `send() → Future`. Client uses
+   `Connection::send_sync` / `receive_sync` (direct POSIX `::send`
+   / `::recv` on the fd, under a per-connection mutex, concurrent
+   with the io_context's async_read). ~85% of upstream's localhost
+   throughput (490k vs 570k msg/s for 106-byte TRANSFORM). Full
+   async path is still there for callers who prefer futures.
+
+6. **TRANSFORM vs IMAGE matrix layouts differ.** TRANSFORM body is
+   12 floats column-major 3x4 (i-axis, j-axis, k-axis, translation).
+   IMAGE body's `matrix` field is 12 floats row-major triples of
+   (norm_i × spacing[0]), (norm_j × spacing[1]), (norm_k × spacing[2]),
+   origin. Documented in igtlTransformMessage.cxx and
+   igtlImageMessage.cxx; both byte-exact with upstream.
+
+7. **One deliberate security departure: STRING bounds-check on
+   unpack.** Upstream's `m_String.append(ptr, header->length)`
+   OOB-reads up to 65535 bytes past the buffer on a too-large
+   length. Our shim rejects; documented in the schema's
+   legacy_notes. Accepted deviation (our shim is stricter in a way
+   consumers can't observe on valid messages).
+
+8. **v4 forward-compat is unchanged.** The `Framer` interface is
+   the hook for tier-3 framing changes; tier-1 new message types
+   add schemas + regenerate; tier-2 capability negotiation rides
+   `Connection::capability()`. No part of the current code
+   forecloses v4 options.
+
+### Phase 7 entry point
+
+Build `igtl::Socket` / `igtl::ClientSocket` / `igtl::ServerSocket`
+wrapping `transport::Connection`. Upstream API to match:
+
+```cpp
+class Socket : public Object {
+ public:
+    int CloseSocket();
+    int SetReceiveBlocking(int);
+    int SetSendBlocking(int);
+    int SetTimeout(int msec);
+    igtlUint64 Send(const void* data, igtlUint64 length);
+    igtlUint64 Receive(void* data, igtlUint64 length,
+                       bool& timeout, int readFully = 1);
+};
+class ClientSocket : public Socket {
+    int ConnectToServer(const char* hostname, int port,
+                        bool logErrorIfFailed = true);
+};
+class ServerSocket : public Socket {
+    int CreateServer(int port);
+    Socket::Pointer WaitForConnection(unsigned long msec = 0);
+};
+```
+
+**The one design wrinkle:** upstream's `Receive()` takes a raw
+byte length, not a message boundary. A naive `receive_sync()`
+returns one framed message. We need either a byte-level sync
+accessor on `Connection` — or expose `socket.native_handle()`
+to the shim. Either works; decide at Phase 7 start.
+
+### File touch list for remaining phases
+
+**Phase 7 (new):**
+- `core-cpp/compat/include/igtl/igtlSocket.h`
+- `core-cpp/compat/include/igtl/igtlClientSocket.h`
+- `core-cpp/compat/include/igtl/igtlServerSocket.h`
+- `core-cpp/compat/src/igtlSocket.cxx`
+- `core-cpp/compat/src/igtlClientSocket.cxx`
+- `core-cpp/compat/src/igtlServerSocket.cxx`
+- `core-cpp/compat/tests/socket_echo_test.cxx` — unchanged
+  upstream `Examples/Receiver/ReceiveClient.cxx` built against
+  shim, round-trips TRANSFORM with upstream's Tracker binary.
+
+**Phase 8 (CI):**
+- `.github/workflows/ci.yml` additions: build selected upstream
+  examples against shim, run end-to-end tests.
+
+**Phase 9 (docs):**
+- `core-cpp/transport/README.md` — native API quickstart.
+- `core-cpp/compat/README.md` — migration table (upstream header
+  → include unchanged; upstream library → our four libs).
+- Root `README.md` status update.
+- CMake package: `find_package(oigtl)` imports `oigtl::transport`,
+  `oigtl::ergo`, `oigtl::compat`, `oigtl::messages`, `oigtl::runtime`.
+
+### Honest known gaps
+
+- `BindMessage::GetChildMessage(i, MessageBase*)` returns 0
+  without populating the passed-in child. Side accessor
+  `GetChildBody(i)` retrieves raw bytes. Blocking for receivers
+  parsing bundled messages; not for senders. Fix requires friend
+  access on MessageBase to set its m_Content.
+
+- Upstream's `igtl::TimeStamp` has features (frequency, multiple
+  set-time variants) ours doesn't. We implement just enough for
+  IMGMETA/LBMETA timestamp round-trip. Consumers using
+  `SetTime(double)` / `GetTimeStamp(...)` work; fancier things
+  might not.
+
+- `-Wno-extra-semi` is PUBLIC on the `igtl_compat` CMake target
+  because upstream's header style has `igtlTypeMacro(Foo, Bar);`
+  with trailing semicolons.
+
+### Noise (Phase 3) — not forgotten
+
+Design complete. Implementation intentionally deferred until
+shim work finishes (cleartext is what the shim consumes; Noise
+is a wrapper over Connection). Pickup point: see §"Phase 3 —
+Secure transport via Noise" above. libsodium via FetchContent,
+~3 days of work, fits cleanly into existing layering.
