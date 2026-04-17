@@ -1,0 +1,44 @@
+# GENERATED from spec/schemas/ndarray.json — do not edit.
+#
+# Regenerate with: uv run oigtl-corpus codegen python
+"""NDARRAY message — typed Python wire codec."""
+
+from __future__ import annotations
+
+from typing import Annotated, ClassVar
+
+from pydantic import BaseModel, Field
+
+from oigtl_corpus_tools.codec.fields import pack_fields, unpack_fields
+
+
+_FIELDS = [   {'name': 'scalar_type', 'type': 'uint8'},
+    {'name': 'dim', 'type': 'uint8'},
+    {   'name': 'size',
+        'type': 'array',
+        'element_type': 'uint16',
+        'count': 'dim'},
+    {   'name': 'data',
+        'type': 'array',
+        'element_type': 'uint8',
+        'count_from': 'remaining'}]
+
+
+
+class Ndarray(BaseModel):
+    TYPE_ID: ClassVar[str] = "NDARRAY"
+
+
+    scalar_type: int = 0
+    dim: int = 0
+    size: list[int] = Field(default_factory=list)
+    data: bytes = b""
+
+    def pack(self) -> bytes:
+        """Serialize this message's body to wire bytes."""
+        return pack_fields(_FIELDS, self.model_dump())
+
+    @classmethod
+    def unpack(cls, data: bytes) -> "Ndarray":
+        """Decode wire body bytes into a :class:`Ndarray` instance."""
+        return cls.model_validate(unpack_fields(_FIELDS, data))

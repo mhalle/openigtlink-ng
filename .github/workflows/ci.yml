@@ -91,6 +91,14 @@ jobs:
         working-directory: corpus-tools
         run: uv run oigtl-corpus codegen cpp --check
 
+      - name: Verify generated Python is in sync with schemas
+        working-directory: corpus-tools
+        run: uv run oigtl-corpus codegen python --check
+
       - name: Verify meta-schema is in sync with Pydantic models
         working-directory: corpus-tools
         run: uv run oigtl-corpus schema emit-meta --check
+
+      - name: Run core-py tests
+        working-directory: core-py
+        run: uv run pytest

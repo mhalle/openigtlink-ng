@@ -119,7 +119,12 @@ class RenderedRegistry:
     cpp_text: str
 
 
-def render_register_all(type_ids: list[str]) -> RenderedRegistry:
+def render_register_all(type_ids: list[str]) -> RenderedRegistry:  # noqa: D401
+    """C++-target registry. See :func:`_render_register_all` below."""
+    return _render_register_all(type_ids)
+
+
+def _render_register_all(type_ids: list[str]) -> RenderedRegistry:
     """Render the register_all.{hpp,cpp} pair for *type_ids*.
 
     *type_ids* is the (already-deduplicated, codegen-supported)

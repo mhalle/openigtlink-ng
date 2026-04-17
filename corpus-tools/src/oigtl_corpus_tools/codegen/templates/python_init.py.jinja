@@ -1,0 +1,44 @@
+# GENERATED — do not edit. Regenerate with: uv run oigtl-corpus codegen python
+"""Generated typed message classes — one per OpenIGTLink wire type_id.
+
+Each class is a Pydantic model with:
+
+- ``TYPE_ID``     : the wire type_id string (class variable)
+- ``BODY_SIZE``   : the fixed body byte size (fixed-body messages only)
+- typed Pydantic fields matching the schema's body
+- ``pack(self) -> bytes`` : produce wire body bytes
+- ``unpack(cls, data: bytes) -> Self`` : decode wire body bytes
+"""
+
+from __future__ import annotations
+
+{% for entry in entries %}
+from oigtl.messages.{{ entry.module_name }} import {{ entry.class_name }}
+{% endfor %}
+
+# type_id → message class lookup. Populated at module load.
+REGISTRY: dict[str, type] = {
+    {% for entry in entries %}
+    "{{ entry.type_id }}": {{ entry.class_name }},
+    {% endfor %}
+}
+
+
+def default_registry() -> dict[str, type]:
+    """Return a dict mapping wire type_id → message class."""
+    return dict(REGISTRY)
+
+
+# Re-exported high-level helpers (hand-written, lives next door).
+from oigtl.messages._dispatch import extract_content_bytes, parse_message
+
+
+__all__ = [
+    "REGISTRY",
+    "default_registry",
+    "parse_message",
+    "extract_content_bytes",
+    {% for entry in entries %}
+    "{{ entry.class_name }}",
+    {% endfor %}
+]

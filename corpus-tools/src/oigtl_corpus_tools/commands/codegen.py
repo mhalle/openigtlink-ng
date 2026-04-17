@@ -23,6 +23,7 @@ from oigtl_corpus_tools.codegen.cpp_emit import (
     render_message,
     render_register_all,
 )
+from oigtl_corpus_tools.codegen import python_emit
 from oigtl_corpus_tools.paths import (
     RepoRootNotFound,
     find_repo_root,
@@ -42,6 +43,7 @@ def register(parser: argparse.ArgumentParser) -> None:
         required=True,
     )
     _register_cpp(subparsers)
+    _register_python(subparsers)
 
 
 def _register_cpp(subparsers: argparse._SubParsersAction) -> None:
@@ -94,6 +96,47 @@ def _register_cpp(subparsers: argparse._SubParsersAction) -> None:
     cpp.set_defaults(handler=_cmd_cpp)
 
 
+def _register_python(subparsers: argparse._SubParsersAction) -> None:
+    py = subparsers.add_parser(
+        "python",
+        help="Emit typed Python wire codec from spec/schemas/*.json.",
+        description=(
+            "Render one Pydantic-model module per message schema "
+            "into core-py/src/oigtl/messages/, plus an __init__.py "
+            "that re-exports them and exposes a type_id → class "
+            "REGISTRY. With --check, exit non-zero if the on-disk "
+            "files differ from what would be generated."
+        ),
+    )
+    py.add_argument(
+        "--out-dir",
+        type=Path,
+        default=Path("core-py/src/oigtl/messages"),
+        help=(
+            "Directory for generated message modules + __init__.py "
+            "(default: core-py/src/oigtl/messages)."
+        ),
+    )
+    py.add_argument(
+        "--type-id",
+        action="append",
+        default=None,
+        help=(
+            "Restrict generation to specific type_ids. May be given "
+            "multiple times. Default: all schemas."
+        ),
+    )
+    py.add_argument(
+        "--check",
+        action="store_true",
+        help=(
+            "Verify on-disk output matches what would be generated. "
+            "Does not write. Non-zero exit on drift."
+        ),
+    )
+    py.set_defaults(handler=_cmd_python)
+
+
 # ---------------------------------------------------------------------------
 # Handler
 # ---------------------------------------------------------------------------
@@ -141,6 +184,81 @@ def _cmd_cpp(args: argparse.Namespace) -> int:
         return _check_drift(rendered, include_dir, src_dir, registry, skipped)
 
     return _write_outputs(rendered, include_dir, src_dir, registry, skipped)
+
+
+def _cmd_python(args: argparse.Namespace) -> int:
+    try:
+        repo_root = find_repo_root()
+    except RepoRootNotFound as exc:
+        print(f"error: {exc}", file=sys.stderr)
+        return 2
+
+    out_dir = (
+        args.out_dir if args.out_dir.is_absolute()
+        else repo_root / args.out_dir
+    )
+    requested = set(args.type_id) if args.type_id else None
+    schemas = _load_schemas(repo_root, requested)
+    if not schemas:
+        print("no schemas to render", file=sys.stderr)
+        return 1
+
+    rendered: list[python_emit.RenderedPyMessage] = []
+    skipped: list[tuple[str, str]] = []
+    for type_id, schema in schemas:
+        try:
+            rendered.append(python_emit.render_message(schema))
+        except NotImplementedError as exc:
+            skipped.append((type_id, str(exc)))
+
+    init = (
+        python_emit.render_init([r.type_id for r in rendered])
+        if requested is None else None
+    )
+
+    if args.check:
+        drift = 0
+        for r in rendered:
+            path = out_dir / f"{r.module_name}.py"
+            if not path.is_file():
+                print(f"FAIL  missing {path}", file=sys.stderr)
+                drift += 1
+            elif path.read_text() != r.text:
+                print(f"FAIL  drift {path}", file=sys.stderr)
+                drift += 1
+            else:
+                print(f"  OK  {path}")
+        if init is not None:
+            path = out_dir / "__init__.py"
+            if not path.is_file() or path.read_text() != init.text:
+                print(f"FAIL  drift {path}", file=sys.stderr)
+                drift += 1
+            else:
+                print(f"  OK  {path}")
+        if skipped:
+            print(f"\n{len(skipped)} skipped (unsupported field shape)",
+                  file=sys.stderr)
+        if drift:
+            print(
+                f"\n{drift} file(s) drifted. Run "
+                "'uv run oigtl-corpus codegen python' to regenerate.",
+                file=sys.stderr,
+            )
+            return 1
+        print(f"\nAll generated file(s) up to date.")
+        return 0
+
+    out_dir.mkdir(parents=True, exist_ok=True)
+    for r in rendered:
+        (out_dir / f"{r.module_name}.py").write_text(r.text)
+        print(f"  wrote {r.type_id} → {r.module_name}.py")
+    if init is not None:
+        (out_dir / "__init__.py").write_text(init.text)
+        print("  wrote __init__.py")
+    for tid, reason in skipped:
+        print(f"  SKIP {tid}: {reason}", file=sys.stderr)
+    print(f"\n{len(rendered)} rendered, {len(skipped)} skipped.")
+    return 0
 
 
 # ---------------------------------------------------------------------------

@@ -1,0 +1,51 @@
+[project]
+name = "oigtl"
+version = "0.1.0"
+description = "Typed Python wire codec for the OpenIGTLink protocol."
+readme = "README.md"
+requires-python = ">=3.11"
+license = "Apache-2.0"
+authors = [
+    { name = "openigtlink-ng contributors" },
+]
+# pydantic gives us per-message typed classes with recursive
+# nested-model construction for struct-array fields.
+# oigtl-corpus-tools provides the codec primitives (pack_fields,
+# unpack_fields, crc64, header helpers). Schemas themselves are
+# baked into the generated message classes as Python literals
+# so the runtime library has no filesystem dependency.
+dependencies = [
+    "pydantic>=2.5",
+    "oigtl-corpus-tools",
+    # crcmod is a tiny C extension that gives the underlying codec a
+    # ~37× CRC-64 speedup. Without it CRC dominates parse_message
+    # latency on multi-KB bodies (~250 µs for a 2.5 KB IMAGE body
+    # vs ~6 µs with the fast path). It's a hard runtime dep here
+    # because the typed library exists to be used in real code,
+    # not just to round-trip fixtures.
+    "crcmod>=1.7",
+]
+
+[project.optional-dependencies]
+dev = [
+    "pytest>=8",
+]
+
+[dependency-groups]
+dev = [
+    "pytest>=8",
+]
+
+[build-system]
+requires = ["hatchling"]
+build-backend = "hatchling.build"
+
+[tool.hatch.build.targets.wheel]
+packages = ["src/oigtl"]
+
+[tool.uv.sources]
+oigtl-corpus-tools = { path = "../corpus-tools", editable = true }
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+addopts = "-ra"

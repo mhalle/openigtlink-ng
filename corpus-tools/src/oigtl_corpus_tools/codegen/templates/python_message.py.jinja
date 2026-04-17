@@ -1,0 +1,48 @@
+# GENERATED from spec/schemas/{{ plan.module_name }}.json — do not edit.
+#
+# Regenerate with: uv run oigtl-corpus codegen python
+"""{{ plan.type_id }} message — typed Python wire codec."""
+
+from __future__ import annotations
+
+from typing import Annotated, ClassVar
+
+from pydantic import BaseModel, Field
+
+from oigtl_corpus_tools.codec.fields import pack_fields, unpack_fields
+
+
+_FIELDS = {{ plan.schema_literal }}
+
+
+{% for n in plan.nested_classes %}
+class _{{ n.name }}(BaseModel):
+    {% for f in n.fields %}
+    {{ f.name }}: {{ f.py_type }}{% if f.default %} = {{ f.default }}{% endif %}
+
+    {% endfor %}
+{% endfor %}
+
+class {{ plan.class_name }}(BaseModel):
+    TYPE_ID: ClassVar[str] = "{{ plan.type_id }}"
+    {% if plan.is_fixed_body %}
+    BODY_SIZE: ClassVar[int] = {{ plan.body_size }}
+    {% endif %}
+
+    {% for n in plan.nested_classes %}
+    {{ n.name }}: ClassVar[type[BaseModel]] = _{{ n.name }}
+    {% endfor %}
+
+    {% for f in plan.fields %}
+    {{ f.name }}: {{ f.py_type }}{% if f.default %} = {{ f.default }}{% endif %}
+
+    {% endfor %}
+
+    def pack(self) -> bytes:
+        """Serialize this message's body to wire bytes."""
+        return pack_fields(_FIELDS, self.model_dump())
+
+    @classmethod
+    def unpack(cls, data: bytes) -> "{{ plan.class_name }}":
+        """Decode wire body bytes into a :class:`{{ plan.class_name }}` instance."""
+        return cls.model_validate(unpack_fields(_FIELDS, data))

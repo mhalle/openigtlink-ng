@@ -185,9 +185,19 @@ def _unpack_field(
         # where arrays are megabytes of uniform primitive data.
         if isinstance(element_type, str) and element_type in FORMAT:
             if element_type == "uint8":
-                # Fastest possible: direct byte slice → list of ints
-                elements = list(data[offset : offset + count])
-                return elements, offset + count
+                # Return bytes rather than list[int] for uint8 arrays.
+                # Two reasons: (1) one Python object instead of N
+                # 28-byte int boxes — for an FHD grayscale image
+                # body that's a 56 MB → 2 MB heap reduction; (2)
+                # the typed Python codegen can declare the field
+                # as `bytes` so Pydantic validation is a length
+                # check rather than per-element int validation,
+                # cutting unpack time on a 2 MB image from ~22 ms
+                # to microseconds. Indexing/iteration semantics are
+                # identical (b[i] returns the same int as l[i]).
+                # The pack path already accepts both bytes and list
+                # of ints, so this change is symmetric.
+                return bytes(data[offset : offset + count]), offset + count
             elem_size = SIZE[element_type]
             total = elem_size * count
             fmt = ">" + FORMAT[element_type] * count
