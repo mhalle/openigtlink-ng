@@ -149,8 +149,11 @@ every PR:
 Any crash, sanitizer report, or cross-codec disagreement fails the
 job; crash repros + disagreement logs upload as artifacts.
 
-## Phase 5 (deferred) — upstream reference-library parity
+## Phase 5 — upstream parity fuzzer — closed
 
-See [`PLAN.md`](PLAN.md). Wiring the pinned upstream C library as
-a sixth oracle is the tightest possible wire-compat signal; gated
-on the upstream building cleanly in CI.
+Not pursued. Functional parity with upstream is already enforced
+statically via `spec/corpus/upstream-fixtures.json` (24 byte-exact
+wire blobs from upstream's test vectors, round-tripped by every
+codec on every PR). A live upstream oracle would surface the
+reference library's own memory-safety bugs as "disagreements" —
+CVE tourism, not a quality signal for us. See [`PLAN.md`](PLAN.md).

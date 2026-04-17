@@ -1,7 +1,7 @@
 # Security + conformance testing harness — plan
 
-Status: **Phases 1–4 complete**; Phase 5 deferred. Durable
-state for resuming work after context compaction.
+Status: **Phases 1–4 complete**; Phase 5 closed (see below).
+Durable state for resuming work after context compaction.
 
 **Phase 3 headline:** libFuzzer found a real integer-overflow
 bug in `parse_wire` on its first 30-second run —
@@ -446,15 +446,41 @@ fuzzing could close.
 
 **Exit:** The three new CI jobs are green on main.
 
-### Phase 5 (stretch, 0.5 days) — Upstream parity fuzzer
+### Phase 5 — Upstream parity fuzzer — CLOSED (not pursued)
 
-If time permits: wire the pinned upstream reference C library as a
-fifth oracle in the differential runner. Any divergence from
-upstream is a wire-compat bug in our implementation, which is the
-tightest possible conformance signal.
+Original premise: wire the pinned upstream C library as a 6th
+oracle so any cross-codec divergence from upstream is a
+wire-compat bug.
 
-Gated on the upstream library building cleanly in CI; otherwise
-local-only.
+Reconsidered 2026-04-17 and closed without implementation. Two
+reasons:
+
+1. **Functional parity is already enforced statically** via
+   `spec/corpus/upstream-fixtures.json` — 24 wire blobs derived
+   from upstream's own test vectors, pinned in the repo. Every PR
+   round-trips them through all four codecs and must produce
+   byte-exact agreement:
+   - `core-cpp/tests/upstream_fixtures_test.cpp`
+   - `core-cpp/tests/oracle_parity_test.cpp`
+   - `corpus-tools/tests/test_oracle.py`
+   - `core-py/tests/test_oracle.py`, `core-ts/tests/oracle_parity.test.ts`
+   A live upstream oracle couldn't tighten this signal — the
+   frozen bytes *are* the spec.
+2. **Upstream is not a trustworthy ground truth for a fuzzer.**
+   The reference library predates modern sanitizers; its readers
+   use `#pragma pack(2)` + memcpy-style struct casts with
+   implicit-size assumptions. Feeding fuzzer inputs through it
+   would surface *their* bugs (remote DoS, OOB reads) as
+   "disagreements" and drown the signal that matters to us:
+   whether our four codecs agree with each other and with the
+   frozen fixtures. Running a CVE tourism campaign against the
+   reference library is not in scope for this project.
+
+If the calculus ever changes (e.g. upstream adopts sanitizers in
+CI and ships a memory-safe reader), the oracle CLI wrapper is ~1
+day of work: `libigtlutil.a` builds cleanly and its `igtl_header_*`
+/ per-message `igtl_<type>_unpack` functions map 1:1 to the
+existing oracle JSON report shape.
 
 ## File touch list (remaining work)
 
@@ -493,13 +519,11 @@ local-only.
   nightly schedule (building the upstream library on every PR is
   too slow).
 
-## Estimates (remaining)
+## Estimates (historical)
 
-| Phase | Scope | Duration |
-|---|---|---|
-| 3 — C++ libFuzzer | 2 fuzz targets + CMake gate + seed corpus | 0.5-1 day |
-| 4 — CI fuzz-smoke | workflow + seed corpus curation | 0.5 day |
-| 5 (stretch) — Upstream parity | subprocess glue + nightly CI | 0.5-1 day |
+All phases complete or closed. The harness is feature-complete;
+future work is incremental seed-corpus expansion and reacting to
+whatever the CI fuzz-smoke surfaces over time.
 
 ## Resuming after compaction
 
