@@ -55,7 +55,7 @@ _DATA_MESSAGES: dict[str, str] = {
     "IMGMETA":    "ImageMetaMessage",
     "LBMETA":     "LabelMetaMessage",
     "NDARRAY":    "NDArrayMessage",
-    "POINT":      "PointMessage",
+    # POINT is hand-written; intentionally omitted.
     "POLYDATA":   "PolyDataMessage",
     # POSITION is hand-written; intentionally omitted.
     "QTDATA":     "QuaternionTrackingDataMessage",

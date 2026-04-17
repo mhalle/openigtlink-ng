@@ -8,6 +8,7 @@
 #include <unistd.h>
 
 #include "igtlMath.h"
+#include "igtlPointMessage.h"
 #include "igtlPositionMessage.h"
 #include "igtlStatusMessage.h"        // GetStatusMessage
 #include "igtlStringMessage.h"
@@ -55,6 +56,42 @@ static int emit_get_status() {
     msg->SetHeaderVersion(2);
     msg->SetDeviceName("Probe");
     msg->SetTimeStamp(1718455896u, 0);
+    msg->Pack();
+    ::write(1, msg->GetPackPointer(),
+            static_cast<size_t>(msg->GetPackSize()));
+    return 0;
+}
+
+static int emit_point() {
+    auto msg = igtl::PointMessage::New();
+    msg->SetHeaderVersion(2);
+    msg->SetDeviceName("Planner");
+    msg->SetTimeStamp(1718455896u, 0);
+
+    auto make_pt = [](const char* name, const char* group,
+                      igtlUint8 r, igtlUint8 g, igtlUint8 b,
+                      igtlUint8 a, float x, float y, float z,
+                      float rad, const char* owner) {
+        auto p = igtl::PointElement::New();
+        p->SetName(name);
+        p->SetGroupName(group);
+        p->SetRGBA(r, g, b, a);
+        p->SetPosition(x, y, z);
+        p->SetRadius(rad);
+        p->SetOwner(owner);
+        return p;
+    };
+
+    auto p1 = make_pt("Nasion", "Fiducial", 255, 0, 0, 255,
+                      12.5f, -4.5f, 200.75f, 2.0f, "HeadMRI");
+    auto p2 = make_pt("Target_1", "Target", 0, 255, 0, 255,
+                      -15.25f, 8.0f, 180.0f, 1.5f, "HeadMRI");
+    auto p3 = make_pt("Landmark_A", "Landmark", 0, 0, 255, 128,
+                      0.0f, 0.0f, 0.0f, 0.0f, "");
+
+    msg->AddPointElement(p1);
+    msg->AddPointElement(p2);
+    msg->AddPointElement(p3);
     msg->Pack();
     ::write(1, msg->GetPackPointer(),
             static_cast<size_t>(msg->GetPackSize()));
@@ -129,6 +166,7 @@ int main(int argc, char** argv) {
                                        igtl::PositionMessage::WITH_QUATERNION3);
     if (c == "position_all_v2")    return emit_position(
                                        igtl::PositionMessage::ALL);
+    if (c == "point_v2")           return emit_point();
     if (c == "stt_tdata_v2")       return emit_stt_tdata_header_only();
     std::fprintf(stderr, "unknown case: %s\n", argv[1]);
     return 2;
