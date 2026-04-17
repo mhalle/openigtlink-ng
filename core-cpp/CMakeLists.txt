@@ -147,7 +147,14 @@ add_library(igtl_compat STATIC
     compat/src/igtlClientSocket.cxx
     compat/src/igtlServerSocket.cxx
 )
-target_include_directories(igtl_compat PUBLIC compat/include)
+target_include_directories(igtl_compat PUBLIC
+    compat/include           # our sources use "igtl/igtlFoo.h"
+    compat/include/igtl)     # upstream code uses bare "igtlFoo.h"
+# Upstream examples / consumers gate v2+ includes behind the
+# protocol-version macro. Our shim supports v3 — advertise it so
+# consumer code picks up the full type set.
+target_compile_definitions(igtl_compat PUBLIC
+    OpenIGTLink_PROTOCOL_VERSION=3)
 # Pack/Unpack in the facades goes through our runtime codec.
 # Socket / ClientSocket / ServerSocket delegate to oigtl_transport.
 target_link_libraries(igtl_compat PUBLIC oigtl_runtime oigtl_transport)
@@ -254,6 +261,54 @@ target_link_libraries(igtl_compat_socket_roundtrip_test
 add_test(NAME compat_socket_roundtrip
          COMMAND igtl_compat_socket_roundtrip_test)
 set_tests_properties(compat_socket_roundtrip PROPERTIES TIMEOUT 30)
+
+# -----------------------------------------------------------------
+# Phase 8 — upstream example programs built DIRECTLY against the
+# shim (no upstream library in the link). Proves the shim is a
+# source-level drop-in: if TrackerServer.cxx compiles and runs
+# against igtl_compat alone, every consumer that writes against
+# the upstream API works.
+#
+# These programs live in the upstream source tree and we do NOT
+# modify them — just point the compiler at them.
+# -----------------------------------------------------------------
+set(IGTL_UPSTREAM_EXAMPLES
+    "${CMAKE_CURRENT_SOURCE_DIR}/../corpus-tools/reference-libs/openigtlink-upstream/Examples")
+
+foreach(upstream_example
+            Tracker/TrackerServer
+            Tracker/TrackerClient
+            Receiver/ReceiveServer
+            Receiver/ReceiveClient
+            Status/StatusServer
+            Status/StatusClient)
+    get_filename_component(_prog_name "${upstream_example}" NAME)
+    set(_src "${IGTL_UPSTREAM_EXAMPLES}/${upstream_example}.cxx")
+    if(EXISTS "${_src}")
+        add_executable(upstream_${_prog_name}_via_shim "${_src}")
+        target_link_libraries(upstream_${_prog_name}_via_shim
+            PRIVATE igtl_compat)
+        # Upstream code has legacy signed/unsigned comparisons etc.
+        # We're NOT fixing upstream — just building it.
+        target_compile_options(upstream_${_prog_name}_via_shim PRIVATE
+            -Wno-error -Wno-unused-parameter -Wno-unused-variable
+            -Wno-sign-compare -Wno-unused-but-set-variable)
+    endif()
+endforeach()
+
+# Live interop gate — orchestrates unmodified upstream
+# ReceiveServer.cxx and TrackerClient.cxx as subprocesses.
+if(TARGET upstream_ReceiveServer_via_shim
+   AND TARGET upstream_TrackerClient_via_shim)
+    add_test(NAME compat_upstream_examples_interop
+        COMMAND bash
+            "${CMAKE_CURRENT_SOURCE_DIR}/compat/tests/upstream_examples_interop.sh"
+            "$<TARGET_FILE:upstream_ReceiveServer_via_shim>"
+            "$<TARGET_FILE:upstream_TrackerClient_via_shim>"
+            "18956")
+    set_tests_properties(compat_upstream_examples_interop
+        PROPERTIES TIMEOUT 15)
+endif()
 
 # Byte-parity gate — two separate emitter binaries to avoid ODR
 # collisions on `igtl::FooMessage` (our shim's class and upstream's

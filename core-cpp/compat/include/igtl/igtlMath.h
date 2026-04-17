@@ -22,6 +22,11 @@ IGTLCommon_EXPORT void QuaternionToMatrix(
 IGTLCommon_EXPORT void MatrixToQuaternion(
     Matrix4x4& m, float* q);
 
+IGTLCommon_EXPORT void PrintVector3(float v[3]);
+IGTLCommon_EXPORT void PrintVector3(float x, float y, float z);
+IGTLCommon_EXPORT void PrintVector4(float v[4]);
+IGTLCommon_EXPORT void PrintVector4(float x, float y, float z, float w);
+
 }  // namespace igtl
 
 #endif  // __igtlMath_h

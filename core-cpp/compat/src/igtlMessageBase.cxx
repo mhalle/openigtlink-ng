@@ -3,6 +3,7 @@
 
 #include "igtl/igtlMessageBase.h"
 #include "igtl/igtlMessageHeader.h"
+#include "igtl/igtlTimeStamp.h"
 
 #include <algorithm>
 #include <array>
@@ -59,6 +60,16 @@ int MessageBase::GetTimeStamp(unsigned int* sec, unsigned int* frac) {
     if (frac) *frac = static_cast<unsigned int>(
         m_TimeStamp & 0xFFFFFFFFu);
     return 1;
+}
+
+void MessageBase::SetTimeStamp(SmartPointer<TimeStamp>& ts) {
+    if (!ts) return;
+    m_TimeStamp = ts->GetTimeStampUint64();
+}
+
+void MessageBase::GetTimeStamp(SmartPointer<TimeStamp>& ts) {
+    if (!ts) return;
+    ts->SetTime(m_TimeStamp);
 }
 
 // ---------------------------------------------------------------

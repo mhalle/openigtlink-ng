@@ -26,6 +26,7 @@
 #include "igtlMacro.h"
 #include "igtlObject.h"
 #include "igtlSmartPointer.h"
+#include "igtlTimeStamp.h"
 #include "igtlTypes.h"
 
 #include <cstddef>
@@ -56,12 +57,22 @@ enum UnpackStatus {
 };
 
 class MessageHeader;
+class TimeStamp;
 
 class IGTLCommon_EXPORT MessageBase : public Object {
  public:
     igtlTypeMacro(igtl::MessageBase, igtl::Object);
 
     static Pointer New();
+
+    // Upstream exposes the Unpack() status constants as class-scope
+    // members, not just as the namespace-scope enum above. Some
+    // upstream examples (Receiver/ReceiveServer.cxx) spell them as
+    // `headerMsg->UNPACK_BODY`. Mirror the values as static
+    // constants for source compatibility.
+    static constexpr int UNPACK_UNDEF  = igtl::UNPACK_UNDEF;
+    static constexpr int UNPACK_HEADER = igtl::UNPACK_HEADER;
+    static constexpr int UNPACK_BODY   = igtl::UNPACK_BODY;
 
     // ---- identity / header fields ----
     void SetHeaderVersion(unsigned short v) { m_HeaderVersion = v; }
@@ -72,7 +83,14 @@ class IGTLCommon_EXPORT MessageBase : public Object {
     std::string GetDeviceName() const;
 
     void SetDeviceType(const std::string& type) { m_DeviceType = type; }
-    const char* GetDeviceType() const { return m_DeviceType.c_str(); }
+    // GetDeviceType returns the IGTL message type (e.g. "TRANSFORM").
+    // Upstream's `GetDeviceType()` is misnamed — it is the type_id
+    // field of the message, NOT the ITK-style object class name.
+    // Every consumer relies on that misname — `strcmp(msg->
+    // GetDeviceType(), "TRANSFORM")` is the universal dispatch.
+    const char* GetDeviceType() const {
+        return m_SendMessageType.c_str();
+    }
 
     void SetMessageID(igtlUint32 id) { m_MessageID = id; }
     igtlUint32 GetMessageID() const  { return m_MessageID; }
@@ -81,6 +99,13 @@ class IGTLCommon_EXPORT MessageBase : public Object {
     // halves. Upstream API.
     int SetTimeStamp(unsigned int sec, unsigned int frac);
     int GetTimeStamp(unsigned int* sec, unsigned int* frac);
+
+    // TimeStamp-object overloads (upstream API — every example
+    // program uses these). TimeStamp is forward-declared at
+    // namespace scope above; the implementation lives in
+    // igtlMessageBase.cxx and pulls in igtlTimeStamp.h.
+    void SetTimeStamp(SmartPointer<TimeStamp>& ts);
+    void GetTimeStamp(SmartPointer<TimeStamp>& ts);
 
     // ---- metadata (v2/v3) ----
     typedef std::pair<IANA_ENCODING_TYPE, std::string> MetaDataEntry;

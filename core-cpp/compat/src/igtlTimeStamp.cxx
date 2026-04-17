@@ -2,7 +2,21 @@
 
 #include "igtl/igtlTimeStamp.h"
 
+#include <chrono>
+
 namespace igtl {
+
+void TimeStamp::GetTime() {
+    const auto now    = std::chrono::system_clock::now();
+    const auto since  = now.time_since_epoch();
+    const auto secs   =
+        std::chrono::duration_cast<std::chrono::seconds>(since);
+    const auto nanos  =
+        std::chrono::duration_cast<std::chrono::nanoseconds>(since - secs);
+    SetTime(static_cast<igtlUint32>(secs.count()),
+            static_cast<igtlUint32>(nanos.count()));
+}
+
 
 void TimeStamp::SetTime(igtlUint32 sec, igtlUint32 nanosecond) {
     // Convert nanoseconds to the 32-bit fraction-of-second:

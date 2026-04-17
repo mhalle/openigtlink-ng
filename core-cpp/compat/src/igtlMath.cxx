@@ -70,4 +70,17 @@ void MatrixToQuaternion(Matrix4x4& m, float* q) {
     }
 }
 
+void PrintVector3(float v[3]) {
+    std::printf("%f, %f, %f\n", v[0], v[1], v[2]);
+}
+void PrintVector3(float x, float y, float z) {
+    std::printf("%f, %f, %f\n", x, y, z);
+}
+void PrintVector4(float v[4]) {
+    std::printf("%f, %f, %f, %f\n", v[0], v[1], v[2], v[3]);
+}
+void PrintVector4(float x, float y, float z, float w) {
+    std::printf("%f, %f, %f, %f\n", x, y, z, w);
+}
+
 }  // namespace igtl

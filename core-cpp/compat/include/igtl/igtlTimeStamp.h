@@ -31,9 +31,9 @@ class IGTLCommon_EXPORT TimeStamp : public Object {
     double GetTimeStamp();
     void   GetTimeStamp(igtlUint32* sec, igtlUint32* nanosecond);
 
-    // Populate from the current system clock — stub: we don't call
-    // this during Pack/Unpack, so leave the field unchanged.
-    void GetTime() { /* no-op */ }
+    // Populate from the current system clock (wall time, UTC).
+    // Upstream examples call this to timestamp outgoing messages.
+    void GetTime();
 
  protected:
     TimeStamp() : m_TimeStamp(0) {}
