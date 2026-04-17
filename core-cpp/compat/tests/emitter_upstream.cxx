@@ -7,9 +7,19 @@
 #include <string>
 #include <unistd.h>
 
+#include "igtlBindMessage.h"
 #include "igtlCapabilityMessage.h"
+#include "igtlColorTableMessage.h"
+#include "igtlCommandMessage.h"
 #include "igtlImageMessage.h"
+#include "igtlImageMetaMessage.h"
+#include "igtlLabelMetaMessage.h"
+#include "igtlNDArrayMessage.h"
+#include "igtlPolyDataMessage.h"
+#include "igtlQueryMessage.h"
 #include "igtlSensorMessage.h"
+#include "igtlTimeStamp.h"
+#include "igtlTrajectoryMessage.h"
 #include "igtlMath.h"
 #include "igtlPointMessage.h"
 #include "igtlPositionMessage.h"
@@ -60,6 +70,178 @@ static int emit_get_status() {
     msg->SetHeaderVersion(2);
     msg->SetDeviceName("Probe");
     msg->SetTimeStamp(1718455896u, 0);
+    msg->Pack();
+    ::write(1, msg->GetPackPointer(),
+            static_cast<size_t>(msg->GetPackSize()));
+    return 0;
+}
+
+static int emit_command() {
+    auto msg = igtl::CommandMessage::New();
+    msg->SetHeaderVersion(2);
+    msg->SetDeviceName("Workstation");
+    msg->SetTimeStamp(1718455896u, 0);
+    msg->SetCommandId(0xDEADBEEF);
+    msg->SetCommandName("StartScan");
+    msg->SetContentEncoding(106);
+    msg->SetCommandContent("protocol=T2W;tr=4000;te=105");
+    msg->Pack();
+    ::write(1, msg->GetPackPointer(),
+            static_cast<size_t>(msg->GetPackSize()));
+    return 0;
+}
+
+static int emit_query() {
+    auto msg = igtl::QueryMessage::New();
+    msg->SetHeaderVersion(2);
+    msg->SetDeviceName("Slicer");
+    msg->SetTimeStamp(1718455896u, 0);
+    // Upstream's QueryMessage doesn't expose SetQueryID publicly in
+    // all versions; skip that field and rely on the default 0.
+    msg->SetDataType("IMAGE");
+    msg->SetDeviceUID("MR_Scanner_01");
+    msg->Pack();
+    ::write(1, msg->GetPackPointer(),
+            static_cast<size_t>(msg->GetPackSize()));
+    return 0;
+}
+
+static int emit_imgmeta() {
+    auto msg = igtl::ImageMetaMessage::New();
+    msg->SetHeaderVersion(2);
+    msg->SetDeviceName("ImageDB");
+    msg->SetTimeStamp(1718455896u, 0);
+    for (int i = 0; i < 2; ++i) {
+        auto e = igtl::ImageMetaElement::New();
+        e->SetName(i == 0 ? "Patient A T1" : "Patient A T2");
+        e->SetDeviceName(i == 0 ? "T1_01" : "T2_01");
+        e->SetModality("MR");
+        e->SetPatientName("Doe, Jane");
+        e->SetPatientID("P-0421");
+        auto ts = igtl::TimeStamp::New();
+        ts->SetTime(1718455000u + i, 0);
+        igtl::TimeStamp::Pointer tsp = ts;
+        e->SetTimeStamp(tsp);
+        igtlUint16 sz[3] = {256, 256, 128};
+        e->SetSize(sz);
+        e->SetScalarType(5);
+        msg->AddImageMetaElement(e);
+    }
+    msg->Pack();
+    ::write(1, msg->GetPackPointer(),
+            static_cast<size_t>(msg->GetPackSize()));
+    return 0;
+}
+
+static int emit_lbmeta() {
+    auto msg = igtl::LabelMetaMessage::New();
+    msg->SetHeaderVersion(2);
+    msg->SetDeviceName("LabelDB");
+    msg->SetTimeStamp(1718455896u, 0);
+    auto e = igtl::LabelMetaElement::New();
+    e->SetName("Liver Segmentation");
+    e->SetDeviceName("LabelImg_01");
+    e->SetLabel(1);
+    e->SetRGBA(255, 100, 50, 255);
+    e->SetSize(256, 256, 64);
+    e->SetOwner("T1_01");
+    msg->AddLabelMetaElement(e);
+    msg->Pack();
+    ::write(1, msg->GetPackPointer(),
+            static_cast<size_t>(msg->GetPackSize()));
+    return 0;
+}
+
+static int emit_traj() {
+    auto msg = igtl::TrajectoryMessage::New();
+    msg->SetHeaderVersion(2);
+    msg->SetDeviceName("Planner");
+    msg->SetTimeStamp(1718455896u, 0);
+    auto e = igtl::TrajectoryElement::New();
+    e->SetName("Biopsy_1");
+    e->SetGroupName("Biopsy");
+    e->SetType(igtl::TrajectoryElement::TYPE_ENTRY_TARGET);
+    e->SetRGBA(255, 0, 0, 255);
+    e->SetEntryPosition(10.0f, 20.0f, 5.0f);
+    e->SetTargetPosition(15.0f, 22.0f, 50.0f);
+    e->SetRadius(1.25f);
+    e->SetOwner("HeadMRI");
+    msg->AddTrajectoryElement(e);
+    msg->Pack();
+    ::write(1, msg->GetPackPointer(),
+            static_cast<size_t>(msg->GetPackSize()));
+    return 0;
+}
+
+static int emit_ndarray() {
+    auto msg = igtl::NDArrayMessage::New();
+    msg->SetHeaderVersion(2);
+    msg->SetDeviceName("Compute_01");
+    msg->SetTimeStamp(1718455896u, 0);
+    // Upstream's Array<T> is a template without ::New() — it's
+    // owned via raw pointer and not ref-counted like ArrayBase.
+    auto* arr = new igtl::Array<float>;
+    igtl::ArrayBase::IndexType sz = {2, 3};
+    arr->SetSize(sz);
+    float vals[6] = {1.5f, -2.25f, 0.0f, 100.0f, 3.14f, -0.5f};
+    arr->SetArray(vals);
+    msg->SetArray(igtl::NDArrayMessage::TYPE_FLOAT32, arr);
+    msg->Pack();
+    ::write(1, msg->GetPackPointer(),
+            static_cast<size_t>(msg->GetPackSize()));
+    return 0;
+}
+
+static int emit_colort() {
+    auto msg = igtl::ColorTableMessage::New();
+    msg->SetHeaderVersion(2);
+    msg->SetDeviceName("LUT");
+    msg->SetTimeStamp(1718455896u, 0);
+    msg->SetIndexTypeToUint8();
+    msg->SetMapTypeToUint8();
+    // Upstream allocates the table via Pack itself using the
+    // index/map types; we need to populate GetTablePointer() after
+    // that. Easiest: Pack once to allocate, then rewrite table.
+    msg->Pack();
+    auto* tbl = static_cast<std::uint8_t*>(msg->GetTablePointer());
+    for (int i = 0; i < 256; ++i) tbl[i] = static_cast<std::uint8_t>(i);
+    msg->Pack();
+    ::write(1, msg->GetPackPointer(),
+            static_cast<size_t>(msg->GetPackSize()));
+    return 0;
+}
+
+static int emit_polydata_empty() {
+    auto msg = igtl::PolyDataMessage::New();
+    msg->SetHeaderVersion(2);
+    msg->SetDeviceName("Surface");
+    msg->SetTimeStamp(1718455896u, 0);
+    msg->Pack();
+    ::write(1, msg->GetPackPointer(),
+            static_cast<size_t>(msg->GetPackSize()));
+    return 0;
+}
+
+static int emit_polydata_tri() {
+    auto msg = igtl::PolyDataMessage::New();
+    msg->SetHeaderVersion(2);
+    msg->SetDeviceName("Surface");
+    msg->SetTimeStamp(1718455896u, 0);
+
+    auto pts = igtl::PolyDataPointArray::New();
+    pts->AddPoint(0.0f, 0.0f, 0.0f);
+    pts->AddPoint(1.0f, 0.0f, 0.0f);
+    pts->AddPoint(0.0f, 1.0f, 0.0f);
+    pts->AddPoint(1.0f, 1.0f, 0.0f);
+    msg->SetPoints(pts.GetPointer());
+
+    auto polys = igtl::PolyDataCellArray::New();
+    igtlUint32 tri0[3] = {0, 1, 2};
+    igtlUint32 tri1[3] = {1, 3, 2};
+    polys->AddCell(3, tri0);
+    polys->AddCell(3, tri1);
+    msg->SetPolygons(polys.GetPointer());
+
     msg->Pack();
     ::write(1, msg->GetPackPointer(),
             static_cast<size_t>(msg->GetPackSize()));
@@ -308,6 +490,15 @@ int main(int argc, char** argv) {
     if (c == "image_v2")           return emit_image();
     if (c == "capability_v2")      return emit_capability();
     if (c == "sensor_v2")          return emit_sensor();
+    if (c == "command_v2")         return emit_command();
+    if (c == "query_v2")           return emit_query();
+    if (c == "imgmeta_v2")         return emit_imgmeta();
+    if (c == "lbmeta_v2")          return emit_lbmeta();
+    if (c == "traj_v2")            return emit_traj();
+    if (c == "ndarray_v2")         return emit_ndarray();
+    if (c == "colort_v2")          return emit_colort();
+    if (c == "polydata_empty_v2")  return emit_polydata_empty();
+    if (c == "polydata_tri_v2")    return emit_polydata_tri();
     if (c == "stt_tdata_v2")       return emit_stt_tdata_header_only();
     std::fprintf(stderr, "unknown case: %s\n", argv[1]);
     return 2;

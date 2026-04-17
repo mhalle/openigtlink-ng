@@ -95,6 +95,19 @@ class IGTLCommon_EXPORT NDArrayMessage : public MessageBase {
     igtlTypeMacro(igtl::NDArrayMessage, igtl::MessageBase);
     igtlNewMacro(igtl::NDArrayMessage);
 
+    // Upstream mirrors these on NDArrayMessage itself.
+    enum {
+        TYPE_INT8    = ArrayBase::TYPE_INT8,
+        TYPE_UINT8   = ArrayBase::TYPE_UINT8,
+        TYPE_INT16   = ArrayBase::TYPE_INT16,
+        TYPE_UINT16  = ArrayBase::TYPE_UINT16,
+        TYPE_INT32   = ArrayBase::TYPE_INT32,
+        TYPE_UINT32  = ArrayBase::TYPE_UINT32,
+        TYPE_FLOAT32 = ArrayBase::TYPE_FLOAT32,
+        TYPE_FLOAT64 = ArrayBase::TYPE_FLOAT64,
+        TYPE_COMPLEX = ArrayBase::TYPE_COMPLEX,
+    };
+
     int        SetArray(int type, ArrayBase* a);
     ArrayBase* GetArray() { return m_Array.GetPointer(); }
     int        GetType()  { return m_Type; }

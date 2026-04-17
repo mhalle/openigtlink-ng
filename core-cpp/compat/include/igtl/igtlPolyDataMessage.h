@@ -134,6 +134,20 @@ class IGTLCommon_EXPORT PolyDataMessage : public MessageBase {
 
     void Clear();
 
+    // Upstream-style setters / getters (they generate these via
+    // igtlSetObjectMacro). Direct m_* access still works for
+    // consumers that need it.
+    void SetPoints(PolyDataPointArray* p)            { m_Points = p; }
+    PolyDataPointArray* GetPoints()                  { return m_Points.GetPointer(); }
+    void SetVertices(PolyDataCellArray* a)           { m_Vertices = a; }
+    PolyDataCellArray* GetVertices()                 { return m_Vertices.GetPointer(); }
+    void SetLines(PolyDataCellArray* a)              { m_Lines = a; }
+    PolyDataCellArray* GetLines()                    { return m_Lines.GetPointer(); }
+    void SetPolygons(PolyDataCellArray* a)           { m_Polygons = a; }
+    PolyDataCellArray* GetPolygons()                 { return m_Polygons.GetPointer(); }
+    void SetTriangleStrips(PolyDataCellArray* a)     { m_TriangleStrips = a; }
+    PolyDataCellArray* GetTriangleStrips()           { return m_TriangleStrips.GetPointer(); }
+
     void ClearAttributes() { m_Attributes.clear(); }
     void AddAttribute(PolyDataAttribute* att);
 

@@ -269,7 +269,16 @@ if(EXISTS "${IGTL_UPSTREAM_BUILD}/lib/libOpenIGTLink.a")
                  transform_v2_rot90z get_status_v2 status_v2
                  string_v2 position_only_v2 position_quat3_v2
                  position_all_v2 point_v2 tdata_v2 qtdata_v2
-                 image_v2 capability_v2 sensor_v2)
+                 image_v2 capability_v2 sensor_v2
+                 command_v2 query_v2 imgmeta_v2 lbmeta_v2
+                 traj_v2 ndarray_v2
+                 # colort_v2: upstream's ColorTableMessage::Pack
+                 #   doesn't allocate the buffer reliably (its
+                 #   CalculateContentBufferSize/AllocateBuffer flow
+                 #   requires the table to be SetColorTableSize'd
+                 #   first); our shim packs it correctly. Skip
+                 #   cross-lib parity to avoid segfaulting upstream.
+                 polydata_empty_v2 polydata_tri_v2)
         add_test(NAME compat_parity_${case}
             COMMAND bash -c
                 "cmp <(${CMAKE_CURRENT_BINARY_DIR}/compat_emitter_shim ${case}) <(${CMAKE_CURRENT_BINARY_DIR}/compat_emitter_upstream ${case})")

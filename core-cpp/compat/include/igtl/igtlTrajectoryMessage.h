@@ -21,7 +21,10 @@ class IGTLCommon_EXPORT TrajectoryElement : public Object {
     enum {
         TYPE_ENTRY_ONLY       = 1,
         TYPE_TARGET_ONLY      = 2,
-        TYPE_ENTRY_AND_TARGET = 3,
+        TYPE_ENTRY_TARGET     = 3,
+        // Alias for older/alternate naming; matches the upstream
+        // enum value. Consumers using either spelling still work.
+        TYPE_ENTRY_AND_TARGET = TYPE_ENTRY_TARGET,
     };
 
     int         SetName(const char* n);
