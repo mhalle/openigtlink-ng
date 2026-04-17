@@ -1,7 +1,23 @@
 # C++ wire codec codegen — plan
 
-Status: planning document. No C++ written yet. This file is durable
-state for resuming work after context compaction.
+**Status: complete.** All six phases landed. Kept in the tree as
+historical record of the implementation's phase structure; see
+[`README.md`](README.md) for the current state.
+
+Implementation commits:
+- `17887c1` — this plan document
+- `84a7adb` — Phases 1–6 (runtime + 84 generated messages + oracle
+  + dispatch + CI) + perf work (slice-by-8 CRC) + multi-region
+  fixtures + cross-language oracle parity
+- `9378c96` — core-py / typed Python codec (symmetric to core-cpp)
+
+Acceptance criterion from below was met: every supported upstream
+fixture round-trips byte-for-byte, and the cross-language oracle
+parity test confirms C++ and Python reference codec agree on all
+23 of 24 fixtures (the 24th is `rtpwrapper.h`, an RTP-wrapper
+variant rather than a regular IGTL message).
+
+---
 
 ## Goal
 

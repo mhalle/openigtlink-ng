@@ -57,7 +57,19 @@ disagreement is resolved explicitly, not silently.
 
 ## Status
 
-Draft. The prose spec in `protocol/v3.md` and example schema
-`schemas/transform.json` are initial scaffolding; the full corpus will
-be generated from the hardened existing library once
-`../corpus-tools/` is implemented.
+**Schemas complete, corpus pending.** All 84 wire message types
+from the v1/v2/v3 protocol are specified under `schemas/` — 20
+data messages, 5 framing structures (header, extended header,
+metadata, unit, message-level), and 59 query/control messages
+(`GET_*`, `STT_*`, `STP_*`, `RTS_*`). Every schema has been audited
+against the upstream reference implementation and is round-trip
+verified by both the reference Python codec (`../corpus-tools/`)
+and the generated C++/Python libraries (`../core-cpp/`,
+`../core-py/`).
+
+The conformance corpus under `corpus/` (positive + negative wire
+vectors as standalone files, independent of the upstream test
+headers) is not yet produced — currently both implementations
+consume the upstream test fixtures directly via
+`../corpus-tools/src/oigtl_corpus_tools/codec/test_vectors.py`.
+Generating a standalone corpus is a `corpus-tools` roadmap item.

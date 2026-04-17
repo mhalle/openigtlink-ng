@@ -27,18 +27,42 @@ role; they may split into independent repositories on a future
 `openigtlink-ng` GitHub organization when that structural change is
 warranted.
 
-- [`spec/`](spec/) — protocol specification, machine-readable message
-  schemas, and conformance corpus. The **specification of record**.
-- [`core-cpp/`](core-cpp/) — reference C++17 implementation and the
-  legacy API compatibility shim.
-- [`corpus-tools/`](corpus-tools/) — corpus generator, validator,
-  differential-fuzz harness.
+- [`spec/`](spec/) — protocol specification, 84 machine-readable
+  message schemas, and conformance corpus. The **specification of record**.
+- [`corpus-tools/`](corpus-tools/) — schema validation, corpus generation,
+  reference codec (dict-based, used as the conformance oracle), and
+  multi-target codegen. The schemas' authoritative tooling.
+- [`core-cpp/`](core-cpp/) — typed C++17 wire codec + runtime. Round-trips
+  23 of 24 upstream fixtures byte-for-byte; cross-language oracle
+  parity against the Python reference codec in CI.
+- [`core-py/`](core-py/) — typed Python library (`oigtl` package).
+  84 generated Pydantic message classes on top of the reference codec,
+  with `parse_message()` one-call typed dispatch.
 
 ## Status
 
-Early design / scaffolding phase. No shipping artifacts yet. See
-`spec/` for specification drafts and `../openigtlink/` for the current
-hardening audit work that this project inherits and extends.
+**Wire codec: done.** All 84 message types from the spec are
+implemented in three symmetric codecs (reference Python, typed
+Python, typed C++17), all cross-checked against each other and
+against the upstream test fixtures. Transport, session management,
+and v4 protocol extensions remain future work.
+
+Current implementation state:
+
+| Layer | Status |
+|---|---|
+| Message schemas (`spec/schemas/`) | 84 schemas, all fixture round-trip verified |
+| Python reference codec (`corpus-tools/`) | complete, 110 tests |
+| Python typed library (`core-py/`) | complete, 126 tests |
+| C++17 typed library (`core-cpp/`) | complete, 24-fixture corpus + cross-language oracle parity |
+| Schema-driven codegen (C++, Python) | complete, drift-checked in CI |
+| Transport layer (ASIO, TLS, session) | not started |
+| v4 / NG protocol extensions | not designed |
+
+See [core-cpp/PLAN.md](core-cpp/PLAN.md) for the C++ codec's
+phase-by-phase history and acceptance criteria; individual
+`README.md` files in each directory describe the current state and
+usage.
 
 ## License
 
