@@ -179,7 +179,22 @@ def _unpack_field(
     if t in ("array", "struct_array"):
         count = _resolve_count(field, values, data, offset)
         element_type = field["element_type"]
-        elements: list[Any] = []
+
+        # Fast path: primitive element type → one struct.unpack_from call
+        # instead of a Python loop. Critical for IMAGE / POLYDATA / NDARRAY
+        # where arrays are megabytes of uniform primitive data.
+        if isinstance(element_type, str) and element_type in FORMAT:
+            if element_type == "uint8":
+                # Fastest possible: direct byte slice → list of ints
+                elements = list(data[offset : offset + count])
+                return elements, offset + count
+            elem_size = SIZE[element_type]
+            total = elem_size * count
+            fmt = ">" + FORMAT[element_type] * count
+            elements = list(struct.unpack_from(fmt, data, offset))
+            return elements, offset + total
+
+        elements = []
         for _ in range(count):
             elem, offset = _unpack_element(element_type, data, offset)
             elements.append(elem)
@@ -258,6 +273,19 @@ def _pack_field(field: dict[str, Any], value: Any) -> bytes:
 
     if t in ("array", "struct_array"):
         element_type = field["element_type"]
+
+        # Fast path: primitive element type → one struct.pack call instead
+        # of a Python loop + concat. Hot for IMAGE / POLYDATA / NDARRAY
+        # where arrays are megabytes of primitive data.
+        if isinstance(element_type, str) and element_type in FORMAT:
+            if element_type == "uint8":
+                # Accept bytes or iterable of ints
+                if isinstance(value, (bytes, bytearray, memoryview)):
+                    return bytes(value)
+                return bytes(value)
+            fmt = ">" + FORMAT[element_type] * len(value)
+            return struct.pack(fmt, *value)
+
         parts = [_pack_element(element_type, elem) for elem in value]
         return b"".join(parts)
 

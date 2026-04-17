@@ -30,3 +30,8 @@ packages = ["src/oigtl_corpus_tools"]
 [tool.pytest.ini_options]
 testpaths = ["tests"]
 addopts = "-ra"
+
+[dependency-groups]
+dev = [
+    "crcmod>=1.7",
+]
