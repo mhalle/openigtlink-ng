@@ -3,22 +3,97 @@
 Status: **Phase 1 + 2 complete**; Phases 3–5 pending. Durable
 state for resuming work after context compaction.
 
-## Status summary
+## Resume-from-cold briefing
 
-- **Phase 1 (negative corpus)** shipped. 21 entries under
-  `spec/corpus/negative/`, per-codec parametrized rejection
-  tests. Surfaced 6 codec gaps, all fixed; shared `policy.py`
-  helper extracted.
-- **Phase 2 (differential oracle fuzzer)** shipped.
-  `oigtl-corpus fuzz differential` runs at ~22k it/s against
-  Python and ~6k it/s across 4 native oracles. First 100k
-  cross-language sweep surfaced 4 bug classes; **all fixed**.
-  Current state: **0 disagreements at 1M iterations** across
-  py-ref / py / cpp / ts (seed 42).
-- **Phase 3 (in-process fuzzers)**, **Phase 4 (CI)**,
-  **Phase 5 (upstream parity)** pending.
+**You are picking up the security harness work for openigtlink-ng**
+at `/Users/halazar/Dropbox/development/openigtlink-ng`. The project
+has four independent wire codecs (reference Python, typed Python,
+typed C++, typed TypeScript) generated from shared JSON schemas
+under `spec/schemas/`. Phases 1 and 2 of a 5-phase security harness
+have shipped; this file captures where things stand and what comes
+next.
 
-## Bug classes found (and fixed) during Phase 2
+### Current state (fully shipped)
+
+Recent git history (most recent first):
+
+```
+9444429 Canonical-form round-trip + residual ASCII strictness: 1M fuzz clean
+c72be8f Strict ASCII in header + content string fields across all codecs
+ad8683e security Phase 2: differential oracle fuzzer across five oracles
+e84a64f Ship core-py numpy arrays, core-ts wire codec, and security harness Phase 1
+```
+
+### What's in place
+
+| Component | Location | Role |
+|---|---|---|
+| Negative corpus (21 entries) | `spec/corpus/negative/` + `index.json` | Must-reject inputs, per-codec tests |
+| Corpus generator | `corpus-tools/.../negative_corpus.py` | Deterministic builder for corpus bin files |
+| `oigtl-corpus fuzz differential` | `corpus-tools/.../commands/fuzz.py` | CLI entry point |
+| Fuzz generators | `corpus-tools/.../fuzz/generators.py` | random / mutate / structured |
+| Fuzz runner | `corpus-tools/.../fuzz/runner.py` | Orchestrates 5 oracle subprocesses |
+| C++ oracle CLI | `core-cpp/src/oracle_cli.cpp` + `oigtl_oracle_cli` binary | stdin hex → stdout JSON |
+| TS oracle CLI | `core-ts/src/oracle_cli.ts` → `build-tests/src/oracle_cli.js` | same protocol, Node |
+| Typed Py oracle CLI | `core-py/src/oigtl/oracle_cli.py` (run via `python -m oigtl.oracle_cli`) | same protocol, typed path |
+| Shared C++ ASCII helper | `core-cpp/include/oigtl/runtime/ascii.hpp` | Used by header + generated code |
+| `policy.check_body_size_set` | `corpus-tools/.../codec/policy.py` | body_size_set enforcement |
+| Disagreements log | `security/disagreements/<seed>.jsonl` (gitignored) | One line per cross-oracle divergence |
+
+### Five selectable oracles
+
+- **py-ref** — reference dict codec, in-process (fastest: 22k it/s).
+- **py** — typed Python classes, numpy path (`oigtl.messages.*`).
+- **py-noarray** — typed Python, `OIGTL_NO_NUMPY=1` forces `array.array` fallback.
+- **cpp** — external `oigtl_oracle_cli`.
+- **ts** — external `oracle_cli.js`.
+
+### How to run
+
+```bash
+# Build everything
+cmake --build core-cpp/build --target oigtl_oracle_cli
+(cd core-ts && npx tsc -p tsconfig.json --outDir build-tests)
+(cd core-py && uv sync --all-extras)
+
+# Fuzz
+cd corpus-tools
+uv run oigtl-corpus fuzz differential -n 100000 \
+    --oracle py-ref --oracle py --oracle cpp --oracle ts \
+    --progress-every 25000
+
+# Smoke tests
+(cd corpus-tools && uv run pytest -q)                   # 141 tests
+(cd core-py && uv run pytest -q)                        # 170 tests
+(cd core-py && OIGTL_NO_NUMPY=1 uv run pytest -q)       # 168 + 2 skip
+(cd core-ts && npm test)                                # 126 tests
+(cd core-cpp/build && ctest)                            # 3/3
+
+# Drift checks (CI gates)
+cd corpus-tools
+uv run oigtl-corpus codegen cpp --check
+uv run oigtl-corpus codegen python --check
+uv run oigtl-corpus codegen ts --check
+uv run oigtl-corpus fixtures export-json --check
+uv run oigtl-corpus corpus generate-negative --check
+uv run oigtl-corpus schema emit-meta --check
+```
+
+### Current fuzzer baseline
+
+**0 disagreements at 1,000,000 iterations** across py-ref / py /
+cpp / ts (seed 42). Same when py-noarray is added at 200k. All
+four (five) codecs reject the same ~98.1% of random/mutated/structured
+inputs and accept the same ~1.9%.
+
+This means any divergence the fuzzer finds in a future run is
+genuinely new — either a regression from a codec change, or a
+generator class that reaches a code path the current generators
+don't. That's the Phase 3 motivation.
+
+## Phase 2 fix log (reference for future conformance debate)
+
+Four bug classes found and fixed during Phase 2:
 
 1. **ASCII strictness divergence in headers.** Python's
    `.decode("ascii")` rejected bytes ≥ 0x80 in type_id /
@@ -45,6 +120,54 @@ state for resuming work after context compaction.
 Also fixed mid-Phase-2: TS `_readAsciiNullPadded` was stripping
 only trailing NULs instead of splitting at first NUL — caught
 on the very first fuzzer run (29 of initial 33 disagreements).
+
+### Design decisions worth preserving
+
+- **Canonical-form round-trip is the contract**, not byte-exact.
+  Length mismatch stays strict (extra bytes = structural bug);
+  value-level normalization is tolerated when the second pass is
+  stable. Schema-agnostic, robust to codec changes, correctly
+  handles IEEE-754 NaN canonicalization.
+- **`TextDecoder("ascii", { fatal: true })` is a trap.** Per the
+  WHATWG Encoding spec, "ascii" is aliased to windows-1252 and
+  never rejects bytes ≥ 0x80. Use explicit byte validation.
+- **ASCII strictness is the spec-conformant choice.** No observed
+  deployed device sends non-ASCII in header or content ASCII
+  fields. If compatibility with a permissive sender ever becomes
+  an ask, revisit per-field with a config flag.
+- **`policy.check_body_size_set` is reusable** for any future
+  spec-whitelist constraint beyond POSITION's {12, 24, 28}.
+- **numpy / array.array paths are bit-identical** in oracle
+  output — validated at 200k iterations. The `OIGTL_NO_NUMPY=1`
+  env var is the testing hook.
+
+---
+
+## What's next: Phase 3
+
+See the Phase 3 section below. **Scope has shifted** since the
+original plan: now that the differential fuzzer is clean at 1M
+iterations, the marginal value of per-codec in-process fuzzers
+depends on what they'd catch that cross-language fuzzing doesn't.
+
+**Unique value of in-process fuzzers:**
+
+- **libFuzzer on C++** catches memory-safety issues (ASan/UBSan).
+  The differential fuzzer only sees logical-level disagreements;
+  an OOB read that happens to produce the same JSON output as
+  another codec wouldn't be flagged. C++ is the only codec where
+  memory safety is an actual concern.
+- **Atheris / Python-native fuzzing** would catch unexpected
+  exception types — anything uncaught that isn't a `ProtocolError`
+  subclass. But this is largely already exercised by the
+  differential fuzzer (the subprocess trap catches it).
+- **JS fuzzing** has no real tooling; the deterministic-PRNG loop
+  in the plan is a coverage hack, not real fuzzing.
+
+**Revised recommendation:** ship libFuzzer on C++ (the real win),
+defer Atheris / JS in-process fuzzers unless they surface value
+during Phase 4 CI wiring. 30-minute libFuzzer smoke in CI is the
+high-leverage addition.
 
 ---
 
@@ -235,38 +358,72 @@ disagreements on a known-clean state of the project. Any
 disagreements found before that point go into `spec/corpus/negative/`
 and get fixed.
 
-### Phase 3 — In-process fuzzers (libFuzzer, Atheris, jsfuzz) (1 day)
+### Phase 3 — C++ libFuzzer (memory-safety gate) (0.5-1 day)
 
-C++ has the strongest memory-safety story; prioritize there.
+**Revised scope** (see briefing above): only the C++ side gets
+in-process fuzzing. The differential runner already catches
+logical-level divergences across all four codecs; what it
+doesn't catch is **memory-safety bugs that produce
+logically-plausible output** — an OOB read past a buffer end
+that happens to return zeros still decodes as a valid message.
+libFuzzer under ASan/UBSan is the only tool that catches this.
+
+Python and TS are memory-safe by construction; their in-process
+fuzzers would only catch "unexpected exception class escapes
+the codec", which the subprocess-based differential runner
+already flags as a protocol violation.
 
 **core-cpp/fuzz/** with two libFuzzer entry points:
 
-- `fuzz_header.cc`: feeds `LLVMFuzzerTestOneInput` to
-  `unpack_header`. Seed corpus: every 58-byte header prefix from
-  `spec/corpus/negative/framing_header/` plus the headers of
-  `spec/corpus/upstream-fixtures.json`. Build with `-fsanitize=address,undefined`.
-- `fuzz_oracle.cc`: feeds `LLVMFuzzerTestOneInput` to
-  `oracle::verify_wire_bytes`. Catches OOB in every codec path.
+- `fuzz_header.cc`: `LLVMFuzzerTestOneInput` → `unpack_header` +
+  `verify_crc`. Catches buffer overruns in the 58-byte header
+  parse. Seed corpus: every 58-byte header prefix from
+  `spec/corpus/negative/framing_header/` + the headers of
+  `spec/corpus/upstream-fixtures.json`.
+- `fuzz_oracle.cc`: `LLVMFuzzerTestOneInput` → `verify_wire_bytes`.
+  Catches OOB / UAF in every per-message code path.
+  Seed corpus: upstream fixtures as wire-bytes + negative corpus.
 
-Hook via `cmake -DBUILD_FUZZERS=ON` (only on clang + libFuzzer
-available). CI runs a 60-second smoke pass on each target.
+Build gate: `cmake -DBUILD_FUZZERS=ON` on clang with libFuzzer
+support. Build with `-fsanitize=address,undefined,fuzzer`.
 
-**core-py/fuzz/**: [Atheris](https://github.com/google/atheris)
-targets mirror the libFuzzer ones. Atheris catches Python
-exceptions that aren't `ProtocolError` subclasses (our promise:
-unknown inputs raise *something from our hierarchy*, not a
-`struct.error` or `IndexError` leaking from the codec internals).
+**Workflow:**
 
-**core-ts/fuzz/**: the JS fuzzing tool landscape is weak.
-Cheapest option: a `runFuzzing.ts` that loops with deterministic
-PRNG, feeds to `parseWire` + `verifyWireBytes`, asserts all
-thrown errors are `ProtocolError` subclasses, logs any crash's
-input to a deterministic reproducer file. Not real coverage-guided
-fuzzing, but closes the "unexpected exception type" gap.
+```bash
+# Local development
+cmake -S core-cpp -B core-cpp/build-fuzz \
+      -DBUILD_FUZZERS=ON -DCMAKE_BUILD_TYPE=Debug \
+      -DCMAKE_CXX_COMPILER=clang++
+cmake --build core-cpp/build-fuzz --target fuzz_oracle
+core-cpp/build-fuzz/fuzz_oracle core-cpp/fuzz/corpus/oracle \
+    -max_total_time=60
 
-**Exit:** Each fuzz target runs 60 seconds without a crash or
-an unexpected exception in CI. Crashing inputs go to
-`spec/corpus/negative/` and the bug is fixed.
+# CI smoke
+# (Phase 4 wires this into .github/workflows/ci.yml)
+```
+
+**Crash handling:** any crashing input gets its hex dumped to
+`security/fuzz-crashes/<sha1>.hex`, a repro test added to
+`core-cpp/tests/negative_corpus_test.cpp`, and fixed.
+
+**Exit:** Both fuzz targets run 60 seconds on the seed corpus
+without an ASan / UBSan / libFuzzer report in CI.
+
+### Phase 3b (deferred) — Python / TS in-process fuzzers
+
+Skipped unless Phase 4 surfaces value. Reasoning:
+
+- **Atheris on Python**: would find `struct.error` / `IndexError`
+  escaping the ProtocolError hierarchy. But the differential
+  runner's subprocess wrapper already catches this as an
+  "uncaught exception" event (see `oracle_cli.py` exception
+  wrapping). Marginal new value.
+- **JS fuzzing**: no mature coverage-guided tool for pure TS.
+  `jazzer.js` exists but the integration cost outweighs the
+  value given JS is memory-safe.
+
+Revisit if Phase 4 shows CI coverage gaps that only in-process
+fuzzing could close.
 
 ### Phase 4 — CI wiring + coverage (0.5 days)
 
@@ -292,63 +449,98 @@ tightest possible conformance signal.
 Gated on the upstream library building cleanly in CI; otherwise
 local-only.
 
-## File touch list
+## File touch list (remaining work)
+
+### Phase 3 (C++ libFuzzer)
 
 **Create:**
-- `security/PLAN.md` (this file)
-- `security/README.md`
-- `security/differential/generators.py`, `runner.py`
-- `spec/corpus/negative/index.json` + per-entry `.bin` files
-- `spec/corpus/negative/README.md`
-- `core-cpp/fuzz/CMakeLists.txt`, `fuzz_header.cc`, `fuzz_oracle.cc`
-- `core-py/fuzz/fuzz_oracle.py`, `fuzz_header.py`
-- `core-py/tests/test_negative_corpus.py`
-- `core-ts/fuzz/runFuzzing.ts`
-- `core-ts/tests/negative_corpus.test.ts`
-- `corpus-tools/src/oigtl_corpus_tools/commands/fuzz.py`
-- `corpus-tools/tests/test_negative_corpus.py`
+- `core-cpp/fuzz/fuzz_header.cc`
+- `core-cpp/fuzz/fuzz_oracle.cc`
+- `core-cpp/fuzz/corpus/header/` — seed corpus (headers only)
+- `core-cpp/fuzz/corpus/oracle/` — seed corpus (full wire messages)
+- `core-cpp/fuzz/README.md` — how to build + run locally
 
 **Modify:**
-- `core-cpp/CMakeLists.txt` — optional BUILD_FUZZERS option
-- `corpus-tools/src/oigtl_corpus_tools/cli.py` — register `fuzz` command
-- `.github/workflows/ci.yml` — add fuzz-smoke + coverage jobs
-- Root `README.md` — link to security harness
+- `core-cpp/CMakeLists.txt` — add `option(BUILD_FUZZERS OFF)`, guard
+  two new `add_executable` calls behind it, require Clang +
+  `-fsanitize=fuzzer,address,undefined`.
 
-## Estimates
+### Phase 4 (CI)
+
+**Modify:**
+- `.github/workflows/ci.yml` — add a `fuzz-smoke` job (Ubuntu,
+  Clang 15+, BUILD_FUZZERS=ON, runs each target for 60s against
+  the seed corpus; fails on ASan/UBSan/libFuzzer report).
+- Optionally a `coverage` job (gcov on C++, pytest-cov on Python,
+  c8 on TS) — deferred; only worth it if the fuzz-smoke alone
+  doesn't move the needle.
+
+### Phase 5 (stretch)
+
+**Create:**
+- `corpus-tools/src/oigtl_corpus_tools/fuzz/upstream.py` — spawn
+  the pinned upstream C library binary as a 6th oracle.
+
+**Modify:**
+- `.github/workflows/ci.yml` — gate upstream parity behind a
+  nightly schedule (building the upstream library on every PR is
+  too slow).
+
+## Estimates (remaining)
 
 | Phase | Scope | Duration |
 |---|---|---|
-| 1 — Negative corpus + per-codec rejection | ~30 entries + 4 test files | 1 day |
-| 2 — Differential fuzzer | ~400 LoC Python | 1 day |
-| 3 — Structured fuzzers | libFuzzer + Atheris + JS loop | 1 day |
-| 4 — CI + coverage | workflow updates | 0.5 days |
-| 5 (stretch) — Upstream parity | Python subprocess glue | 0.5 days |
-| **Total** | | **~3-4 days** |
+| 3 — C++ libFuzzer | 2 fuzz targets + CMake gate + seed corpus | 0.5-1 day |
+| 4 — CI fuzz-smoke | workflow + seed corpus curation | 0.5 day |
+| 5 (stretch) — Upstream parity | subprocess glue + nightly CI | 0.5-1 day |
 
 ## Resuming after compaction
 
 Key facts for the next session:
 
-1. All four codecs produce a stable JSON oracle report shape
-   (`{ok, type_id, device_name, version, body_size,
-   ext_header_size, metadata_count, round_trip_ok, error}`).
-   Cross-language parity is already exercised by
-   `core-cpp/tests/oracle_parity_test.cpp` and
-   `core-ts/tests/oracle_parity.test.ts`. The differential fuzzer
-   extends that from "one fixture per test" to "one million
-   generated inputs per run."
-2. Each codec has a typed error hierarchy rooted at
-   `ProtocolError`. Subclasses match across languages (see
-   `core-cpp/include/oigtl/runtime/error.hpp`,
-   `core-py/src/oigtl/runtime/exceptions.py`,
-   `core-ts/src/runtime/errors.ts`).
-3. The negative corpus is the specification of what MUST be
-   rejected — it's the dual of the upstream fixtures, which
-   specify what MUST be accepted. Together they pin behaviour
-   on both sides of the boundary.
-4. libFuzzer on C++ catches UB/memory issues; Atheris on Python
-   catches unexpected exception classes; the JS loop catches the
-   same. Differential fuzzing catches semantic disagreements
-   across codecs that each individual fuzzer would miss.
-5. No changes to wire format or schemas — this is testing
-   infrastructure, not protocol work.
+1. **The fuzzer baseline is clean.** `oigtl-corpus fuzz differential
+   -n 1000000 --oracle py-ref --oracle py --oracle cpp --oracle ts`
+   produces 0 disagreements on seed 42. Any new disagreement is
+   a genuine regression — run the fuzzer before and after any
+   codec change, and the `security/disagreements/<seed>.jsonl`
+   log will pinpoint it.
+2. **Error hierarchy** is rooted at `ProtocolError` in every codec:
+   - C++: `core-cpp/include/oigtl/runtime/error.hpp`
+   - Reference Py: `ValueError` (plain, for historical reasons);
+     the typed layer wraps into `MalformedMessageError` etc. at
+     `core-py/src/oigtl/runtime/exceptions.py`
+   - TS: `core-ts/src/runtime/errors.ts`
+   The oracle CLIs catch any exception and turn it into a JSON
+   report with `ok: false, error: <message>`, so fuzzer runs
+   never crash the runner.
+3. **Oracle JSON report shape is stable** across all four codecs:
+   `{ok, type_id, device_name, version, body_size,
+   ext_header_size, metadata_count, round_trip_ok, error}`.
+   The runner compares the first 7 fields; `error` text is
+   expected to differ across languages.
+4. **Canonical-form round-trip** is the codec contract (not
+   byte-exact). All four oracles implement the same logic:
+   strict length check, then accept same-length value diffs iff
+   a second pack-unpack-pack pass is stable. Implemented in
+   `corpus-tools/.../codec/oracle.py`,
+   `core-py/src/oigtl/runtime/oracle.py::typed_verify_wire_bytes`,
+   `core-cpp/src/runtime/oracle.cpp`,
+   `core-ts/src/runtime/oracle.ts::verifyWireBytes`.
+5. **Negative corpus** is the dual of the upstream fixtures.
+   21 entries under `spec/corpus/negative/` + index.json;
+   per-codec tests in each codec's test tree. Regenerate via
+   `oigtl-corpus corpus generate-negative`; add new entries by
+   adding a builder function in
+   `corpus-tools/.../negative_corpus.py`. Entries can carry
+   `known_issue` + `currently_accepted_by` annotations to track
+   codec gaps (flipping from xfail to pass when fixed).
+6. **No changes to wire format or schemas.** Everything in this
+   harness is testing infrastructure. `spec/schemas/` is the
+   contract; fuzz findings go into `spec/corpus/negative/` or
+   codec fixes, never into schema changes.
+7. **Phase 3 scope was revised downward** from the original
+   three-language in-process fuzzer set to just C++ libFuzzer.
+   See the "What's next" section above for reasoning — the
+   differential runner already catches the logical-level bugs
+   that Python/JS fuzzers would find, leaving memory safety
+   as the only unique value-add.
