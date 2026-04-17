@@ -51,7 +51,7 @@ _DATA_MESSAGES: dict[str, str] = {
     "CAPABILITY": "CapabilityMessage",
     "COLORT":     "ColorTableMessage",
     "COMMAND":    "CommandMessage",
-    "IMAGE":      "ImageMessage",
+    # IMAGE is hand-written; intentionally omitted.
     "IMGMETA":    "ImageMetaMessage",
     "LBMETA":     "LabelMetaMessage",
     "NDARRAY":    "NDArrayMessage",

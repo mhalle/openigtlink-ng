@@ -17,6 +17,7 @@
 #include <unistd.h>
 
 #include "igtl/igtlGetStatusMessage.h"
+#include "igtl/igtlImageMessage.h"
 #include "igtl/igtlMath.h"
 #include "igtl/igtlStartTrackingDataMessage.h"
 #include "igtl/igtlPointMessage.h"
@@ -84,6 +85,49 @@ static int emit_get_status() {
 
 // For STT_TDATA we only compare the 58-byte header — upstream's
 // StartTrackingDataMessage carries a body we don't pack.
+// IMAGE: small 4x3x2 uint16 grayscale volume with non-trivial
+// spacing, origin, and an asymmetric rotation. Pixels are a
+// deterministic ramp so any transpose or swap-bug appears.
+static int emit_image() {
+    auto msg = igtl::ImageMessage::New();
+    msg->SetHeaderVersion(2);
+    msg->SetDeviceName("MR_Scanner");
+    msg->SetTimeStamp(1718455896u, 0);
+
+    msg->SetDimensions(4, 3, 2);
+    msg->SetNumComponents(1);
+    msg->SetScalarTypeToUint16();
+    msg->SetEndian(igtl::ImageMessage::ENDIAN_BIG);
+    msg->SetCoordinateSystem(igtl::ImageMessage::COORDINATE_RAS);
+    msg->SetSpacing(0.5f, 0.75f, 2.0f);
+    msg->SetOrigin(-10.0f, 20.5f, 100.0f);
+
+    // Non-identity orientation: Rz(90°) i.e. i→+y, j→-x, k→+z.
+    igtl::Matrix4x4 m; igtl::IdentityMatrix(m);
+    m[0][0] = 0.0f; m[0][1] = -1.0f;
+    m[1][0] = 1.0f; m[1][1] =  0.0f;
+    m[0][3] = -10.0f; m[1][3] = 20.5f; m[2][3] = 100.0f;
+    msg->SetMatrix(m);
+
+    msg->AllocateScalars();
+    auto* pix = static_cast<std::uint16_t*>(msg->GetScalarPointer());
+    // Deterministic ramp with big-endian write (since we set
+    // ENDIAN_BIG). 4*3*2 = 24 pixels.
+    for (int i = 0; i < 24; ++i) {
+        const std::uint16_t v = static_cast<std::uint16_t>(
+            0x1000 + i * 37);
+        // Big-endian store — match the declared endian field.
+        auto* b = reinterpret_cast<std::uint8_t*>(pix + i);
+        b[0] = static_cast<std::uint8_t>(v >> 8);
+        b[1] = static_cast<std::uint8_t>(v & 0xff);
+    }
+
+    msg->Pack();
+    ::write(1, msg->GetPackPointer(),
+            static_cast<size_t>(msg->GetPackSize()));
+    return 0;
+}
+
 // QTDATA: two tools, distinct quaternions. Exercises
 // QuaternionTrackingDataElement's 50-byte layout.
 static int emit_qtdata() {
@@ -275,6 +319,7 @@ int main(int argc, char** argv) {
     if (c == "point_v2")           return emit_point();
     if (c == "tdata_v2")           return emit_tdata();
     if (c == "qtdata_v2")          return emit_qtdata();
+    if (c == "image_v2")           return emit_image();
     if (c == "stt_tdata_v2")       return emit_stt_tdata_header_only();
     std::fprintf(stderr, "unknown case: %s\n", argv[1]);
     return 2;
