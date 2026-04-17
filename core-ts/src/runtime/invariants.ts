@@ -131,8 +131,96 @@ export function checkImage(msg: {
   }
 }
 
+// COLORTABLE / COLORT:
+//   index_type ∈ {3=uint8→256, 5=uint16→65536} entries
+//   map_type   ∈ {3=1, 5=2, 19=3}               bytes/entry
+// len(table) === entries × bytes_per_entry.
+export function checkColortable(msg: {
+  index_type: number;
+  map_type: number;
+  table: Uint8Array;
+}): void {
+  const entries = new Map<number, number>([[3, 256], [5, 65536]]);
+  const bps = new Map<number, number>([[3, 1], [5, 2], [19, 3]]);
+  const N = entries.get(msg.index_type);
+  if (N === undefined) {
+    throw new BodyDecodeError(
+      `COLORT: invalid index_type=${msg.index_type}`,
+    );
+  }
+  const S = bps.get(msg.map_type);
+  if (S === undefined) {
+    throw new BodyDecodeError(
+      `COLORT: invalid map_type=${msg.map_type}`,
+    );
+  }
+  const expected = N * S;
+  if (msg.table.length !== expected) {
+    throw new BodyDecodeError(
+      `COLORT: table length ${msg.table.length} does not match ` +
+        `${N} entries × ${S} bytes = ${expected}`,
+    );
+  }
+}
+
+// POLYDATA: the four topology-section byte sizes MUST be
+// multiples of 4 (each cell entry is a uint32).
+export function checkPolydata(msg: {
+  size_vertices: number;
+  size_lines: number;
+  size_polygons: number;
+  size_triangle_strips: number;
+}): void {
+  const sections: [string, number][] = [
+    ["size_vertices", msg.size_vertices],
+    ["size_lines", msg.size_lines],
+    ["size_polygons", msg.size_polygons],
+    ["size_triangle_strips", msg.size_triangle_strips],
+  ];
+  for (const [name, size] of sections) {
+    if (size % 4 !== 0) {
+      throw new BodyDecodeError(
+        `POLYDATA: ${name}=${size} is not a multiple of 4`,
+      );
+    }
+  }
+}
+
+// BIND: nametable_size must be even; len(bodies) must equal
+// sum(ceil_to_even(body_size[i])) across header_entries.
+export function checkBind(msg: {
+  nametable_size: number;
+  header_entries: ReadonlyArray<{ body_size: number | bigint }>;
+  bodies: Uint8Array;
+}): void {
+  if (msg.nametable_size % 2 !== 0) {
+    throw new BodyDecodeError(
+      `BIND: nametable_size=${msg.nametable_size} must be even ` +
+        `(2-byte aligned)`,
+    );
+  }
+  let expected = 0n;
+  for (const entry of msg.header_entries) {
+    // body_size is uint64 on the wire, may be number or bigint
+    // depending on field-plan width.
+    const bs = BigInt(entry.body_size);
+    expected += bs + (bs % 2n);  // pad odd to even
+  }
+  if (BigInt(msg.bodies.length) !== expected) {
+    throw new BodyDecodeError(
+      `BIND: bodies length ${msg.bodies.length} does not match ` +
+        `sum(ceil_to_even(header_entries[i].body_size))=${expected}`,
+    );
+  }
+}
+
 // Dispatch table keyed by the schema's post_unpack_invariant string.
 export const POST_UNPACK_INVARIANTS: Record<string, (msg: unknown) => void> = {
   ndarray: (msg) => checkNdarray(msg as Parameters<typeof checkNdarray>[0]),
   image: (msg) => checkImage(msg as Parameters<typeof checkImage>[0]),
+  colortable: (msg) =>
+    checkColortable(msg as Parameters<typeof checkColortable>[0]),
+  polydata: (msg) =>
+    checkPolydata(msg as Parameters<typeof checkPolydata>[0]),
+  bind: (msg) => checkBind(msg as Parameters<typeof checkBind>[0]),
 };

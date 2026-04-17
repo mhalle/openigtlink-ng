@@ -1,6 +1,6 @@
 {
   "format_version": 1,
-  "count": 26,
+  "count": 32,
   "entries": {
     "framing_header_truncated_42": {
       "path": "framing_header/truncated_42.bin",
@@ -162,6 +162,48 @@
       "error_class": "MALFORMED",
       "spec_reference": "spec/schemas/image.json",
       "size_bytes": 162
+    },
+    "content_colort_invalid_index_type": {
+      "path": "content/colort_invalid_index_type.bin",
+      "description": "COLORT index_type=0; valid set is {3,5}. Upstream fallthrough accepts \u2014 we reject per spec.",
+      "error_class": "MALFORMED",
+      "spec_reference": "spec/schemas/colortable.json",
+      "size_bytes": 316
+    },
+    "content_colort_invalid_map_type": {
+      "path": "content/colort_invalid_map_type.bin",
+      "description": "COLORT map_type=17; valid set is {3,5,19}. Upstream fallthrough treats as RGB \u2014 we reject per spec.",
+      "error_class": "MALFORMED",
+      "spec_reference": "spec/schemas/colortable.json",
+      "size_bytes": 316
+    },
+    "content_colort_table_size_mismatch": {
+      "path": "content/colort_table_size_mismatch.bin",
+      "description": "COLORT (3,5) expects 256\u00d72=512-byte table; body only has 256.",
+      "error_class": "MALFORMED",
+      "spec_reference": "spec/schemas/colortable.json",
+      "size_bytes": 316
+    },
+    "content_polydata_size_vertices_unaligned": {
+      "path": "content/polydata_size_vertices_unaligned.bin",
+      "description": "POLYDATA size_vertices=7; spec requires multiple of 4 (each entry is a uint32).",
+      "error_class": "MALFORMED",
+      "spec_reference": "spec/schemas/polydata.json",
+      "size_bytes": 105
+    },
+    "content_bind_nametable_size_odd": {
+      "path": "content/bind_nametable_size_odd.bin",
+      "description": "BIND nametable_size=3; spec requires even (2-byte aligned).",
+      "error_class": "MALFORMED",
+      "spec_reference": "spec/schemas/bind.json",
+      "size_bytes": 65
+    },
+    "content_bind_bodies_size_mismatch": {
+      "path": "content/bind_bodies_size_mismatch.bin",
+      "description": "BIND: one header_entry body_size=10 but bodies section is 4B.",
+      "error_class": "MALFORMED",
+      "spec_reference": "spec/schemas/bind.json",
+      "size_bytes": 86
     },
     "content_sensor_larray_mismatch": {
       "path": "content/sensor_larray_mismatch.bin",

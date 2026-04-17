@@ -10,6 +10,7 @@
 #include "oigtl/runtime/ascii.hpp"
 #include "oigtl/runtime/byte_order.hpp"
 #include "oigtl/runtime/error.hpp"
+#include "oigtl/runtime/invariants.hpp"
 
 namespace oigtl::messages {
 
@@ -225,6 +226,11 @@ Polydata Polydata::unpack(const std::uint8_t* data, std::size_t length) {
     (void)off;
     (void)data;
     (void)length;
+    // Post-unpack cross-field invariant (schema:
+    //   post_unpack_invariant = "polydata").
+    // Parallel to python_message.py.jinja + ts_message.ts.jinja +
+    // corpus-tools codec/policy.py::POST_UNPACK_INVARIANTS.
+    oigtl::runtime::invariants::check_polydata(out);
     return out;
 }
 

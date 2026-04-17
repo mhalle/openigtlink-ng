@@ -182,6 +182,20 @@ void process(const std::vector<std::uint8_t>& bytes, Report& r) {
     r.version = headerMsg->GetHeaderVersion();
     r.body_size = headerMsg->GetBodySizeToRead();
 
+    // Upstream quirk: the pinned library was written for protocol
+    // versions 1 and 2. Its ``UnpackMetaData`` explicitly checks
+    // ``m_HeaderVersion == IGTL_HEADER_VERSION_2`` (not ``>=``), so
+    // any version ≥ 3 message with metadata falls through to
+    // ``return false`` and UNPACK_BODY never gets set. Version 3 is
+    // our extension, not a format change upstream is aware of.
+    // Filter out-of-range versions so the runner doesn't conflate
+    // upstream-not-implemented with a cross-codec divergence.
+    if (r.version < 1 || r.version > 2) {
+        r.ok = true;
+        r.error = "upstream quirk: header version outside {1, 2}";
+        return;
+    }
+
     // --- Dispatch ---
     // Extend upstream's default factory with message types it ships
     // but doesn't auto-register. A static one-shot keeps this

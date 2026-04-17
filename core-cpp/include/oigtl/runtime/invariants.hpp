@@ -144,6 +144,91 @@ inline void check_image(const Msg& msg) {
     }
 }
 
+// COLORTABLE / COLORT:
+//   index_type ∈ {3,5}, map_type ∈ {3,5,19},
+//   len(table) == entries(index_type) × bytes_per_entry(map_type).
+// Upstream fallthrough accepts any values; we reject per spec.
+template <typename Msg>
+inline void check_colortable(const Msg& msg) {
+    std::size_t entries = 0;
+    switch (static_cast<int>(msg.index_type)) {
+        case 3: entries = 256; break;
+        case 5: entries = 65536; break;
+        default: {
+            std::ostringstream oss;
+            oss << "COLORT: invalid index_type="
+                << static_cast<int>(msg.index_type);
+            throw oigtl::error::MalformedMessageError(oss.str());
+        }
+    }
+    std::size_t bps = 0;
+    switch (static_cast<int>(msg.map_type)) {
+        case 3:  bps = 1; break;
+        case 5:  bps = 2; break;
+        case 19: bps = 3; break;
+        default: {
+            std::ostringstream oss;
+            oss << "COLORT: invalid map_type="
+                << static_cast<int>(msg.map_type);
+            throw oigtl::error::MalformedMessageError(oss.str());
+        }
+    }
+    const std::size_t expected = entries * bps;
+    if (msg.table.size() != expected) {
+        std::ostringstream oss;
+        oss << "COLORT: table length " << msg.table.size()
+            << " does not match " << entries << " entries × " << bps
+            << " bytes = " << expected;
+        throw oigtl::error::MalformedMessageError(oss.str());
+    }
+}
+
+// POLYDATA: the four topology-section byte sizes MUST be multiples
+// of 4 (each cell entry is a uint32).
+template <typename Msg>
+inline void check_polydata(const Msg& msg) {
+    const std::uint32_t sizes[4] = {
+        msg.size_vertices, msg.size_lines,
+        msg.size_polygons, msg.size_triangle_strips,
+    };
+    const char* names[4] = {
+        "size_vertices", "size_lines",
+        "size_polygons", "size_triangle_strips",
+    };
+    for (std::size_t i = 0; i < 4; ++i) {
+        if (sizes[i] % 4 != 0) {
+            std::ostringstream oss;
+            oss << "POLYDATA: " << names[i] << "=" << sizes[i]
+                << " is not a multiple of 4";
+            throw oigtl::error::MalformedMessageError(oss.str());
+        }
+    }
+}
+
+// BIND: nametable_size must be even; len(bodies) must equal
+// sum(ceil_to_even(body_size[i])) across header_entries.
+template <typename Msg>
+inline void check_bind(const Msg& msg) {
+    if (msg.nametable_size % 2 != 0) {
+        std::ostringstream oss;
+        oss << "BIND: nametable_size=" << msg.nametable_size
+            << " must be even (2-byte aligned)";
+        throw oigtl::error::MalformedMessageError(oss.str());
+    }
+    std::uint64_t expected = 0;
+    for (const auto& entry : msg.header_entries) {
+        const std::uint64_t bs = entry.body_size;
+        expected += bs + (bs % 2);  // pad odd to even
+    }
+    if (msg.bodies.size() != expected) {
+        std::ostringstream oss;
+        oss << "BIND: bodies length " << msg.bodies.size()
+            << " does not match sum(ceil_to_even(header_entries[i]"
+               ".body_size))=" << expected;
+        throw oigtl::error::MalformedMessageError(oss.str());
+    }
+}
+
 }  // namespace oigtl::runtime::invariants
 
 #endif  // OIGTL_RUNTIME_INVARIANTS_HPP

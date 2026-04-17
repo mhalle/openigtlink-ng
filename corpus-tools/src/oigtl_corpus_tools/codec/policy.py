@@ -195,11 +195,118 @@ def _as_uint_seq(value: Any, *, elem_bytes: int) -> list[int]:
     return [int(v) for v in value]
 
 
+# ---------------------------------------------------------------------------
+# COLORTABLE (wire type_id "COLORT")
+# ---------------------------------------------------------------------------
+# Table geometry is fully determined by two header bytes:
+#   index_type ∈ {3=uint8, 5=uint16}   → N entries ∈ {256, 65536}
+#   map_type   ∈ {3=uint8, 5=uint16, 19=RGB}   → S bytes/entry ∈ {1, 2, 3}
+# len(table) MUST equal N × S.
+#
+# Upstream's igtl_colortable fallthrough silently treats any unknown
+# index_type as uint16 and any unknown map_type as RGB. That's a
+# documented upstream permissiveness (see colortable.json legacy_notes);
+# we reject explicitly per the spec's "Receivers MUST reject".
+
+_COLORTABLE_INDEX_ENTRIES: dict[int, int] = {3: 256, 5: 65536}
+_COLORTABLE_MAP_BYTES: dict[int, int] = {3: 1, 5: 2, 19: 3}
+
+
+def _check_colortable(msg: Any) -> None:
+    index_type = _field(msg, "index_type")
+    map_type = _field(msg, "map_type")
+    if index_type not in _COLORTABLE_INDEX_ENTRIES:
+        raise ValueError(
+            f"COLORT: invalid index_type={index_type}; "
+            f"valid values are {sorted(_COLORTABLE_INDEX_ENTRIES)}"
+        )
+    if map_type not in _COLORTABLE_MAP_BYTES:
+        raise ValueError(
+            f"COLORT: invalid map_type={map_type}; "
+            f"valid values are {sorted(_COLORTABLE_MAP_BYTES)}"
+        )
+    table = _field(msg, "table")
+    expected = (
+        _COLORTABLE_INDEX_ENTRIES[index_type] * _COLORTABLE_MAP_BYTES[map_type]
+    )
+    if len(table) != expected:
+        raise ValueError(
+            f"COLORT: table length {len(table)} does not match "
+            f"{_COLORTABLE_INDEX_ENTRIES[index_type]} entries × "
+            f"{_COLORTABLE_MAP_BYTES[map_type]} bytes = {expected}"
+        )
+
+
+# ---------------------------------------------------------------------------
+# POLYDATA
+# ---------------------------------------------------------------------------
+# The 4 topology sections (vertices, lines, polygons, triangle_strips)
+# each contain uint32-aligned cell data. Their declared byte sizes
+# MUST be multiples of 4; a non-multiple size means malformed cell
+# layout. Upstream does not enforce this; the spec does ("MUST be a
+# multiple of 4" per section in polydata.json).
+#
+# Deeper invariants (cell connectivity: sum of (N_i + 1) × 4 == section
+# size) are NOT validated here — they require walking the section
+# contents, which is expensive and our codec treats sections as opaque
+# byte blobs. The multiple-of-4 check is cheap and catches the common
+# structural error class.
+
+def _check_polydata(msg: Any) -> None:
+    for name in (
+        "size_vertices", "size_lines", "size_polygons", "size_triangle_strips",
+    ):
+        size = int(_field(msg, name))
+        if size % 4 != 0:
+            raise ValueError(
+                f"POLYDATA: {name}={size} is not a multiple of 4"
+            )
+
+
+# ---------------------------------------------------------------------------
+# BIND
+# ---------------------------------------------------------------------------
+# Two enforceable invariants beyond field-level parsing:
+#   1. nametable_size MUST be even (2-byte aligned).
+#   2. len(bodies) MUST equal sum(ceil_to_even(body_size[i])) over
+#      header_entries — padding rule: each child body is padded to
+#      an even byte count.
+# Upstream igtl_bind_unpack_normal explicitly has a "TODO: check the
+# total size of the message?" comment and does not enforce either.
+
+def _check_bind(msg: Any) -> None:
+    nametable_size = int(_field(msg, "nametable_size"))
+    if nametable_size % 2 != 0:
+        raise ValueError(
+            f"BIND: nametable_size={nametable_size} must be even "
+            f"(2-byte aligned)"
+        )
+    header_entries = _field(msg, "header_entries")
+    expected_bodies = 0
+    for entry in header_entries:
+        # Each entry is a struct with .body_size (or dict key).
+        bs = int(
+            entry["body_size"] if isinstance(entry, dict)
+            else getattr(entry, "body_size")
+        )
+        expected_bodies += bs + (bs % 2)  # pad odd to even
+    bodies = _field(msg, "bodies")
+    if len(bodies) != expected_bodies:
+        raise ValueError(
+            f"BIND: bodies length {len(bodies)} does not match "
+            f"sum(ceil_to_even(header_entries[i].body_size)) = "
+            f"{expected_bodies}"
+        )
+
+
 # Registry of named invariants. Keys match the schema's
 # ``post_unpack_invariant`` string.
 POST_UNPACK_INVARIANTS: dict[str, Any] = {
     "ndarray": _check_ndarray,
     "image": _check_image,
+    "colortable": _check_colortable,
+    "polydata": _check_polydata,
+    "bind": _check_bind,
 }
 
 

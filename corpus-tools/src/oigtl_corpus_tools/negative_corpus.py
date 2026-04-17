@@ -290,6 +290,65 @@ def _content_image_invalid_scalar_type() -> bytes:
     return _pack_header(type_id="IMAGE", body=body) + body
 
 
+def _content_colort_invalid_index_type() -> bytes:
+    """COLORT index_type=0 — valid set is {3, 5}. Upstream's fallthrough
+    accepts it (treats any non-3 value as uint16); our codecs reject
+    per spec. Regression for post_unpack_invariant=colortable."""
+    body = bytes([0, 3]) + b"\x00" * 256
+    return _pack_header(type_id="COLORT", body=body) + body
+
+
+def _content_colort_invalid_map_type() -> bytes:
+    """COLORT map_type=17 — valid set is {3, 5, 19}. Upstream's
+    fallthrough treats non-{3,5} as RGB (3 bytes); we reject."""
+    body = bytes([3, 17]) + b"\x00" * 256
+    return _pack_header(type_id="COLORT", body=body) + body
+
+
+def _content_colort_table_size_mismatch() -> bytes:
+    """COLORT index_type=3 (256 entries) × map_type=5 (2B/entry)
+    expects 512-byte table; supply 256."""
+    body = bytes([3, 5]) + b"\x00" * 256
+    return _pack_header(type_id="COLORT", body=body) + body
+
+
+def _content_polydata_size_vertices_unaligned() -> bytes:
+    """POLYDATA size_vertices=7 — must be multiple of 4. Regression
+    for post_unpack_invariant=polydata."""
+    # 40-byte POLYDATA header + 7 arbitrary bytes in vertices section.
+    # npoints, nvertices, size_vertices, nlines, size_lines,
+    # npolygons, size_polygons, ntriangle_strips, size_triangle_strips,
+    # nattributes — all uint32 = 40 bytes.
+    hdr = struct.pack(
+        ">IIIIIIIIII",
+        0, 0, 7, 0, 0, 0, 0, 0, 0, 0,  # size_vertices=7 (not mult of 4)
+    )
+    body = hdr + b"\x00" * 7
+    return _pack_header(type_id="POLYDATA", body=body) + body
+
+
+def _content_bind_nametable_size_odd() -> bytes:
+    """BIND nametable_size=3 — must be even (2-byte aligned)."""
+    # ncmessages=0, header_entries (empty), nametable_size=3, name_table=3B, bodies=empty
+    body = struct.pack(">H", 0) + struct.pack(">H", 3) + b"\x00\x00\x00"
+    return _pack_header(type_id="BIND", body=body) + body
+
+
+def _content_bind_bodies_size_mismatch() -> bytes:
+    """BIND: 1 header entry claims body_size=10, but bodies section
+    is 4 bytes. Expected ceil_to_even(10)=10."""
+    # ncmessages=1, one 20-byte header entry (type_id=TRANSFORM,
+    # body_size=10), nametable_size=0, bodies=4B
+    header_entry = b"TRANSFORM\x00\x00\x00" + struct.pack(">Q", 10)
+    body = (
+        struct.pack(">H", 1)   # ncmessages
+        + header_entry          # 20 bytes
+        + struct.pack(">H", 0)  # nametable_size
+        + b"\x00" * 4           # bodies: should be 10
+    )
+    return _pack_header(type_id="BIND", body=body) + body
+
+
 def _content_image_pixel_size_mismatch() -> bytes:
     """IMAGE pixel region size doesn't match prod(subvol_size)×ncomp×bps.
 
@@ -564,6 +623,70 @@ _CORPUS: list[_Spec] = [
         error_class="MALFORMED",
         spec_reference="spec/schemas/image.json",
         builder=_content_image_pixel_size_mismatch,
+    ),
+
+    _Spec(
+        name="content_colort_invalid_index_type",
+        path="content/colort_invalid_index_type.bin",
+        description=(
+            "COLORT index_type=0; valid set is {3,5}. Upstream fallthrough "
+            "accepts — we reject per spec."
+        ),
+        error_class="MALFORMED",
+        spec_reference="spec/schemas/colortable.json",
+        builder=_content_colort_invalid_index_type,
+    ),
+    _Spec(
+        name="content_colort_invalid_map_type",
+        path="content/colort_invalid_map_type.bin",
+        description=(
+            "COLORT map_type=17; valid set is {3,5,19}. Upstream fallthrough "
+            "treats as RGB — we reject per spec."
+        ),
+        error_class="MALFORMED",
+        spec_reference="spec/schemas/colortable.json",
+        builder=_content_colort_invalid_map_type,
+    ),
+    _Spec(
+        name="content_colort_table_size_mismatch",
+        path="content/colort_table_size_mismatch.bin",
+        description=(
+            "COLORT (3,5) expects 256×2=512-byte table; body only has 256."
+        ),
+        error_class="MALFORMED",
+        spec_reference="spec/schemas/colortable.json",
+        builder=_content_colort_table_size_mismatch,
+    ),
+    _Spec(
+        name="content_polydata_size_vertices_unaligned",
+        path="content/polydata_size_vertices_unaligned.bin",
+        description=(
+            "POLYDATA size_vertices=7; spec requires multiple of 4 "
+            "(each entry is a uint32)."
+        ),
+        error_class="MALFORMED",
+        spec_reference="spec/schemas/polydata.json",
+        builder=_content_polydata_size_vertices_unaligned,
+    ),
+    _Spec(
+        name="content_bind_nametable_size_odd",
+        path="content/bind_nametable_size_odd.bin",
+        description=(
+            "BIND nametable_size=3; spec requires even (2-byte aligned)."
+        ),
+        error_class="MALFORMED",
+        spec_reference="spec/schemas/bind.json",
+        builder=_content_bind_nametable_size_odd,
+    ),
+    _Spec(
+        name="content_bind_bodies_size_mismatch",
+        path="content/bind_bodies_size_mismatch.bin",
+        description=(
+            "BIND: one header_entry body_size=10 but bodies section is 4B."
+        ),
+        error_class="MALFORMED",
+        spec_reference="spec/schemas/bind.json",
+        builder=_content_bind_bodies_size_mismatch,
     ),
 
     # --- Content: SENSOR ---

@@ -15,6 +15,7 @@
   },
 
   "body_size": "variable",
+  "post_unpack_invariant": "bind",
 
   "fields": [
     {

@@ -9,6 +9,7 @@ from typing import Annotated, Any, ClassVar
 
 from pydantic import BaseModel, ConfigDict, Field
 from oigtl_corpus_tools.codec.fields import pack_fields, unpack_fields
+from oigtl_corpus_tools.codec.policy import POST_UNPACK_INVARIANTS
 
 _FIELDS = [   {'name': 'ncmessages', 'type': 'uint16'},
     {   'name': 'header_entries',
@@ -58,4 +59,5 @@ class Bind(BaseModel):
     def unpack(cls, data: bytes) -> "Bind":
         """Decode wire body bytes into a :class:`Bind` instance."""
         instance = cls.model_validate(unpack_fields(_FIELDS, data))
+        POST_UNPACK_INVARIANTS["bind"](instance)
         return instance

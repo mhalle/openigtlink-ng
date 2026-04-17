@@ -9,6 +9,7 @@ from typing import Annotated, Any, ClassVar
 
 from pydantic import BaseModel, ConfigDict, Field
 from oigtl_corpus_tools.codec.fields import pack_fields, unpack_fields
+from oigtl_corpus_tools.codec.policy import POST_UNPACK_INVARIANTS
 
 _FIELDS = [   {'name': 'index_type', 'type': 'int8'},
     {'name': 'map_type', 'type': 'int8'},
@@ -37,4 +38,5 @@ class Colort(BaseModel):
     def unpack(cls, data: bytes) -> "Colort":
         """Decode wire body bytes into a :class:`Colort` instance."""
         instance = cls.model_validate(unpack_fields(_FIELDS, data))
+        POST_UNPACK_INVARIANTS["colortable"](instance)
         return instance

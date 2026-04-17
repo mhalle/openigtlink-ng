@@ -17,6 +17,7 @@ import {
   viewOf,
 } from "../runtime/byte_order.js";
 import { BodyDecodeError } from "../runtime/errors.js";
+import { POST_UNPACK_INVARIANTS } from "../runtime/invariants.js";
 
 // Strict ASCII helpers used for fixed_string fields, struct-array
 // sub-fields, and the encoding="ascii" variants of
@@ -166,6 +167,11 @@ export class Bind {
       name_table,
       bodies,
     });
+    // Post-unpack cross-field invariant (schema:
+    //   post_unpack_invariant = "bind").
+    // Parallel to python_message.py.jinja + message.cpp.jinja +
+    // corpus-tools codec/policy.py::POST_UNPACK_INVARIANTS.
+    (POST_UNPACK_INVARIANTS["bind"] as (m: unknown) => void)(instance);
     return instance;
   }
 

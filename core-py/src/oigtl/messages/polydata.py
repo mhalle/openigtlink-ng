@@ -9,6 +9,7 @@ from typing import Annotated, Any, ClassVar
 
 from pydantic import BaseModel, ConfigDict, Field
 from oigtl_corpus_tools.codec.fields import pack_fields, unpack_fields
+from oigtl_corpus_tools.codec.policy import POST_UNPACK_INVARIANTS
 
 _FIELDS = [   {'name': 'npoints', 'type': 'uint32'},
     {'name': 'nvertices', 'type': 'uint32'},
@@ -100,4 +101,5 @@ class Polydata(BaseModel):
     def unpack(cls, data: bytes) -> "Polydata":
         """Decode wire body bytes into a :class:`Polydata` instance."""
         instance = cls.model_validate(unpack_fields(_FIELDS, data))
+        POST_UNPACK_INVARIANTS["polydata"](instance)
         return instance
