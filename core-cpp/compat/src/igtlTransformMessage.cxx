@@ -74,18 +74,17 @@ void TransformMessage::GetNormals(float t[3], float s[3], float n[3]) {
 }
 
 // ---- wire layout ----
-// Upstream's TRANSFORM body is exactly 48 bytes: 12 big-endian
-// floats, in row-major order, covering matrix[0..2][0..3].
-// (The 4th row is implicit [0,0,0,1].)
-//
-// IMPORTANT wire-order detail: upstream serialises in the order
-//   t[0] s[0] n[0] p[0]
-//   t[1] s[1] n[1] p[1]
-//   t[2] s[2] n[2] p[2]
-// — i.e. *row*-major over rows 0..2, with translation in column 3.
-// Our `matrix[i][j]` stores element (row i, column j), so the wire
-// is simply matrix[0..2][0..3] flattened row-wise. Same 12 floats
-// our own oigtl::messages::Transform schema declares.
+// Upstream's TRANSFORM body is 48 bytes — 12 big-endian floats
+// in **column-major 3x4** order. The 12 floats decompose as
+//   [ column 0 = R_col0 : matrix[0..2][0] ]
+//   [ column 1 = R_col1 : matrix[0..2][1] ]
+//   [ column 2 = R_col2 : matrix[0..2][2] ]
+//   [ column 3 = t      : matrix[0..2][3] = Tx Ty Tz ]
+// which is the rotation's three column vectors followed by the
+// translation vector. The 4th row of matrix is implicit [0,0,0,1]
+// and never on the wire. Matches our own oigtl::messages::Transform
+// schema (`"layout": "column_major_3x4"`) and upstream's
+// TransformMessage::PackContent byte-for-byte.
 
 igtlUint64 TransformMessage::CalculateContentBufferSize() {
     return 48;  // 12 float32s
@@ -95,9 +94,12 @@ int TransformMessage::PackContent() {
     namespace bo = oigtl::runtime::byte_order;
     if (m_Content.size() < 48) m_Content.assign(48, 0);
     auto* out = m_Content.data();
-    for (int i = 0; i < 3; ++i) {
-        for (int j = 0; j < 4; ++j) {
-            bo::write_be_f32(out + (i * 4 + j) * 4, matrix[i][j]);
+    std::size_t pos = 0;
+    // Column-major: outer loop over columns, inner over rows.
+    for (int j = 0; j < 4; ++j) {
+        for (int i = 0; i < 3; ++i) {
+            bo::write_be_f32(out + pos, matrix[i][j]);
+            pos += 4;
         }
     }
     return 1;
@@ -107,9 +109,11 @@ int TransformMessage::UnpackContent() {
     namespace bo = oigtl::runtime::byte_order;
     if (m_Content.size() < 48) return 0;
     const auto* in = m_Content.data();
-    for (int i = 0; i < 3; ++i) {
-        for (int j = 0; j < 4; ++j) {
-            matrix[i][j] = bo::read_be_f32(in + (i * 4 + j) * 4);
+    std::size_t pos = 0;
+    for (int j = 0; j < 4; ++j) {
+        for (int i = 0; i < 3; ++i) {
+            matrix[i][j] = bo::read_be_f32(in + pos);
+            pos += 4;
         }
     }
     matrix[3][0] = 0.0f;

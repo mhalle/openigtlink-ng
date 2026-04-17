@@ -34,6 +34,18 @@
 #include <string>
 #include <vector>
 
+// Metadata value encoding — IANA MIBenum. Upstream places this at
+// global scope (in igtlutil/igtl_types.h, a C header), so we do too
+// for drop-in API compat. Consumer code writes `IANA_TYPE_US_ASCII`,
+// not `igtl::IANA_TYPE_US_ASCII`.
+#ifndef __IANA_ENCODING_TYPE_defined
+#define __IANA_ENCODING_TYPE_defined
+enum IANA_ENCODING_TYPE {
+    IANA_TYPE_US_ASCII = 3,
+    IANA_TYPE_UTF_8    = 106,
+};
+#endif
+
 namespace igtl {
 
 // Unpack() status bitmask (matches upstream).
@@ -41,12 +53,6 @@ enum UnpackStatus {
     UNPACK_UNDEF  = 0x0000,
     UNPACK_HEADER = 0x0001,
     UNPACK_BODY   = 0x0002,
-};
-
-// Metadata value encoding — IANA MIBenum. 3=US-ASCII, 106=UTF-8.
-enum IANA_ENCODING_TYPE : std::uint16_t {
-    IANA_TYPE_US_ASCII = 3,
-    IANA_TYPE_UTF_8    = 106,
 };
 
 class MessageHeader;

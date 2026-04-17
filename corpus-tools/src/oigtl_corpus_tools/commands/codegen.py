@@ -43,6 +43,7 @@ def register(parser: argparse.ArgumentParser) -> None:
         required=True,
     )
     _register_cpp(subparsers)
+    _register_cpp_compat(subparsers)
     _register_python(subparsers)
     _register_ts(subparsers)
 
@@ -95,6 +96,84 @@ def _register_cpp(subparsers: argparse._SubParsersAction) -> None:
         ),
     )
     cpp.set_defaults(handler=_cmd_cpp)
+
+
+def _register_cpp_compat(subparsers: argparse._SubParsersAction) -> None:
+    c = subparsers.add_parser(
+        "cpp-compat",
+        help="Emit upstream-compat shim headers (igtl::FooMessage).",
+        description=(
+            "Generate the upstream-compatible shim facade headers under "
+            "core-cpp/compat/include/igtl/. For header-only variants "
+            "(GET_/STT_/STP_/RTS_) the output is fully functional; for "
+            "data-carrying messages (STATUS, STRING, …) the output is a "
+            "compile-only stub that a hand-written replacement can "
+            "supersede. TRANSFORM is skipped to avoid clobbering the "
+            "hand-written facade."
+        ),
+    )
+    c.add_argument(
+        "--include-dir",
+        type=Path,
+        default=Path("core-cpp/compat/include/igtl"),
+        help=(
+            "Output directory for generated igtl*.h files "
+            "(default: core-cpp/compat/include/igtl)."
+        ),
+    )
+    c.add_argument(
+        "--check",
+        action="store_true",
+        help="Non-zero exit if on-disk output differs. Does not write.",
+    )
+    c.set_defaults(handler=_cmd_cpp_compat)
+
+
+def _cmd_cpp_compat(args: argparse.Namespace) -> int:
+    from oigtl_corpus_tools.codegen.cpp_compat import all_shim_files
+
+    try:
+        repo_root = find_repo_root()
+    except RepoRootNotFound as exc:
+        print(f"error: {exc}", file=sys.stderr)
+        return 2
+
+    include_dir = args.include_dir
+    if not include_dir.is_absolute():
+        include_dir = repo_root / include_dir
+
+    # Skip type_ids whose facades are hand-written (already present
+    # in core-cpp/compat/src/).
+    hand_written = {"TRANSFORM", "GET_TRANS"}
+
+    files = all_shim_files(skip_type_ids=hand_written)
+
+    if args.check:
+        drifted = []
+        for sf in files:
+            path = include_dir / sf.header_path
+            if not path.is_file():
+                drifted.append(path)
+                continue
+            if path.read_text() != sf.hpp_text:
+                drifted.append(path)
+        if drifted:
+            print("error: drift in compat headers:", file=sys.stderr)
+            for p in drifted:
+                print(f"  {p.relative_to(repo_root)}", file=sys.stderr)
+            return 1
+        print(f"ok: {len(files)} compat headers in sync.")
+        return 0
+
+    include_dir.mkdir(parents=True, exist_ok=True)
+    written = 0
+    for sf in files:
+        path = include_dir / sf.header_path
+        path.write_text(sf.hpp_text)
+        written += 1
+    print(f"wrote {written} compat headers to "
+          f"{include_dir.relative_to(repo_root)}")
+    return 0
 
 
 def _register_python(subparsers: argparse._SubParsersAction) -> None:

@@ -219,25 +219,39 @@ target_link_libraries(igtl_compat_smartpointer_test
 add_test(NAME compat_smartpointer
          COMMAND igtl_compat_smartpointer_test)
 
-# Byte-parity test against upstream (Phase 6a acceptance gate).
-# Guarded: only builds when upstream is built at the expected path.
+# Byte-parity gate — two separate emitter binaries to avoid ODR
+# collisions on `igtl::FooMessage` (our shim's class and upstream's
+# class share the namespace; linking both in the same binary is
+# undefined). Each emitter packs with canonical inputs and writes
+# wire bytes to stdout; a ctest command diffs them.
 if(EXISTS "${IGTL_UPSTREAM_BUILD}/lib/libOpenIGTLink.a")
-    add_executable(igtl_compat_transform_parity_test
-        compat/tests/transform_parity_test.cxx
-    )
-    target_include_directories(
-        igtl_compat_transform_parity_test PRIVATE
+    add_executable(compat_emitter_shim
+        compat/tests/emitter_shim.cxx)
+    target_link_libraries(compat_emitter_shim PRIVATE igtl_compat)
+
+    add_executable(compat_emitter_upstream
+        compat/tests/emitter_upstream.cxx)
+    target_include_directories(compat_emitter_upstream PRIVATE
         "${CMAKE_CURRENT_SOURCE_DIR}/../corpus-tools/reference-libs/openigtlink-upstream/Source"
         "${CMAKE_CURRENT_SOURCE_DIR}/../corpus-tools/reference-libs/openigtlink-upstream/Source/igtlutil"
         "${IGTL_UPSTREAM_BUILD}")
-    target_link_libraries(igtl_compat_transform_parity_test PRIVATE
-        igtl_compat
+    target_link_libraries(compat_emitter_upstream PRIVATE
         "${IGTL_UPSTREAM_BUILD}/lib/libOpenIGTLink.a")
-    # Upstream's headers issue warnings our strict build rejects.
-    target_compile_options(igtl_compat_transform_parity_test PRIVATE
+    target_compile_options(compat_emitter_upstream PRIVATE
         -Wno-error -Wno-unused-parameter)
-    add_test(NAME compat_transform_parity
-             COMMAND igtl_compat_transform_parity_test)
+
+    # One ctest per parity case. Uses bash process-substitution
+    # (requires bash, not plain sh).
+    # STT_TDATA intentionally excluded — upstream's
+    # StartTrackingDataMessage carries a body (resolution + coord_name)
+    # that our codegen stub doesn't populate. It's a stub-vs-facade
+    # difference, not a codec defect.
+    foreach(case transform_v1 transform_v2 transform_v2_meta
+                 get_status_v2)
+        add_test(NAME compat_parity_${case}
+            COMMAND bash -c
+                "cmp <(${CMAKE_CURRENT_BINARY_DIR}/compat_emitter_shim ${case}) <(${CMAKE_CURRENT_BINARY_DIR}/compat_emitter_upstream ${case})")
+    endforeach()
 endif()
 
 # Ergonomic layer — Envelope, pack/unpack, Client, Server.
