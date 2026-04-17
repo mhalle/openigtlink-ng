@@ -143,10 +143,14 @@ add_library(igtl_compat STATIC
     compat/src/igtlColorTableMessage.cxx
     compat/src/igtlPolyDataMessage.cxx
     compat/src/igtlBindMessage.cxx
+    compat/src/igtlSocket.cxx
+    compat/src/igtlClientSocket.cxx
+    compat/src/igtlServerSocket.cxx
 )
 target_include_directories(igtl_compat PUBLIC compat/include)
 # Pack/Unpack in the facades goes through our runtime codec.
-target_link_libraries(igtl_compat PUBLIC oigtl_runtime)
+# Socket / ClientSocket / ServerSocket delegate to oigtl_transport.
+target_link_libraries(igtl_compat PUBLIC oigtl_runtime oigtl_transport)
 # Upstream's igtlTypeMacro / igtlNewMacro are typically called with
 # a trailing `;` in consumer headers ("igtlTypeMacro(Foo, Bar);").
 # That produces -Wextra-semi diagnostics. For drop-in compatibility
@@ -237,6 +241,19 @@ target_link_libraries(igtl_compat_smartpointer_test
     PRIVATE igtl_compat)
 add_test(NAME compat_smartpointer
          COMMAND igtl_compat_smartpointer_test)
+
+# Shim Phase 7 — Socket / ClientSocket / ServerSocket round-trip.
+# Exercises the exact pattern every upstream example uses:
+#   Receive(header_ptr, header_size); Unpack();
+#   Receive(body_ptr, body_size);     Unpack();
+add_executable(igtl_compat_socket_roundtrip_test
+    compat/tests/socket_roundtrip_test.cxx
+)
+target_link_libraries(igtl_compat_socket_roundtrip_test
+    PRIVATE igtl_compat)
+add_test(NAME compat_socket_roundtrip
+         COMMAND igtl_compat_socket_roundtrip_test)
+set_tests_properties(compat_socket_roundtrip PROPERTIES TIMEOUT 30)
 
 # Byte-parity gate — two separate emitter binaries to avoid ODR
 # collisions on `igtl::FooMessage` (our shim's class and upstream's
