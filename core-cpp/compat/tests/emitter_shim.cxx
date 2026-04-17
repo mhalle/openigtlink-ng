@@ -23,6 +23,7 @@
 #include "igtl/igtlPositionMessage.h"
 #include "igtl/igtlStatusMessage.h"
 #include "igtl/igtlStringMessage.h"
+#include "igtl/igtlTrackingDataMessage.h"
 #include "igtl/igtlTransformMessage.h"
 
 // matrix_kind: 0 = identity + translation (canonical simple case)
@@ -82,6 +83,46 @@ static int emit_get_status() {
 
 // For STT_TDATA we only compare the 58-byte header — upstream's
 // StartTrackingDataMessage carries a body we don't pack.
+// TDATA: two tools, non-trivial matrices. Exercises
+// TrackingDataElement set/get + the shared-element container
+// pattern.
+static int emit_tdata() {
+    auto msg = igtl::TrackingDataMessage::New();
+    msg->SetHeaderVersion(2);
+    msg->SetDeviceName("Tracker_B");
+    msg->SetTimeStamp(1718455896u, 0);
+
+    auto make = [](const char* name, igtlUint8 type,
+                   const igtl::Matrix4x4& m) {
+        auto e = igtl::TrackingDataElement::New();
+        e->SetName(name);
+        e->SetType(type);
+        // cast away const for upstream's non-const API
+        auto& mm = const_cast<igtl::Matrix4x4&>(m);
+        e->SetMatrix(mm);
+        return e;
+    };
+
+    igtl::Matrix4x4 m1, m2;
+    igtl::IdentityMatrix(m1); igtl::IdentityMatrix(m2);
+    // Non-identity transforms (mirror the TRANSFORM parity test):
+    m1[0][0] =  0.0f; m1[0][1] = -1.0f;
+    m1[1][0] =  1.0f; m1[1][1] =  0.0f;
+    m1[0][3] = 10.0f; m1[1][3] = 20.0f; m1[2][3] = 30.0f;
+
+    m2[0][3] = 5.25f; m2[1][3] = -7.5f; m2[2][3] = 42.0f;
+
+    auto e1 = make("Probe", igtl::TrackingDataElement::TYPE_6D, m1);
+    auto e2 = make("Reference",
+                   igtl::TrackingDataElement::TYPE_TRACKER, m2);
+    msg->AddTrackingDataElement(e1);
+    msg->AddTrackingDataElement(e2);
+    msg->Pack();
+    ::write(1, msg->GetPackPointer(),
+            static_cast<size_t>(msg->GetPackSize()));
+    return 0;
+}
+
 // POINT: three non-trivial elements with distinct names, groups,
 // colours, positions, radii, and owners. Exercises string padding,
 // RGBA bytes, float positions, and array-element iteration all
@@ -195,6 +236,7 @@ int main(int argc, char** argv) {
     if (c == "position_all_v2")    return emit_position(
                                        igtl::PositionMessage::ALL);
     if (c == "point_v2")           return emit_point();
+    if (c == "tdata_v2")           return emit_tdata();
     if (c == "stt_tdata_v2")       return emit_stt_tdata_header_only();
     std::fprintf(stderr, "unknown case: %s\n", argv[1]);
     return 2;
