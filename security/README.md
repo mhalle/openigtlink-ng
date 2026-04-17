@@ -116,11 +116,41 @@ bug classes which were all fixed in landing:
    TS `_readAsciiNullPadded` was stripping only trailing NULs
    instead of splitting on the first NUL like Python/C++.
 
-## Phase 3+ (pending)
+### Phase 3 — C++ libFuzzer memory-safety gate *(shipped)*
 
-Per-codec in-process fuzzers (libFuzzer for C++, Atheris for
-Python, JS loop for TS) will layer on memory-safety checks that
-the differential runner can't see. CI wiring for a 60-second fuzz
-smoke on each PR is in Phase 4.
+Two libFuzzer entry points under `core-cpp/fuzz/` run with ASan +
+UBSan to catch memory-safety issues the differential runner can't
+see (silent OOB reads, integer overflow, UMR). See
+[`core-cpp/fuzz/README.md`](../core-cpp/fuzz/README.md) for local
+build instructions.
 
-See [`PLAN.md`](PLAN.md) for the full plan.
+On the first 30-second run the fuzzer found a real bug: the
+`parse_wire` body-size bounds check was computing
+`kHeaderSize + body_size` as `std::size_t` and wrapping when
+`body_size` was near `UINT64_MAX`. A malformed 58-byte header was
+enough to drive `crc64` past the end of the buffer — remote DoS.
+Fixed in `core-cpp/src/runtime/oracle.cpp`; regression pinned via
+`spec/corpus/negative/framing_header/body_size_uint64_max.bin`
+(rejected by all four codecs).
+
+Python (`int`) and TS (`Number(BigInt)`) codecs were not
+vulnerable — arbitrary precision / IEEE-754 both side-step the
+32/64-bit wrap the C++ `size_t` arithmetic fell into.
+
+### Phase 4 — CI fuzz-smoke *(shipped)*
+
+`.github/workflows/ci.yml` has a `fuzz-smoke` job that runs on
+every PR:
+
+1. `fuzz_header` — 60 s under ASan + UBSan on the seed corpus.
+2. `fuzz_oracle` — 60 s under ASan + UBSan on the seed corpus.
+3. Differential fuzzer — 50 000 iterations across all four codecs.
+
+Any crash, sanitizer report, or cross-codec disagreement fails the
+job; crash repros + disagreement logs upload as artifacts.
+
+## Phase 5 (deferred) — upstream reference-library parity
+
+See [`PLAN.md`](PLAN.md). Wiring the pinned upstream C library as
+a sixth oracle is the tightest possible wire-compat signal; gated
+on the upstream building cleanly in CI.

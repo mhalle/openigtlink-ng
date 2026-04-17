@@ -112,6 +112,64 @@ add_executable(oigtl_oracle_cli
 )
 target_link_libraries(oigtl_oracle_cli PRIVATE oigtl)
 
+# ---------------------------------------------------------------------------
+# libFuzzer memory-safety gate (Phase 3 of security/PLAN.md)
+# ---------------------------------------------------------------------------
+# Opt-in: configure with `-DBUILD_FUZZERS=ON` on a Clang toolchain.
+# Requires Clang's libFuzzer support; GCC is not supported (no
+# drop-in replacement for -fsanitize=fuzzer).
+#
+# Builds two entry points:
+#   fuzz_header  — drives unpack_header + verify_crc
+#   fuzz_oracle  — drives verify_wire_bytes (full pipeline)
+#
+# ASan + UBSan are always enabled for fuzz builds — the whole point
+# is to catch memory-safety and undefined-behaviour issues. A bug
+# that libFuzzer surfaces without sanitizers is usually invisible
+# (silent OOB read → identical JSON output → no disagreement).
+option(BUILD_FUZZERS
+       "Build libFuzzer entry points under fuzz/ (requires Clang)"
+       OFF)
+
+if(BUILD_FUZZERS)
+    if(NOT CMAKE_CXX_COMPILER_ID MATCHES "Clang")
+        message(FATAL_ERROR
+            "BUILD_FUZZERS=ON requires Clang (found "
+            "${CMAKE_CXX_COMPILER_ID}). Re-run cmake with "
+            "-DCMAKE_CXX_COMPILER=clang++.")
+    endif()
+
+    set(OIGTL_FUZZ_FLAGS
+        -fsanitize=fuzzer,address,undefined
+        -fno-omit-frame-pointer
+        -g)
+
+    foreach(target fuzz_header fuzz_oracle)
+        add_executable(${target} fuzz/${target}.cc)
+        target_link_libraries(${target} PRIVATE oigtl)
+        target_compile_options(${target} PRIVATE ${OIGTL_FUZZ_FLAGS})
+        target_link_options(${target} PRIVATE ${OIGTL_FUZZ_FLAGS})
+    endforeach()
+
+    # Convenience: a target that copies the on-disk negative
+    # corpus + upstream fixtures into a seed-corpus directory the
+    # fuzzers can consume directly. LibFuzzer recurses, so the
+    # generator is free to lay out subfolders.
+    add_custom_target(fuzz_seed_corpus
+        COMMAND ${CMAKE_COMMAND} -E make_directory
+            "${CMAKE_CURRENT_BINARY_DIR}/seeds/header"
+        COMMAND ${CMAKE_COMMAND} -E make_directory
+            "${CMAKE_CURRENT_BINARY_DIR}/seeds/oracle"
+        COMMAND ${CMAKE_COMMAND} -E copy_directory
+            "${CMAKE_CURRENT_SOURCE_DIR}/../spec/corpus/negative"
+            "${CMAKE_CURRENT_BINARY_DIR}/seeds/oracle"
+        COMMAND ${CMAKE_COMMAND} -E copy_directory
+            "${CMAKE_CURRENT_SOURCE_DIR}/../spec/corpus/negative/framing_header"
+            "${CMAKE_CURRENT_BINARY_DIR}/seeds/header"
+        COMMENT "Staging fuzz seed corpus under build/seeds/"
+        VERBATIM)
+endif()
+
 # Benchmark binary — built but not run by ctest. Invoke manually:
 #   cmake --build build --target oigtl_bench && ./build/oigtl_bench
 # Use a Release build for representative numbers:

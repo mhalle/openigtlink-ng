@@ -1,7 +1,14 @@
 # Security + conformance testing harness — plan
 
-Status: **Phase 1 + 2 complete**; Phases 3–5 pending. Durable
+Status: **Phases 1–4 complete**; Phase 5 deferred. Durable
 state for resuming work after context compaction.
+
+**Phase 3 headline:** libFuzzer found a real integer-overflow
+bug in `parse_wire` on its first 30-second run —
+`kHeaderSize + body_size` wrapped `size_t` for `body_size` near
+`UINT64_MAX`, letting a 58-byte malformed header drive `crc64`
+past the end of the buffer. Fixed; regression pinned via
+`framing_header/body_size_uint64_max.bin`.
 
 ## Resume-from-cold briefing
 

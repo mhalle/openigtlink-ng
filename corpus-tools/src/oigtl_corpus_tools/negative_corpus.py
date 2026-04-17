@@ -125,6 +125,19 @@ def _framing_body_size_greater_than_buffer() -> bytes:
     ) + b"\x00" * 10
 
 
+def _framing_body_size_uint64_max() -> bytes:
+    """Header declares body_size=UINT64_MAX. Regression test for the
+    integer-overflow bounds-check bug in C++ parse_wire (fuzzer-found
+    2026-04-17): the naive ``length < kHeaderSize + body_size`` wraps
+    to 57 and silently accepts, then CRC verification walks off the
+    buffer — remote DoS from a single 58-byte header. Must reject.
+    """
+    return _pack_header(
+        type_id="TRANSFORM",
+        body_size_override=(1 << 64) - 1,
+    )
+
+
 def _framing_version_zero() -> bytes:
     """version=0 is not a valid OpenIGTLink protocol version."""
     body = _valid_transform_body()
@@ -305,6 +318,18 @@ _CORPUS: list[_Spec] = [
         error_class="SHORT_BUFFER",
         spec_reference="protocol/v3.md §Outer header",
         builder=_framing_body_size_greater_than_buffer,
+    ),
+    _Spec(
+        name="framing_header_body_size_uint64_max",
+        path="framing_header/body_size_uint64_max.bin",
+        description=(
+            "body_size=UINT64_MAX. Regression for C++ "
+            "parse_wire integer-overflow (fuzzer 2026-04-17): "
+            "kHeaderSize + body_size wraps and bypasses bounds check."
+        ),
+        error_class="SHORT_BUFFER",
+        spec_reference="protocol/v3.md §Outer header",
+        builder=_framing_body_size_uint64_max,
     ),
     _Spec(
         name="framing_header_version_zero",

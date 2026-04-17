@@ -1,6 +1,6 @@
 {
   "format_version": 1,
-  "count": 21,
+  "count": 22,
   "entries": {
     "framing_header_truncated_42": {
       "path": "framing_header/truncated_42.bin",
@@ -29,6 +29,13 @@
       "error_class": "SHORT_BUFFER",
       "spec_reference": "protocol/v3.md \u00a7Outer header",
       "size_bytes": 68
+    },
+    "framing_header_body_size_uint64_max": {
+      "path": "framing_header/body_size_uint64_max.bin",
+      "description": "body_size=UINT64_MAX. Regression for C++ parse_wire integer-overflow (fuzzer 2026-04-17): kHeaderSize + body_size wraps and bypasses bounds check.",
+      "error_class": "SHORT_BUFFER",
+      "spec_reference": "protocol/v3.md \u00a7Outer header",
+      "size_bytes": 58
     },
     "framing_header_version_zero": {
       "path": "framing_header/version_zero.bin",

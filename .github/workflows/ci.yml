@@ -111,6 +111,108 @@ jobs:
         working-directory: core-py
         run: uv run pytest --all-extras || uv run pytest
 
+  # ---------------------------------------------------------------------------
+  # fuzz-smoke: security/PLAN.md Phase 3-4.
+  #
+  # Two independent smokes run back-to-back on a single Linux+Clang job:
+  #
+  #   1. C++ libFuzzer targets — `fuzz_header` + `fuzz_oracle`,
+  #      each for 60 s under ASan + UBSan. Catches memory-safety
+  #      regressions (OOB read, integer overflow, UMR) in the
+  #      hand-written runtime and the generated per-message codecs.
+  #      A fuzzer-found body_size integer-overflow bug shipped via
+  #      the negative corpus on 2026-04-17 — the regression is
+  #      pinned there, but the live fuzzer keeps watching for new
+  #      classes.
+  #   2. Differential oracle fuzzer — 50k iterations across all four
+  #      codecs (py-ref, py, cpp, ts). Any cross-language divergence
+  #      is a wire-protocol conformance bug. The 1M-iteration clean
+  #      baseline is documented in security/PLAN.md; the CI run is a
+  #      smoke, not a full sweep.
+  # ---------------------------------------------------------------------------
+  fuzz-smoke:
+    name: Fuzz smoke (libFuzzer + differential)
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install Clang 15 + libFuzzer
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y clang-15
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+
+      - name: Install uv
+        uses: astral-sh/setup-uv@v3
+
+      - name: Sync corpus-tools
+        working-directory: corpus-tools
+        run: uv sync
+
+      - name: Sync core-py (typed Python oracle)
+        working-directory: core-py
+        run: uv sync --all-extras
+
+      - name: Build TS oracle CLI
+        working-directory: core-ts
+        run: |
+          npm ci
+          npx tsc -p tsconfig.json --outDir build-tests
+
+      - name: Configure + build C++ oracle CLI (non-fuzz)
+        env:
+          CC: clang-15
+          CXX: clang++-15
+        run: |
+          cmake -S core-cpp -B core-cpp/build
+          cmake --build core-cpp/build --target oigtl_oracle_cli --parallel
+
+      - name: Configure + build libFuzzer targets (ASan+UBSan)
+        env:
+          CC: clang-15
+          CXX: clang++-15
+        run: |
+          cmake -S core-cpp -B core-cpp/build-fuzz \
+                -DBUILD_FUZZERS=ON -DCMAKE_BUILD_TYPE=Debug
+          cmake --build core-cpp/build-fuzz \
+                --target fuzz_header fuzz_oracle fuzz_seed_corpus \
+                --parallel
+
+      - name: libFuzzer — fuzz_header (60 s)
+        run: |
+          core-cpp/build-fuzz/fuzz_header \
+              core-cpp/build-fuzz/seeds/header \
+              -max_total_time=60 -max_len=4096 \
+              -artifact_prefix=./fuzz-artifact-header-
+
+      - name: libFuzzer — fuzz_oracle (60 s)
+        run: |
+          core-cpp/build-fuzz/fuzz_oracle \
+              core-cpp/build-fuzz/seeds/oracle \
+              -max_total_time=60 -max_len=8192 \
+              -artifact_prefix=./fuzz-artifact-oracle-
+
+      - name: Differential oracle fuzz (50 000 iterations)
+        working-directory: corpus-tools
+        run: |
+          uv run oigtl-corpus fuzz differential -n 50000 \
+              --oracle py-ref --oracle py \
+              --oracle cpp --oracle ts \
+              --progress-every 25000
+
+      - name: Upload fuzz artifacts on failure
+        if: failure()
+        uses: actions/upload-artifact@v4
+        with:
+          name: fuzz-artifacts
+          path: |
+            fuzz-artifact-*
+            security/disagreements/*.jsonl
+          if-no-files-found: ignore
+
   typescript:
     name: TypeScript ${{ matrix.node }}
     runs-on: ubuntu-latest

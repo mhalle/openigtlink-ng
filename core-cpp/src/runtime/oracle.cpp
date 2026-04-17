@@ -37,13 +37,21 @@ FramingResult parse_wire(const std::uint8_t* data,
     })) return result;
 
     // --- Body bounds ---
+    // Overflow-safe: compute remaining = length - kHeaderSize (safe
+    // because unpack_header guaranteed length >= kHeaderSize), then
+    // compare against body_size directly. The naive form
+    // `length < kHeaderSize + body_size` wraps for body_size near
+    // UINT64_MAX and silently accepts. That wrap-around was a real
+    // remote-DoS (fuzzer-found, 2026-04-17): a 58-byte header with
+    // body_size=UINT64_MAX would bypass the check and drive crc64
+    // off the end of the buffer.
     const std::size_t body_start = kHeaderSize;
-    const std::size_t body_end = kHeaderSize + result.header.body_size;
-    if (length < body_end) {
+    const std::size_t remaining = length - kHeaderSize;
+    if (result.header.body_size > remaining) {
         std::ostringstream oss;
         oss << "truncated: header declares body_size="
             << result.header.body_size << ", but only "
-            << (length - kHeaderSize) << " body bytes available";
+            << remaining << " body bytes available";
         result.error = oss.str();
         return result;
     }
