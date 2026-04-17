@@ -58,7 +58,7 @@ _DATA_MESSAGES: dict[str, str] = {
     # POINT is hand-written; intentionally omitted.
     "POLYDATA":   "PolyDataMessage",
     # POSITION is hand-written; intentionally omitted.
-    "QTDATA":     "QuaternionTrackingDataMessage",
+    # QTDATA is hand-written; intentionally omitted.
     "QUERY":      "QueryMessage",
     "SENSOR":     "SensorMessage",
     # STATUS is hand-written; intentionally omitted.

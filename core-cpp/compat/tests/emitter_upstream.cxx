@@ -10,6 +10,7 @@
 #include "igtlMath.h"
 #include "igtlPointMessage.h"
 #include "igtlPositionMessage.h"
+#include "igtlQuaternionTrackingDataMessage.h"
 #include "igtlStatusMessage.h"        // GetStatusMessage
 #include "igtlStringMessage.h"
 #include "igtlTrackingDataMessage.h"
@@ -56,6 +57,38 @@ static int emit_get_status() {
     msg->SetHeaderVersion(2);
     msg->SetDeviceName("Probe");
     msg->SetTimeStamp(1718455896u, 0);
+    msg->Pack();
+    ::write(1, msg->GetPackPointer(),
+            static_cast<size_t>(msg->GetPackSize()));
+    return 0;
+}
+
+static int emit_qtdata() {
+    auto msg = igtl::QuaternionTrackingDataMessage::New();
+    msg->SetHeaderVersion(2);
+    msg->SetDeviceName("Tracker_Q");
+    msg->SetTimeStamp(1718455896u, 0);
+
+    auto make = [](const char* name, igtlUint8 type,
+                   float px, float py, float pz,
+                   float qx, float qy, float qz, float qw) {
+        auto e = igtl::QuaternionTrackingDataElement::New();
+        e->SetName(name);
+        e->SetType(type);
+        e->SetPosition(px, py, pz);
+        e->SetQuaternion(qx, qy, qz, qw);
+        return e;
+    };
+
+    auto e1 = make("Probe",
+        igtl::QuaternionTrackingDataElement::TYPE_6D,
+        10.0f, 20.0f, 30.0f, 0.0f, 0.0f, 0.7071068f, 0.7071068f);
+    auto e2 = make("Reference",
+        igtl::QuaternionTrackingDataElement::TYPE_TRACKER,
+        5.25f, -7.5f, 42.0f, 0.0f, 0.0f, 0.0f, 1.0f);
+
+    msg->AddQuaternionTrackingDataElement(e1);
+    msg->AddQuaternionTrackingDataElement(e2);
     msg->Pack();
     ::write(1, msg->GetPackPointer(),
             static_cast<size_t>(msg->GetPackSize()));
@@ -203,6 +236,7 @@ int main(int argc, char** argv) {
                                        igtl::PositionMessage::ALL);
     if (c == "point_v2")           return emit_point();
     if (c == "tdata_v2")           return emit_tdata();
+    if (c == "qtdata_v2")          return emit_qtdata();
     if (c == "stt_tdata_v2")       return emit_stt_tdata_header_only();
     std::fprintf(stderr, "unknown case: %s\n", argv[1]);
     return 2;
