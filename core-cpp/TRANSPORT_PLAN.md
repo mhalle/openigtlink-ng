@@ -301,25 +301,147 @@ owned by a library-global singleton (exposed for override).
 - Graceful close: FIN from peer → pending receive() resolves with
   `ConnectionClosedError`.
 
-### Phase 3 — TLS wrapper via mbedTLS or OpenSSL (2 days)
+### Security posture (applies to all phases)
 
-**Deliverable:** `tls::wrap(connection, config)` returning a new
-`Connection` whose send/receive go through the TLS session.
-`capability()` carries `"tls.cipher"`, `"tls.version"`,
-`"tls.peer_cert.sha256"`, `"tls.peer_cert.subject"`.
+Three tiers, chosen per-listener at `listen()` time. **Never
+auto-negotiated** — downgrade attacks are trivial when a server
+silently accepts both modes on the same port.
 
-**Library choice:** mbedTLS 3.x. Lighter than OpenSSL, no
-platform-specific system-SSL detection, easier vendoring. OpenSSL
-is an opt-in build flag if a downstream needs it.
+1. **Native + Noise** (authenticated, encrypted). Paired static
+   keys. For new code against the native API. See Phase 3 below.
+2. **Native cleartext**. Interoperates with upstream peers and
+   non-paired devices. Honest default for research / closed-LAN
+   environments.
+3. **Shim (libigtl_compat) cleartext only, by design.** Matches
+   upstream's posture; integrators using the shim are explicitly
+   accepting upstream's security level. Migration path to secure:
+   drop the shim, use native + Noise.
+
+A server that wants to accept both paired and legacy clients runs
+two `listen()` calls on two ports — one per mode. Same process,
+different endpoints. Operator configures which port is which.
+
+### Phase 3 — Secure transport via Noise + paired static keys
+
+**Deferred until Phases 4-7 (shim work) complete.** The cleartext
+TCP path (Phase 2) is the critical path for upstream compatibility;
+Noise is a wrapper over `Connection` that can land without changing
+anything beneath it. Design captured here so the shape is settled
+when we return to it.
+
+**Why Noise, not TLS.** Threat model: surgical-suite deployments
+where devices come from diverse manufacturers, pair out-of-band
+(QR/NFC/typed hex), and must refuse rogue connections at the
+handshake — never letting a malicious peer reach the codec's
+parsing defects. PKI / certificate chains / CA hierarchies don't
+fit; there is no hospital "issuing authority" and rotation / revoc
+is not solvable at the transport layer. The Noise Protocol
+Framework (WireGuard, Signal) is designed for exactly this:
+static-key-based mutual auth, forward-secret sessions, no CA.
+
+**Primitives.** libsodium 1.0.20 via `FetchContent`. Curve25519
+for static keys, ChaCha20-Poly1305 for AEAD records, BLAKE2s for
+handshake hash. All well-audited, under one library.
+
+**Public API sketch:**
+
+```cpp
+namespace oigtl::transport::noise {
+
+struct DeviceIdentity {
+    std::array<std::uint8_t,32> static_public;
+    std::array<std::uint8_t,32> static_private;
+    static DeviceIdentity generate();
+    static DeviceIdentity load(std::filesystem::path);
+    void save(std::filesystem::path) const;
+};
+
+struct TrustStore {
+    // Labeled map of accepted peer static pubkeys. Persistent.
+    void add(std::array<std::uint8_t,32> pubkey, std::string label);
+    // QR / operator exchange helpers
+    static std::string encode_pubkey(const std::array<std::uint8_t,32>&);
+    static std::array<std::uint8_t,32> decode_pubkey(std::string_view);
+};
+
+// Noise IK: initiator knows the responder's static pubkey (OOB
+// pairing already done). 1-RTT handshake. Default for paired
+// peers.
+Future<std::unique_ptr<Connection>>
+connect(std::unique_ptr<Connection> plain,
+        const DeviceIdentity& me,
+        std::array<std::uint8_t,32> expected_peer_static);
+
+Future<std::unique_ptr<Connection>>
+accept(std::unique_ptr<Connection> plain,
+       const DeviceIdentity& me,
+       const TrustStore& trust);
+
+// Noise XX: first-contact pairing with interactive confirmation.
+// Returns a PendingPairing exposing the peer's pubkey + a 6-digit
+// SAS (short authentication string) derived from handshake_hash.
+// Operator confirms both sides display the same digits, then
+// commit() proceeds to the transport phase and pins the pubkey.
+struct PendingPairing {
+    std::array<std::uint8_t,32> peer_pubkey;
+    std::string sas_digits;   // truncated handshake_hash
+    std::string sas_words;    // PGP-wordlist variant
+    Future<std::unique_ptr<Connection>> commit();
+    void abort();
+};
+
+Future<PendingPairing>
+pair_xx(std::unique_ptr<Connection> plain,
+        const DeviceIdentity& me);
+
+Future<PendingPairing>
+accept_pair_xx(std::unique_ptr<Connection> plain,
+               const DeviceIdentity& me);
+
+}  // namespace oigtl::transport::noise
+```
+
+**Pairing modes shipped:** OOB (IK) and Numeric Comparison (XX +
+SAS). Passkey / PIN modes deliberately skipped — 6-digit PINs are
+~20 bits of entropy, offline-brute-forceable by a passive
+observer, and require a PAKE-style commitment Noise doesn't give
+us natively. Add on demand.
+
+**Tooling.** Ship `oigtl-identity` CLI for key generation, QR
+export, trust-store editing. Integrators build pairing UIs in
+their own apps (Slicer dialog, embedded device screen) against
+these primitives.
 
 **Acceptance:**
-- Integration test with a self-signed cert: client verifies against
-  a CA bundle, server presents the cert, `capability("tls.peer_cert.
-  sha256")` matches expected.
-- Hostname verification works and can be disabled via `Config::
-  verify_hostname = false`.
-- Negative test: untrusted cert rejected with
-  `TlsHandshakeError`.
+- Two identities, pair OOB, push 100 messages, both sides see
+  `capability("noise.peer_label")` matching the paired label.
+- Unknown peer at handshake rejected with `AuthError` *before*
+  any codec bytes are processed.
+- Flipped handshake byte → handshake failure, connection torn
+  down, no message delivered.
+- SAS path: `pair_xx` / `accept_pair_xx` produce identical
+  6-digit SAS on both sides; after `commit()` the peer pubkey is
+  pinnable.
+
+**Estimated budget:** 3 days (up from 2 for TLS, because we own
+the Noise state machine instead of linking a TLS library). Offset
+by skipping the entire cert-management + CA-bundle surface.
+
+### Phase 4 — Sync bridge (0.5 days)
+
+**Deliverable:** `oigtl::transport::sync::block_on<T>(Future<T>,
+std::chrono::duration timeout)` returning `T` or throwing
+`TimeoutError` / the Future's exception. A global I/O thread
+pumps the asio::io_context so `block_on` calls from any thread
+work. Header-only.
+
+**Acceptance:**
+- `block_on(connection->receive(), 1s)` returns a received message
+  synchronously.
+- `block_on(future_that_never_resolves, 100ms)` throws
+  `TimeoutError` at ~100ms.
+- Threadsafe: two threads can `block_on` different futures
+  concurrently.
 
 ### Phase 4 — Sync bridge (0.5 days)
 
@@ -445,18 +567,26 @@ changes.
 
 ## Estimates
 
-| Phase | Scope | Duration |
-|---|---|---|
-| 1 | Native + loopback | 2 days |
-| 2 | TCP via ASIO | 2 days |
-| 3 | TLS wrapper | 2 days |
-| 4 | Sync bridge | 0.5 days |
-| 5 | LightObject + SmartPointer | 1 day |
-| 6 | Message facades | 2 days |
-| 7 | Socket shims | 1 day |
-| 8 | Parity test matrix | 1 day |
-| 9 | Docs + integration | 0.5 days |
-| **Total** | | **~12 days** (~2.5 weeks focused) |
+| Phase | Scope | Duration | Status |
+|---|---|---|---|
+| 1 | Native + loopback | 2 days | **done** (a0b721b) |
+| 2 | TCP via asio | 2 days | **done** (cf20f14) |
+| 4 | Sync bridge | 0.5 days | next |
+| 5 | LightObject + SmartPointer | 1 day | |
+| 6 | Message facades | 2 days | |
+| 7 | Socket shims | 1 day | |
+| 8 | Parity test matrix | 1 day | |
+| 9 | Docs + integration | 0.5 days | |
+| 3 | Noise secure transport | 3 days | deferred until 4-9 complete |
+| **Total** | | **~13 days** (~2.5-3 weeks focused) | |
+
+Order rationale: the cleartext path (Phases 1-2) already lands the
+critical contract. Phases 4-7 (sync bridge + shim) build on
+cleartext and deliver the upstream-compatible surface, which is
+what unblocks consumer migration. Phase 3 (Noise) is a wrapper that
+doesn't disturb any of that work and fits more naturally after the
+shim is stable — by then we also know whether the v4 RFC expects
+to own key material, which affects the Noise API shape.
 
 ## File touch list
 
