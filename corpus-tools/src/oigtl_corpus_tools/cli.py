@@ -17,7 +17,7 @@ import sys
 from collections.abc import Sequence
 
 from oigtl_corpus_tools import __version__
-from oigtl_corpus_tools.commands import schema
+from oigtl_corpus_tools.commands import codegen, oracle, schema
 
 
 def _build_parser() -> argparse.ArgumentParser:
@@ -42,6 +42,18 @@ def _build_parser() -> argparse.ArgumentParser:
         help="Operations on message schemas under spec/schemas/.",
     )
     schema.register(schema_parser)
+
+    codegen_parser = subparsers.add_parser(
+        "codegen",
+        help="Emit wire-codec source code from spec/schemas/.",
+    )
+    codegen.register(codegen_parser)
+
+    oracle_parser = subparsers.add_parser(
+        "oracle",
+        help="Run the conformance oracle on wire bytes.",
+    )
+    oracle.register(oracle_parser)
 
     return parser
 

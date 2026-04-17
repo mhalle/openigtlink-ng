@@ -1,0 +1,27 @@
+// GENERATED — do not edit. Regenerate with: uv run oigtl-corpus codegen cpp
+
+#include "oigtl/messages/register_all.hpp"
+
+{% for entry in entries %}
+#include "oigtl/messages/{{ entry.header_basename }}.hpp"
+{% endfor %}
+
+namespace oigtl::messages {
+
+void register_all(oigtl::runtime::Registry& registry) {
+    {% for entry in entries %}
+    registry.register_type(
+        "{{ entry.type_id }}",
+        [](const std::uint8_t* data, std::size_t length) {
+            return {{ entry.class_name }}::unpack(data, length).pack();
+        });
+    {% endfor %}
+}
+
+oigtl::runtime::Registry default_registry() {
+    oigtl::runtime::Registry registry;
+    register_all(registry);
+    return registry;
+}
+
+}  // namespace oigtl::messages

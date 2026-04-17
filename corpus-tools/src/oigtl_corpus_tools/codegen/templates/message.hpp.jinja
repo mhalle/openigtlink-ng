@@ -1,0 +1,46 @@
+// GENERATED from spec/schemas/{{ plan.header_basename }}.json — do not edit.
+//
+// Regenerate with: uv run oigtl-corpus codegen cpp
+//
+// {{ plan.type_id }} message body codec.
+#ifndef OIGTL_MESSAGES_{{ plan.type_id }}_HPP
+#define OIGTL_MESSAGES_{{ plan.type_id }}_HPP
+
+#include <array>
+#include <cstddef>
+#include <cstdint>
+#include <string>
+#include <vector>
+
+namespace oigtl::messages {
+
+struct {{ plan.class_name }} {
+    static constexpr const char* kTypeId = "{{ plan.type_id }}";
+    {% if plan.is_fixed_body %}
+    static constexpr std::size_t kBodySize = {{ plan.body_size }};
+    {% endif %}
+
+    {% for s in plan.nested_structs %}
+    struct {{ s.name }} {
+        {% for m in s.members %}
+        {{ m.cxx_type }} {{ m.name }}{{ m.init }};
+        {% endfor %}
+    };
+    {% endfor %}
+
+    {% for f in plan.fields %}
+    {{ f.cxx_type }} {{ f.name }}{{ f.init }};
+    {% endfor %}
+
+    // Pack body to a freshly-allocated big-endian byte vector.
+    std::vector<std::uint8_t> pack() const;
+
+    // Unpack a body. Throws ShortBufferError on truncation,
+    // MalformedMessageError on shape errors (e.g. trailing bytes
+    // not divisible by an element size).
+    static {{ plan.class_name }} unpack(const std::uint8_t* data, std::size_t length);
+};
+
+}  // namespace oigtl::messages
+
+#endif  // OIGTL_MESSAGES_{{ plan.type_id }}_HPP

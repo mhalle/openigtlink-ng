@@ -1,0 +1,96 @@
+# Continuous integration: build + test the C++ codec and the
+# Python codegen / corpus tools across the platforms we expect
+# downstream consumers to run on. MSVC is intentionally omitted
+# until someone adds it; nothing in core-cpp/ is Unix-specific
+# but we haven't proved it builds clean on MSVC's stricter
+# warning set yet.
+
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+jobs:
+  cpp:
+    name: C++ ${{ matrix.os }} / ${{ matrix.cxx }}
+    runs-on: ${{ matrix.os }}
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - os: ubuntu-latest
+            cc: gcc-13
+            cxx: g++-13
+          - os: ubuntu-latest
+            cc: clang-15
+            cxx: clang++-15
+          - os: macos-latest
+            cc: clang
+            cxx: clang++
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install GCC 13 (Ubuntu)
+        if: runner.os == 'Linux' && startsWith(matrix.cxx, 'g++')
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y gcc-13 g++-13
+
+      - name: Install Clang 15 (Ubuntu)
+        if: runner.os == 'Linux' && startsWith(matrix.cxx, 'clang++')
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y clang-15
+
+      # The oracle_parity ctest runs the Python oracle via
+      # `uv run oigtl-corpus oracle verify`. It's marked SKIP
+      # at runtime if `uv` is missing, but we want it to actually
+      # exercise on every C++ matrix entry.
+      - name: Install uv
+        uses: astral-sh/setup-uv@v3
+
+      - name: Sync corpus-tools (so `uv run oigtl-corpus` works)
+        working-directory: corpus-tools
+        run: uv sync
+
+      - name: Configure
+        env:
+          CC: ${{ matrix.cc }}
+          CXX: ${{ matrix.cxx }}
+        run: cmake -S core-cpp -B core-cpp/build
+
+      - name: Build
+        run: cmake --build core-cpp/build --parallel
+
+      - name: Test
+        working-directory: core-cpp/build
+        run: ctest --output-on-failure
+
+  python:
+    name: Python codegen + tests
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+
+      - name: Install uv
+        uses: astral-sh/setup-uv@v3
+
+      - name: Run pytest
+        working-directory: corpus-tools
+        run: uv run pytest
+
+      - name: Verify generated C++ is in sync with schemas
+        working-directory: corpus-tools
+        run: uv run oigtl-corpus codegen cpp --check
+
+      - name: Verify meta-schema is in sync with Pydantic models
+        working-directory: corpus-tools
+        run: uv run oigtl-corpus schema emit-meta --check
