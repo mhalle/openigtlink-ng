@@ -63,6 +63,21 @@ class Connection {
     virtual ~Connection() = default;
 };
 
+// Server-side accept primitive. Each `accept()` resolves with the
+// next inbound connection (or a transport error). An iterator
+// adapter (`begin()`/`end()`) can layer on top; the Future-returning
+// accept is the primitive because it composes with `when_any(accept,
+// shutdown)` for graceful server exit.
+class Acceptor {
+ public:
+    virtual Future<std::unique_ptr<Connection>> accept() = 0;
+    virtual std::uint16_t local_port() const = 0;
+    // Stop accepting. Pending accept() resolves with
+    // OperationCancelledError.
+    virtual Future<void> close() = 0;
+    virtual ~Acceptor() = default;
+};
+
 // Paired loopback connections. send() on one appears in receive()
 // on the other. Uses `make_v3_framer()` on both sides. Intended for
 // tests and examples — no real I/O, no thread hop.

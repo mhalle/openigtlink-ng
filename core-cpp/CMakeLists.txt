@@ -41,16 +41,40 @@ add_library(oigtl_runtime STATIC
 target_include_directories(oigtl_runtime PUBLIC include)
 
 # ---------------------------------------------------------------------------
-# Transport library — async Connection + Framer; Phase 1 ships the
-# Future primitive, the Framer interface + v3 impl, and an in-memory
-# loopback Connection for tests. TCP + TLS come in Phase 2/3.
+# Transport library — async Connection + Framer.
+#   Phase 1: Future primitive, Framer interface + v3, loopback.
+#   Phase 2: TCP backend via standalone asio (FetchContent).
+#   Phase 3: TLS wrapper (mbedTLS).
 # ---------------------------------------------------------------------------
+
+# Fetch standalone asio. SOURCE_SUBDIR pointing at a non-existent path
+# keeps FetchContent_MakeAvailable from running asio's own CMakeLists
+# (we only want the headers).
+include(FetchContent)
+FetchContent_Declare(
+    asio
+    GIT_REPOSITORY https://github.com/chriskohlhoff/asio.git
+    GIT_TAG        asio-1-30-2
+    GIT_SHALLOW    TRUE
+    SOURCE_SUBDIR  _disabled_cmake_subdir
+)
+FetchContent_MakeAvailable(asio)
+add_library(oigtl_asio_headers INTERFACE)
+target_include_directories(oigtl_asio_headers
+    SYSTEM INTERFACE "${asio_SOURCE_DIR}/asio/include")
+target_compile_definitions(oigtl_asio_headers INTERFACE
+    ASIO_STANDALONE ASIO_NO_DEPRECATED)
+
 add_library(oigtl_transport STATIC
     src/transport/framer_v3.cpp
     src/transport/connection_loopback.cpp
+    src/transport/io_runtime.cpp
+    src/transport/connection_tcp.cpp
 )
 target_include_directories(oigtl_transport PUBLIC include)
 target_link_libraries(oigtl_transport PUBLIC oigtl_runtime)
+# asio is a private dep — no asio types leak through public headers.
+target_link_libraries(oigtl_transport PRIVATE oigtl_asio_headers)
 # Future<T> uses condition variables; pthread on Linux.
 find_package(Threads REQUIRED)
 target_link_libraries(oigtl_transport PUBLIC Threads::Threads)
@@ -127,6 +151,15 @@ add_executable(oigtl_transport_loopback_test
 target_link_libraries(oigtl_transport_loopback_test
     PRIVATE oigtl_transport oigtl_runtime)
 add_test(NAME transport_loopback COMMAND oigtl_transport_loopback_test)
+
+# Transport Phase 2 — TCP backend over asio.
+add_executable(oigtl_transport_tcp_test
+    tests/transport_tcp_test.cpp
+)
+target_link_libraries(oigtl_transport_tcp_test
+    PRIVATE oigtl_transport oigtl_runtime)
+add_test(NAME transport_tcp COMMAND oigtl_transport_tcp_test)
+set_tests_properties(transport_tcp PROPERTIES TIMEOUT 60)
 
 # Oracle CLI — persistent subprocess for `oigtl-corpus fuzz differential`.
 # Reads hex-encoded wire bytes from stdin, emits JSON reports on stdout.
