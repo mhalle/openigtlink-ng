@@ -144,8 +144,16 @@ def _cmd_cpp_compat(args: argparse.Namespace) -> int:
 
     # Skip type_ids whose facades are hand-written (already present
     # in core-cpp/compat/src/).
-    hand_written = {"TRANSFORM", "GET_TRANS", "STATUS", "STRING",
-                    "POSITION", "POINT", "TDATA", "QTDATA", "IMAGE"}
+    hand_written = {
+        # data messages
+        "TRANSFORM", "STATUS", "STRING", "POSITION", "POINT",
+        "TDATA", "QTDATA", "IMAGE", "CAPABILITY", "SENSOR",
+        "COMMAND", "QUERY", "IMGMETA", "LBMETA", "TRAJ",
+        "NDARRAY", "COLORT", "POLYDATA", "BIND",
+        # header-only variants folded into their parent's header:
+        "GET_TRANS", "GET_BIND", "STT_BIND", "STP_BIND", "RTS_BIND",
+        "RTS_COMMAND", "RTS_POLYDATA",
+    }
 
     files = all_shim_files(skip_type_ids=hand_written)
 

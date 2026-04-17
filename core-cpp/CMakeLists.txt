@@ -131,6 +131,18 @@ add_library(igtl_compat STATIC
     compat/src/igtlTrackingDataMessage.cxx
     compat/src/igtlQuaternionTrackingDataMessage.cxx
     compat/src/igtlImageMessage.cxx
+    compat/src/igtlCapabilityMessage.cxx
+    compat/src/igtlSensorMessage.cxx
+    compat/src/igtlCommandMessage.cxx
+    compat/src/igtlQueryMessage.cxx
+    compat/src/igtlTimeStamp.cxx
+    compat/src/igtlImageMetaMessage.cxx
+    compat/src/igtlLabelMetaMessage.cxx
+    compat/src/igtlTrajectoryMessage.cxx
+    compat/src/igtlNDArrayMessage.cxx
+    compat/src/igtlColorTableMessage.cxx
+    compat/src/igtlPolyDataMessage.cxx
+    compat/src/igtlBindMessage.cxx
 )
 target_include_directories(igtl_compat PUBLIC compat/include)
 # Pack/Unpack in the facades goes through our runtime codec.
@@ -257,7 +269,7 @@ if(EXISTS "${IGTL_UPSTREAM_BUILD}/lib/libOpenIGTLink.a")
                  transform_v2_rot90z get_status_v2 status_v2
                  string_v2 position_only_v2 position_quat3_v2
                  position_all_v2 point_v2 tdata_v2 qtdata_v2
-                 image_v2)
+                 image_v2 capability_v2 sensor_v2)
         add_test(NAME compat_parity_${case}
             COMMAND bash -c
                 "cmp <(${CMAKE_CURRENT_BINARY_DIR}/compat_emitter_shim ${case}) <(${CMAKE_CURRENT_BINARY_DIR}/compat_emitter_upstream ${case})")

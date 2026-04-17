@@ -45,32 +45,41 @@ from pathlib import Path
 # but would also be fictitious — we're a compat shim, not a
 # speculative expansion. Stick with what upstream ships.
 #
-# Data-carrying (full-facade-needed) messages.
+# All data-carrying messages are now hand-written; the codegen only
+# emits the remaining header-only variants. The data-message mapping
+# is kept empty (not removed) so the schema of this module doesn't
+# change.
 _DATA_MESSAGES: dict[str, str] = {
-    "BIND":       "BindMessage",
-    "CAPABILITY": "CapabilityMessage",
-    "COLORT":     "ColorTableMessage",
-    "COMMAND":    "CommandMessage",
-    # IMAGE is hand-written; intentionally omitted.
-    "IMGMETA":    "ImageMetaMessage",
-    "LBMETA":     "LabelMetaMessage",
-    "NDARRAY":    "NDArrayMessage",
-    # POINT is hand-written; intentionally omitted.
-    "POLYDATA":   "PolyDataMessage",
-    # POSITION is hand-written; intentionally omitted.
-    # QTDATA is hand-written; intentionally omitted.
-    "QUERY":      "QueryMessage",
-    "SENSOR":     "SensorMessage",
-    # STATUS is hand-written; intentionally omitted.
-    # STRING is hand-written; intentionally omitted.
-    # TDATA is hand-written; intentionally omitted.
-    "TRAJ":       "TrajectoryMessage",
-    # TRANSFORM is hand-written; intentionally omitted.
+    # All entries previously here are now hand-written under
+    # core-cpp/compat/src/. See:
+    #   BIND       → igtlBindMessage.{h,cxx}
+    #   CAPABILITY → igtlCapabilityMessage.{h,cxx}
+    #   COLORT     → igtlColorTableMessage.{h,cxx}
+    #   COMMAND    → igtlCommandMessage.{h,cxx}  (incl. RTS_COMMAND)
+    #   IMAGE      → igtlImageMessage.{h,cxx}
+    #   IMGMETA    → igtlImageMetaMessage.{h,cxx}
+    #   LBMETA     → igtlLabelMetaMessage.{h,cxx}
+    #   NDARRAY    → igtlNDArrayMessage.{h,cxx}
+    #   POINT      → igtlPointMessage.{h,cxx}
+    #   POLYDATA   → igtlPolyDataMessage.{h,cxx}  (incl. RTS_POLYDATA)
+    #   POSITION   → igtlPositionMessage.{h,cxx}
+    #   QTDATA     → igtlQuaternionTrackingDataMessage.{h,cxx}
+    #   QUERY      → igtlQueryMessage.{h,cxx}
+    #   SENSOR     → igtlSensorMessage.{h,cxx}
+    #   STATUS     → igtlStatusMessage.{h,cxx}
+    #   STRING     → igtlStringMessage.{h,cxx}
+    #   TDATA      → igtlTrackingDataMessage.{h,cxx}
+    #   TRAJ       → igtlTrajectoryMessage.{h,cxx}
+    #   TRANSFORM  → igtlTransformMessage.{h,cxx}
 }
 
-# Header-only variants upstream actually ships.
+# Header-only variants upstream actually ships. All of these are
+# GET_/STT_/STP_/RTS_ prefixes with no body content; the generator
+# emits a trivial MessageBase subclass that carries just the right
+# m_SendMessageType. Ones that DO carry content (e.g. StartBind-
+# Message's resolution field, RTSBindMessage's status byte) are
+# hand-written alongside their parent and omitted here.
 _HEADER_ONLY: dict[str, str] = {
-    "GET_BIND":     "GetBindMessage",
     "GET_COLORT":   "GetColorTableMessage",
     "GET_IMAGE":    "GetImageMessage",
     "GET_IMGMETA":  "GetImageMetaMessage",
@@ -79,27 +88,25 @@ _HEADER_ONLY: dict[str, str] = {
     "GET_POLYDATA": "GetPolyDataMessage",
     "GET_STATUS":   "GetStatusMessage",
     "GET_TRAJ":     "GetTrajectoryMessage",
-    # GET_TRANS skipped — hand-written alongside TransformMessage.
+    # GET_TRANS lives in igtlTransformMessage.h alongside TransformMessage.
+    # GET_BIND     — hand-written in igtlBindMessage.h (has body).
 
-    "STT_BIND":     "StartBindMessage",
     "STT_POLYDATA": "StartPolyDataMessage",
     "STT_QTDATA":   "StartQuaternionTrackingDataMessage",
     "STT_TDATA":    "StartTrackingDataMessage",
+    # STT_BIND     — hand-written (has 8-byte Resolution body).
 
-    "STP_BIND":     "StopBindMessage",
     "STP_IMAGE":    "StopImageMessage",
     "STP_POLYDATA": "StopPolyDataMessage",
     "STP_QTDATA":   "StopQuaternionTrackingDataMessage",
     "STP_TDATA":    "StopTrackingDataMessage",
+    # STP_BIND     — hand-written in igtlBindMessage.h.
 
-    "RTS_BIND":     "RTSBindMessage",
-    "RTS_POLYDATA": "RTSPolyDataMessage",
     "RTS_QTDATA":   "RTSQuaternionTrackingDataMessage",
     "RTS_TDATA":    "RTSTrackingDataMessage",
-    # RTS_COMMAND: upstream ships the class but we default-implement
-    # it via a data stub alongside CommandMessage; consumers can
-    # still New() it.
-    "RTS_COMMAND":  "RTSCommandMessage",
+    # RTS_BIND     — hand-written (has 1-byte Status body).
+    # RTS_COMMAND  — hand-written in igtlCommandMessage.h.
+    # RTS_POLYDATA — hand-written in igtlPolyDataMessage.h.
 }
 
 

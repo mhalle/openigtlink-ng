@@ -7,7 +7,9 @@
 #include <string>
 #include <unistd.h>
 
+#include "igtlCapabilityMessage.h"
 #include "igtlImageMessage.h"
+#include "igtlSensorMessage.h"
 #include "igtlMath.h"
 #include "igtlPointMessage.h"
 #include "igtlPositionMessage.h"
@@ -58,6 +60,35 @@ static int emit_get_status() {
     msg->SetHeaderVersion(2);
     msg->SetDeviceName("Probe");
     msg->SetTimeStamp(1718455896u, 0);
+    msg->Pack();
+    ::write(1, msg->GetPackPointer(),
+            static_cast<size_t>(msg->GetPackSize()));
+    return 0;
+}
+
+static int emit_capability() {
+    auto msg = igtl::CapabilityMessage::New();
+    msg->SetHeaderVersion(2);
+    msg->SetDeviceName("CapRecorder");
+    msg->SetTimeStamp(1718455896u, 0);
+    std::vector<std::string> types = {"TRANSFORM", "STATUS", "STRING",
+                                      "IMAGE", "POINT"};
+    msg->SetTypes(types);
+    msg->Pack();
+    ::write(1, msg->GetPackPointer(),
+            static_cast<size_t>(msg->GetPackSize()));
+    return 0;
+}
+
+static int emit_sensor() {
+    auto msg = igtl::SensorMessage::New();
+    msg->SetHeaderVersion(2);
+    msg->SetDeviceName("Pressure_01");
+    msg->SetTimeStamp(1718455896u, 0);
+    msg->SetLength(3);
+    igtlFloat64 samples[3] = {101.325, 37.2, 9.81};
+    msg->SetValue(samples);
+    msg->SetUnit(0x0123456789ABCDEFULL);
     msg->Pack();
     ::write(1, msg->GetPackPointer(),
             static_cast<size_t>(msg->GetPackSize()));
@@ -275,6 +306,8 @@ int main(int argc, char** argv) {
     if (c == "tdata_v2")           return emit_tdata();
     if (c == "qtdata_v2")          return emit_qtdata();
     if (c == "image_v2")           return emit_image();
+    if (c == "capability_v2")      return emit_capability();
+    if (c == "sensor_v2")          return emit_sensor();
     if (c == "stt_tdata_v2")       return emit_stt_tdata_header_only();
     std::fprintf(stderr, "unknown case: %s\n", argv[1]);
     return 2;
