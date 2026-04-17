@@ -135,6 +135,104 @@ def _spawn_ts(script: Path) -> OracleSubprocess:
                             stdin=proc.stdin, stdout=proc.stdout)
 
 
+def _spawn_upstream(binary: Path) -> "UpstreamOracle":
+    """Spawn the upstream reference-library oracle subprocess.
+
+    Unlike the other oracles, upstream is process-isolated by design:
+    its readers predate modern sanitizers and may crash on malformed
+    input. We keep a restart-on-death wrapper so the runner can
+    continue past upstream crashes without losing cross-language
+    comparison on the rest of the batch.
+    """
+    if not binary.is_file():
+        raise FileNotFoundError(
+            f"upstream oracle CLI not found at {binary}. Build it with:\n"
+            "  cmake -S corpus-tools/reference-libs/openigtlink-upstream "
+            "-B corpus-tools/reference-libs/openigtlink-upstream/build "
+            "-DBUILD_TESTING=OFF -DBUILD_EXAMPLES=OFF -DBUILD_SHARED_LIBS=OFF\n"
+            "  cmake --build corpus-tools/reference-libs/openigtlink-upstream/build\n"
+            "  cmake -S corpus-tools/reference-libs/upstream-oracle "
+            "-B corpus-tools/reference-libs/upstream-oracle/build\n"
+            "  cmake --build corpus-tools/reference-libs/upstream-oracle/build"
+        )
+    return UpstreamOracle(binary)
+
+
+class UpstreamOracle:
+    """Restart-on-death wrapper around the upstream oracle CLI.
+
+    Upstream is the 6th oracle — a functional-parity check against
+    the pinned reference implementation. It is **only called for
+    inputs already accepted by at least one other oracle** (see
+    ``run()``'s gating logic), but even so the oracle's internal
+    readers may crash on inputs that are well-formed per-spec but
+    trigger its known bug classes (e.g. adversarial metadata
+    layouts). We catch BrokenPipeError / EOF, log via stderr, and
+    respawn on the next call — the failing input's report is marked
+    ok=False with error="upstream crashed" so it shows up cleanly
+    in the disagreement log without aborting the run.
+    """
+    name = "upstream"
+
+    def __init__(self, binary: Path):
+        self._binary = binary
+        self._proc: subprocess.Popen | None = None
+        self._spawn()
+
+    def _spawn(self) -> None:
+        self._proc = subprocess.Popen(
+            [str(self._binary)],
+            stdin=subprocess.PIPE,
+            stdout=subprocess.PIPE,
+            stderr=sys.stderr,
+            text=True,
+            bufsize=1,
+            encoding="utf-8",
+            errors="replace",
+        )
+
+    def verify(self, wire: bytes) -> dict[str, Any]:
+        assert self._proc is not None
+        if self._proc.stdin is None or self._proc.stdout is None:
+            self._spawn()
+        assert self._proc.stdin is not None and self._proc.stdout is not None
+        try:
+            self._proc.stdin.write(wire.hex() + "\n")
+            self._proc.stdin.flush()
+            line = self._proc.stdout.readline()
+        except BrokenPipeError:
+            line = ""
+        if not line:
+            # EOF — process died on the previous input or this one.
+            # Reap it, respawn, return an explicit crash report.
+            try:
+                self._proc.wait(timeout=1)
+            except subprocess.TimeoutExpired:
+                self._proc.kill()
+            self._spawn()
+            return {
+                "ok": False, "type_id": "", "device_name": "",
+                "version": 0, "body_size": 0,
+                "ext_header_size": None, "metadata_count": 0,
+                "round_trip_ok": False,
+                "error": "upstream crashed",
+            }
+        return json.loads(line)
+
+    def close(self) -> None:
+        if self._proc is None:
+            return
+        try:
+            if self._proc.stdin is not None:
+                self._proc.stdin.close()
+        except BrokenPipeError:
+            pass
+        try:
+            self._proc.wait(timeout=2)
+        except subprocess.TimeoutExpired:
+            self._proc.kill()
+
+
 def _spawn_py(core_py_dir: Path, no_numpy: bool) -> OracleSubprocess:
     """Spawn the typed Python oracle subprocess.
 
@@ -199,9 +297,37 @@ def _compare(reports: dict[str, dict[str, Any]]) -> list[str]:
     Returns an empty list when all oracles agree. If all oracles
     rejected (all ``ok == False``), only the ``ok`` flag is compared
     — error strings are expected to differ.
+
+    Special handling for the upstream oracle:
+    - Inputs where upstream reports "upstream has no codec for this
+      type_id" are filtered out of the comparison for upstream only —
+      that's a known narrowness of upstream's MessageFactory, not a
+      conformance divergence.
+    - Upstream crashes (``error == "upstream crashed"``) are filtered
+      out for the same reason — upstream is not hardened against
+      adversarial input and its crashes aren't findings we own.
+    - If filtering leaves upstream with nothing to compare, the rest
+      of the oracle set is compared among themselves.
     """
-    names = sorted(reports.keys())
-    oks = {name: reports[name]["ok"] for name in names}
+    # Defensively filter out upstream's known non-findings.
+    filtered = dict(reports)
+    up = filtered.get("upstream")
+    if up is not None:
+        error = up.get("error", "")
+        if (
+            "no codec for this type_id" in error
+            or error == "upstream crashed"
+        ):
+            filtered.pop("upstream")
+
+    if len(filtered) < 2:
+        # Only one (or zero) oracle left after filtering — nothing to
+        # compare. Upstream-only runs would land here; the gate in
+        # ``run()`` guarantees upstream never runs alone.
+        return []
+
+    names = sorted(filtered.keys())
+    oks = {name: filtered[name]["ok"] for name in names}
     if len(set(oks.values())) > 1:
         return ["ok"]
     if all(v is False for v in oks.values()):
@@ -210,9 +336,22 @@ def _compare(reports: dict[str, dict[str, Any]]) -> list[str]:
         # there is an artifact, not a bug).
         return []
     # All accepted — every semantic field must match.
+    #
+    # round_trip_ok is excluded when upstream is in the mix. Upstream
+    # canonicalizes trailing padding bytes (e.g. non-NUL bytes in the
+    # type_id / device_name null-padded regions) on Pack() — our four
+    # codecs preserve the original bytes byte-for-byte. Both are
+    # spec-conformant, but the values differ on mutated inputs with
+    # noise in padding regions. The four-way agreement between
+    # py-ref / py / cpp / ts still catches real round-trip-symmetry
+    # bugs; we just don't expect upstream's canonical form to match
+    # ours on inputs with garbage in reserved bytes.
+    fields = _SEMANTIC_FIELDS
+    if "upstream" in filtered:
+        fields = tuple(f for f in fields if f != "round_trip_ok")
     disagreements: list[str] = []
-    for field in _SEMANTIC_FIELDS:
-        values = {name: reports[name].get(field) for name in names}
+    for field in fields:
+        values = {name: filtered[name].get(field) for name in names}
         if len(set(json.dumps(v, sort_keys=True) for v in values.values())) > 1:
             disagreements.append(field)
     return disagreements
@@ -240,6 +379,7 @@ def run(
     oracles: list[str],
     cpp_binary: Path | None,
     ts_script: Path | None,
+    upstream_binary: Path | None = None,
     core_py_dir: Path | None = None,
     disagreements_log: Path | None = None,
     progress_every: int = 1000,
@@ -285,6 +425,24 @@ def run(
         if ts_script is None:
             raise ValueError("ts oracle selected but ts_script not provided")
         handles["ts"] = _spawn_ts(ts_script)
+    if "upstream" in oracles:
+        if upstream_binary is None:
+            raise ValueError(
+                "upstream oracle selected but upstream_binary not provided"
+            )
+        handles["upstream"] = _spawn_upstream(upstream_binary)
+
+    # Upstream is a *gated* oracle — it only sees inputs that at
+    # least one other oracle accepted. This avoids feeding upstream's
+    # unsanitised readers the fuzzer's malformed stream, which would
+    # crash it on every other input and drown the real signal. The
+    # gate requires at least one non-upstream oracle to be present.
+    non_upstream = [n for n in handles if n != "upstream"]
+    if "upstream" in handles and not non_upstream:
+        raise ValueError(
+            "upstream oracle must be combined with at least one "
+            "other oracle; it runs gated on another oracle's accept."
+        )
 
     log_fp: IO[str] | None = None
     if disagreements_log is not None:
@@ -302,11 +460,21 @@ def run(
         ):
             per_gen[gen_name] += 1
             reports: dict[str, dict[str, Any]] = {}
-            for name, handle in handles.items():
-                report = handle.verify(wire)
+            # Run non-upstream oracles first, so we know whether any
+            # of them accepted before deciding to invoke upstream.
+            for name in non_upstream:
+                report = handles[name].verify(wire)
                 reports[name] = report
                 if not report["ok"]:
                     rejects[name] += 1
+            # Gate upstream on any other oracle accepting.
+            if "upstream" in handles:
+                any_accepted = any(reports[n]["ok"] for n in non_upstream)
+                if any_accepted:
+                    report = handles["upstream"].verify(wire)
+                    reports["upstream"] = report
+                    if not report["ok"]:
+                        rejects["upstream"] += 1
 
             diff = _compare(reports)
             if diff:

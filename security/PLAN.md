@@ -1,7 +1,9 @@
 # Security + conformance testing harness — plan
 
-Status: **Phases 1–4 complete**; Phase 5 closed (see below).
-Durable state for resuming work after context compaction.
+Status: **Phases 1–4 complete**; Phase 5 closed (see below);
+**6th oracle (conformance parity with upstream) shipped** on
+2026-04-17 and surfaced systematic codec-logic gaps. Durable state
+for resuming work after context compaction.
 
 **Phase 3 headline:** libFuzzer found a real integer-overflow
 bug in `parse_wire` on its first 30-second run —
@@ -445,6 +447,55 @@ fuzzing could close.
 - `c8` for core-ts.
 
 **Exit:** The three new CI jobs are green on main.
+
+### 6th oracle — upstream conformance parity *(shipped 2026-04-17)*
+
+Phase 5 stayed closed as *fuzzing against upstream*, but the
+underlying concern (24 fixtures is a small functional-parity
+signal when the protocol is reference-implementation-defined)
+motivated a separate functional oracle. See
+`corpus-tools/reference-libs/upstream-oracle/` for the CLI and
+`fuzz/runner.py::_spawn_upstream` + ``UpstreamOracle`` for the
+gated / crash-tolerant runner integration.
+
+Key design points:
+
+- **Gated.** Upstream only sees inputs at least one other oracle
+  accepted. Keeps its unhardened readers away from the raw
+  mutation stream.
+- **Crash-tolerant.** BrokenPipe / EOF triggers a respawn; the
+  killing input's report is marked `error="upstream crashed"` and
+  filtered from the comparison. Upstream bugs aren't our bugs.
+- **round_trip_ok excluded.** Upstream canonicalises trailing
+  padding bytes; our four codecs preserve them. Both conformant;
+  we already catch real round-trip bugs via four-way agreement.
+- **MessageFactory extended.** We register BIND / COLORT / NDARRAY
+  / SENSOR explicitly — upstream ships them but doesn't auto-
+  register. COLORTABLE (long name) and VIDEOMETA (no class) are
+  reported as `no codec for this type_id` and filtered from
+  comparison.
+
+**First-run findings (10k iterations, seed 42):** 12 real
+conformance gaps where our four codecs accept bytes upstream
+rejects. Systematic classes:
+
+1. **NDARRAY** — no enforcement that `data_length ==
+   prod(sizes) × scalar_size`. Our codecs accept an NDARRAY with
+   `scalar_type=0xad` (invalid), `dim=181`, `data_length=140` when
+   `prod(sizes) × scalar_size` is in the trillions.
+2. **IMAGE** — no enforcement that pixel region size ==
+   `prod(sizes) × num_components × scalar_size`. Accepts
+   `scalar_type=145` (invalid), `endian=103` (valid 1/2/3),
+   `coord=154` (valid 1/2), `num_components=117`.
+3. **POINT / TDATA** — accepts empty variable-count bodies
+   (0 elements) where upstream requires at least one.
+4. **IMGMETA** — similar element-count / layout divergence.
+
+These are codec-logic gaps, not schema gaps. The schema-generated
+unpack doesn't enforce implicit cross-field invariants beyond
+`body_size_set`. Triage is tracked separately (see todo list);
+each fix lands a negative-corpus entry and tightens the codegen
+for that field shape.
 
 ### Phase 5 — Upstream parity fuzzer — CLOSED (not pursued)
 

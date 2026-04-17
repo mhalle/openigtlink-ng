@@ -64,13 +64,15 @@ def _register_differential(subparsers: argparse._SubParsersAction) -> None:
     p.add_argument(
         "--oracle",
         action="append", dest="oracles",
-        choices=["py-ref", "py", "py-noarray", "cpp", "ts"],
+        choices=["py-ref", "py", "py-noarray", "cpp", "ts", "upstream"],
         help=(
             "Oracle to include; may be given multiple times. "
             "py-ref = reference dict codec (fastest, in-process). "
             "py = typed Python classes through numpy path. "
             "py-noarray = same but with OIGTL_NO_NUMPY=1 forcing "
             "the array.array fallback. cpp, ts: external CLIs. "
+            "upstream = pinned OpenIGTLink reference library "
+            "(gated — only runs on inputs another oracle accepted). "
             "Default: py-ref only."
         ),
     )
@@ -90,6 +92,16 @@ def _register_differential(subparsers: argparse._SubParsersAction) -> None:
             "Path to the built TS oracle_cli.js. "
             "Required when --oracle ts is used. "
             "Default: <repo>/core-ts/build-tests/src/oracle_cli.js."
+        ),
+    )
+    p.add_argument(
+        "--upstream-binary",
+        type=Path, default=None,
+        help=(
+            "Path to the built `upstream_oracle_cli` binary. "
+            "Required when --oracle upstream is used. Default: "
+            "<repo>/corpus-tools/reference-libs/upstream-oracle/"
+            "build/upstream_oracle_cli."
         ),
     )
     p.add_argument(
@@ -124,6 +136,10 @@ def _cmd_differential(args: argparse.Namespace) -> int:
     ts_script = args.ts_script or (
         repo_root / "core-ts" / "build-tests" / "src" / "oracle_cli.js"
     )
+    upstream_binary = args.upstream_binary or (
+        repo_root / "corpus-tools" / "reference-libs" / "upstream-oracle"
+        / "build" / "upstream_oracle_cli"
+    )
     core_py_dir = repo_root / "core-py"
     log_file = args.log_file or (
         repo_root / "security" / "disagreements" / f"{args.seed}.jsonl"
@@ -137,6 +153,7 @@ def _cmd_differential(args: argparse.Namespace) -> int:
             oracles=oracles,
             cpp_binary=cpp_binary if "cpp" in oracles else None,
             ts_script=ts_script if "ts" in oracles else None,
+            upstream_binary=upstream_binary if "upstream" in oracles else None,
             core_py_dir=(
                 core_py_dir
                 if ("py" in oracles or "py-noarray" in oracles)

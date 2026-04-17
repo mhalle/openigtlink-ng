@@ -67,6 +67,10 @@ corpus-tools/fuzz-output/
 # per spec/corpus/ORACLE_VERSION.md; never committed to this repo.
 corpus-tools/reference-libs/*
 !corpus-tools/reference-libs/README.md
+# upstream-oracle is our own CLI wrapper around the upstream library
+# (source committed, build tree ignored via the /build subpath below).
+!corpus-tools/reference-libs/upstream-oracle/
+corpus-tools/reference-libs/upstream-oracle/build/
 
 # Conformance corpus working copies (real corpus is under spec/corpus/)
 *.bin.tmp
