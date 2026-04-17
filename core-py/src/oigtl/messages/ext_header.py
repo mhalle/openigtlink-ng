@@ -5,12 +5,10 @@
 
 from __future__ import annotations
 
-from typing import Annotated, ClassVar
+from typing import Annotated, Any, ClassVar
 
-from pydantic import BaseModel, Field
-
+from pydantic import BaseModel, ConfigDict, Field
 from oigtl_corpus_tools.codec.fields import pack_fields, unpack_fields
-
 
 _FIELDS = [   {'name': 'ext_header_size', 'type': 'uint16'},
     {'name': 'metadata_header_size', 'type': 'uint16'},
@@ -20,6 +18,7 @@ _FIELDS = [   {'name': 'ext_header_size', 'type': 'uint16'},
 
 
 class ExtHeader(BaseModel):
+
     TYPE_ID: ClassVar[str] = "EXT_HEADER"
 
 
@@ -27,6 +26,7 @@ class ExtHeader(BaseModel):
     metadata_header_size: int = 0
     metadata_size: int = 0
     message_id: int = 0
+
 
     def pack(self) -> bytes:
         """Serialize this message's body to wire bytes."""

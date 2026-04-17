@@ -5,12 +5,10 @@
 
 from __future__ import annotations
 
-from typing import Annotated, ClassVar
+from typing import Annotated, Any, ClassVar
 
-from pydantic import BaseModel, Field
-
+from pydantic import BaseModel, ConfigDict, Field
 from oigtl_corpus_tools.codec.fields import pack_fields, unpack_fields
-
 
 _FIELDS = [   {   'name': 'matrix',
         'type': 'array',
@@ -21,11 +19,13 @@ _FIELDS = [   {   'name': 'matrix',
 
 
 class Transform(BaseModel):
+
     TYPE_ID: ClassVar[str] = "TRANSFORM"
     BODY_SIZE: ClassVar[int] = 48
 
 
     matrix: Annotated[list[float], Field(min_length=12, max_length=12)] = Field(default_factory=lambda: [0.0] * 12, min_length=12, max_length=12)
+
 
     def pack(self) -> bytes:
         """Serialize this message's body to wire bytes."""

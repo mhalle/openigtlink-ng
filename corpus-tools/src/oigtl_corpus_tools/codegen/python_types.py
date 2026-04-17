@@ -120,6 +120,12 @@ class TopField:
     name: str
     py_type: str
     default: str
+    # When set, the field carries a variable-count primitive array
+    # (non-uint8). The generated class emits a @field_validator that
+    # calls ``coerce_variable_array`` on the incoming value, and its
+    # ``pack()`` method pre-converts back to bytes via
+    # ``pack_variable_array`` before handing off to the codec.
+    variable_primitive_et: Optional[str] = None
 
 
 @dataclass
@@ -134,6 +140,9 @@ class MessagePyPlan:
     nested_classes: list[NestedClass]
     schema_literal: str         # Python repr of the fields-list,
                                 # baked into the generated module.
+    needs_arrays_runtime: bool = False  # any variable_primitive_et field
+    body_size_set: Optional[list[int]] = None  # spec-whitelist body sizes
+                                # (POSITION: {12, 24, 28}); None = any size.
 
 
 # ---------------------------------------------------------------------------
@@ -302,12 +311,20 @@ def _plan_top_field(
                     default_factory=default_factory,
                     constraints=[f"min_length={count}", f"max_length={count}"],
                 )
-            else:
-                py_t, default = _render_pydantic_field(
-                    f"list[{inner}]",
-                    default_factory="list",
-                )
-            return TopField(name=name, py_type=py_t, default=default)
+                return TopField(name=name, py_type=py_t, default=default)
+
+            # Variable-count non-uint8 primitive. The codec returns
+            # raw big-endian wire bytes; the typed layer promotes to
+            # np.ndarray (with ``[numpy]`` extra) or array.array
+            # (stdlib fallback). Declare as ``Any`` so Pydantic
+            # accepts any of bytes/ndarray/array.array/list; a
+            # validator normalizes them via coerce_variable_array.
+            py_t = "Any"
+            default = f"Field(default_factory=lambda: empty_variable_array({et!r}))"
+            return TopField(
+                name=name, py_type=py_t, default=default,
+                variable_primitive_et=et,
+            )
 
         if isinstance(et, dict) and et.get("type") == "fixed_string":
             py_t, default = _render_pydantic_field(
@@ -407,6 +424,14 @@ def plan_message(schema: dict[str, Any]) -> MessagePyPlan:
         _strip_doc_keys(fields_in), indent=4, width=78, sort_dicts=False
     )
 
+    needs_arrays_runtime = any(
+        f.variable_primitive_et is not None for f in top_fields
+    )
+
+    body_size_set = schema.get("body_size_set")
+    if body_size_set is not None:
+        body_size_set = sorted(int(x) for x in body_size_set)
+
     return MessagePyPlan(
         type_id=type_id,
         class_name=class_name,
@@ -416,4 +441,6 @@ def plan_message(schema: dict[str, Any]) -> MessagePyPlan:
         fields=top_fields,
         nested_classes=nested_classes,
         schema_literal=schema_literal,
+        needs_arrays_runtime=needs_arrays_runtime,
+        body_size_set=body_size_set,
     )

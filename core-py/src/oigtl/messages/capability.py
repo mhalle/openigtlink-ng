@@ -5,12 +5,10 @@
 
 from __future__ import annotations
 
-from typing import Annotated, ClassVar
+from typing import Annotated, Any, ClassVar
 
-from pydantic import BaseModel, Field
-
+from pydantic import BaseModel, ConfigDict, Field
 from oigtl_corpus_tools.codec.fields import pack_fields, unpack_fields
-
 
 _FIELDS = [   {   'name': 'supported_types',
         'type': 'array',
@@ -23,10 +21,12 @@ _FIELDS = [   {   'name': 'supported_types',
 
 
 class Capability(BaseModel):
+
     TYPE_ID: ClassVar[str] = "CAPABILITY"
 
 
     supported_types: list[str] = Field(default_factory=list)
+
 
     def pack(self) -> bytes:
         """Serialize this message's body to wire bytes."""

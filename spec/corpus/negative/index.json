@@ -1,0 +1,153 @@
+{
+  "format_version": 1,
+  "count": 21,
+  "entries": {
+    "framing_header_truncated_42": {
+      "path": "framing_header/truncated_42.bin",
+      "description": "Only 42 bytes supplied; outer header needs 58.",
+      "error_class": "SHORT_BUFFER",
+      "spec_reference": "protocol/v3.md \u00a7Outer header",
+      "size_bytes": 42
+    },
+    "framing_header_truncated_57": {
+      "path": "framing_header/truncated_57.bin",
+      "description": "57 bytes \u2014 one short of a complete header.",
+      "error_class": "SHORT_BUFFER",
+      "spec_reference": "protocol/v3.md \u00a7Outer header",
+      "size_bytes": 57
+    },
+    "framing_header_body_size_overflow": {
+      "path": "framing_header/body_size_overflow.bin",
+      "description": "Header declares body_size=2^62; receiver has no such body.",
+      "error_class": "SHORT_BUFFER",
+      "spec_reference": "protocol/v3.md \u00a7Outer header",
+      "size_bytes": 58
+    },
+    "framing_header_body_size_greater_than_buffer": {
+      "path": "framing_header/body_size_greater_than_buffer.bin",
+      "description": "Header declares 48-byte TRANSFORM body, only 10 bytes follow.",
+      "error_class": "SHORT_BUFFER",
+      "spec_reference": "protocol/v3.md \u00a7Outer header",
+      "size_bytes": 68
+    },
+    "framing_header_version_zero": {
+      "path": "framing_header/version_zero.bin",
+      "description": "Protocol version=0 is not defined.",
+      "error_class": "MALFORMED",
+      "spec_reference": "protocol/v3.md \u00a7Version field",
+      "size_bytes": 106
+    },
+    "framing_header_version_future": {
+      "path": "framing_header/version_future.bin",
+      "description": "Protocol version=99 is claimed-future; receiver does not recognize.",
+      "error_class": "MALFORMED",
+      "spec_reference": "protocol/v3.md \u00a7Version field",
+      "size_bytes": 106
+    },
+    "framing_header_crc_mismatch": {
+      "path": "framing_header/crc_mismatch.bin",
+      "description": "Valid TRANSFORM body with deliberately wrong CRC-64.",
+      "error_class": "CRC_MISMATCH",
+      "spec_reference": "protocol/v3.md \u00a7Outer header (CRC)",
+      "size_bytes": 106
+    },
+    "framing_ext_header_too_small": {
+      "path": "framing_ext_header/ext_header_size_below_minimum.bin",
+      "description": "v2 extended_header.ext_header_size=8, below the 12-byte minimum.",
+      "error_class": "MALFORMED",
+      "spec_reference": "protocol/v3.md \u00a7Extended header",
+      "size_bytes": 70
+    },
+    "framing_ext_header_exceeds_body": {
+      "path": "framing_ext_header/ext_header_size_exceeds_body.bin",
+      "description": "v2 ext_header_size=100 but body is only 12 bytes.",
+      "error_class": "MALFORMED",
+      "spec_reference": "protocol/v3.md \u00a7Extended header",
+      "size_bytes": 70
+    },
+    "framing_metadata_region_overflow": {
+      "path": "framing_metadata/region_overflow.bin",
+      "description": "metadata_size=1000 but body has no room for a metadata region.",
+      "error_class": "MALFORMED",
+      "spec_reference": "protocol/v3.md \u00a7Metadata layout",
+      "size_bytes": 70
+    },
+    "framing_metadata_count_truncated": {
+      "path": "framing_metadata/count_truncated.bin",
+      "description": "metadata index claims 5 entries but only contains 1 entry's worth of bytes.",
+      "error_class": "MALFORMED",
+      "spec_reference": "protocol/v3.md \u00a7Metadata layout",
+      "size_bytes": 80
+    },
+    "framing_metadata_value_size_overflow": {
+      "path": "framing_metadata/value_size_overflow.bin",
+      "description": "metadata entry's value_size=0xFFFFFFFF, far past buffer end.",
+      "error_class": "MALFORMED",
+      "spec_reference": "protocol/v3.md \u00a7Metadata layout",
+      "size_bytes": 83
+    },
+    "content_transform_body_47": {
+      "path": "content/transform_body_47.bin",
+      "description": "TRANSFORM body must be exactly 48 bytes; 47 supplied.",
+      "error_class": "MALFORMED",
+      "spec_reference": "spec/schemas/transform.json",
+      "size_bytes": 105
+    },
+    "content_transform_body_49": {
+      "path": "content/transform_body_49.bin",
+      "description": "TRANSFORM body must be exactly 48 bytes; 49 supplied.",
+      "error_class": "MALFORMED",
+      "spec_reference": "spec/schemas/transform.json",
+      "size_bytes": 107
+    },
+    "content_position_body_20": {
+      "path": "content/position_body_20.bin",
+      "description": "POSITION body_size MUST \u2208 {12, 24, 28}; 20 is invalid.",
+      "error_class": "MALFORMED",
+      "spec_reference": "spec/schemas/position.json legacy_notes",
+      "size_bytes": 78
+    },
+    "content_position_body_32": {
+      "path": "content/position_body_32.bin",
+      "description": "POSITION body_size MUST \u2208 {12, 24, 28}; 32 is invalid.",
+      "error_class": "MALFORMED",
+      "spec_reference": "spec/schemas/position.json legacy_notes",
+      "size_bytes": 90
+    },
+    "content_ndarray_dim_size_mismatch": {
+      "path": "content/ndarray_dim_size_mismatch.bin",
+      "description": "NDARRAY dim=3 but size array only has 2 entries.",
+      "error_class": "MALFORMED",
+      "spec_reference": "spec/schemas/ndarray.json",
+      "size_bytes": 64
+    },
+    "content_ndarray_dim_huge": {
+      "path": "content/ndarray_dim_huge.bin",
+      "description": "NDARRAY dim=200; size array would need 400 bytes but body has 0.",
+      "error_class": "MALFORMED",
+      "spec_reference": "spec/schemas/ndarray.json",
+      "size_bytes": 60
+    },
+    "content_sensor_larray_mismatch": {
+      "path": "content/sensor_larray_mismatch.bin",
+      "description": "SENSOR larray=10 floats but data region has 1 float.",
+      "error_class": "MALFORMED",
+      "spec_reference": "spec/schemas/sensor.json",
+      "size_bytes": 76
+    },
+    "content_string_length_overflow": {
+      "path": "content/string_length_overflow.bin",
+      "description": "STRING length=100 but value buffer has 5 bytes.",
+      "error_class": "MALFORMED",
+      "spec_reference": "spec/schemas/string.json",
+      "size_bytes": 67
+    },
+    "content_bind_ncmessages_huge": {
+      "path": "content/bind_ncmessages_huge.bin",
+      "description": "BIND ncmessages=10000 but body has no room for entries.",
+      "error_class": "MALFORMED",
+      "spec_reference": "spec/schemas/bind.json",
+      "size_bytes": 60
+    }
+  }
+}

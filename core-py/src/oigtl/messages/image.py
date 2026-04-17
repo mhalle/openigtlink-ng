@@ -5,12 +5,10 @@
 
 from __future__ import annotations
 
-from typing import Annotated, ClassVar
+from typing import Annotated, Any, ClassVar
 
-from pydantic import BaseModel, Field
-
+from pydantic import BaseModel, ConfigDict, Field
 from oigtl_corpus_tools.codec.fields import pack_fields, unpack_fields
-
 
 _FIELDS = [   {'name': 'header_version', 'type': 'uint16'},
     {'name': 'num_components', 'type': 'uint8'},
@@ -38,6 +36,7 @@ _FIELDS = [   {'name': 'header_version', 'type': 'uint16'},
 
 
 class Image(BaseModel):
+
     TYPE_ID: ClassVar[str] = "IMAGE"
 
 
@@ -51,6 +50,7 @@ class Image(BaseModel):
     subvol_offset: Annotated[list[int], Field(min_length=3, max_length=3)] = Field(default_factory=lambda: [0] * 3, min_length=3, max_length=3)
     subvol_size: Annotated[list[int], Field(min_length=3, max_length=3)] = Field(default_factory=lambda: [0] * 3, min_length=3, max_length=3)
     pixels: bytes = b""
+
 
     def pack(self) -> bytes:
         """Serialize this message's body to wire bytes."""

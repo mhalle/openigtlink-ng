@@ -201,7 +201,9 @@ class TestPositionRoundTrip:
         header, body = unpack_message(POSITION_WIRE)
         assert header["type"] == "POSITION"
         assert len(body["position"]) == 3
-        assert len(body["quaternion"]) == 4  # full quaternion
+        # quaternion is variable-count float32 → returned as raw wire bytes
+        # (16 = 4 float32). Typed layer promotes to ndarray/array.array.
+        assert len(body["quaternion"]) == 16
 
     def test_pack_unpack_symmetry(self):
         header, body = unpack_message(POSITION_WIRE)

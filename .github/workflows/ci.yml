@@ -95,10 +95,54 @@ jobs:
         working-directory: corpus-tools
         run: uv run oigtl-corpus codegen python --check
 
+      - name: Verify generated TypeScript is in sync with schemas
+        working-directory: corpus-tools
+        run: uv run oigtl-corpus codegen ts --check
+
+      - name: Verify upstream fixtures JSON is in sync
+        working-directory: corpus-tools
+        run: uv run oigtl-corpus fixtures export-json --check
+
       - name: Verify meta-schema is in sync with Pydantic models
         working-directory: corpus-tools
         run: uv run oigtl-corpus schema emit-meta --check
 
       - name: Run core-py tests
         working-directory: core-py
-        run: uv run pytest
+        run: uv run pytest --all-extras || uv run pytest
+
+  typescript:
+    name: TypeScript ${{ matrix.node }}
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        node: ['20', '22']
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: ${{ matrix.node }}
+
+      # The oracle_parity.test.ts shells out to `uv run oigtl-corpus`;
+      # install uv so the parity suite actually runs instead of
+      # self-skipping.
+      - name: Install uv
+        uses: astral-sh/setup-uv@v3
+
+      - name: Sync corpus-tools
+        working-directory: corpus-tools
+        run: uv sync
+
+      - name: Install TS deps
+        working-directory: core-ts
+        run: npm ci
+
+      - name: Typecheck
+        working-directory: core-ts
+        run: npm run typecheck
+
+      - name: Test
+        working-directory: core-ts
+        run: npm test

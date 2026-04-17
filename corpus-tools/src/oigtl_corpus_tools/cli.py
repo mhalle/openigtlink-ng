@@ -17,7 +17,7 @@ import sys
 from collections.abc import Sequence
 
 from oigtl_corpus_tools import __version__
-from oigtl_corpus_tools.commands import codegen, oracle, schema
+from oigtl_corpus_tools.commands import codegen, corpus, fixtures, oracle, schema
 
 
 def _build_parser() -> argparse.ArgumentParser:
@@ -54,6 +54,18 @@ def _build_parser() -> argparse.ArgumentParser:
         help="Run the conformance oracle on wire bytes.",
     )
     oracle.register(oracle_parser)
+
+    fixtures_parser = subparsers.add_parser(
+        "fixtures",
+        help="Export upstream conformance fixtures for non-Python consumers.",
+    )
+    fixtures.register(fixtures_parser)
+
+    corpus_parser = subparsers.add_parser(
+        "corpus",
+        help="Generate or verify the negative (must-reject) corpus.",
+    )
+    corpus.register(corpus_parser)
 
     return parser
 

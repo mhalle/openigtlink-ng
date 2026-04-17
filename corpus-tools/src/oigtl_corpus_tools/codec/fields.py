@@ -180,26 +180,41 @@ def _unpack_field(
         count = _resolve_count(field, values, data, offset)
         element_type = field["element_type"]
 
-        # Fast path: primitive element type → one struct.unpack_from call
-        # instead of a Python loop. Critical for IMAGE / POLYDATA / NDARRAY
-        # where arrays are megabytes of uniform primitive data.
+        # Fast path: primitive element type → single slice or one
+        # struct.unpack_from call instead of a Python loop. Critical
+        # for IMAGE / POLYDATA / NDARRAY where arrays are megabytes of
+        # uniform primitive data.
+        #
+        # Variable-count arrays return raw wire bytes (big-endian); the
+        # typed Python layer coerces to ndarray/array.array via
+        # oigtl.runtime.arrays.coerce_variable_array. Fixed-count arrays
+        # (count is a schema-literal int) stay as list[T] — they're
+        # always small (≤12 elements across all 84 schemas) and the
+        # typed field type stays `list[T]` for clean Pydantic validation.
         if isinstance(element_type, str) and element_type in FORMAT:
-            if element_type == "uint8":
-                # Return bytes rather than list[int] for uint8 arrays.
-                # Two reasons: (1) one Python object instead of N
-                # 28-byte int boxes — for an FHD grayscale image
-                # body that's a 56 MB → 2 MB heap reduction; (2)
-                # the typed Python codegen can declare the field
-                # as `bytes` so Pydantic validation is a length
-                # check rather than per-element int validation,
-                # cutting unpack time on a 2 MB image from ~22 ms
-                # to microseconds. Indexing/iteration semantics are
-                # identical (b[i] returns the same int as l[i]).
-                # The pack path already accepts both bytes and list
-                # of ints, so this change is symmetric.
-                return bytes(data[offset : offset + count]), offset + count
+            is_fixed = isinstance(field.get("count"), int)
             elem_size = SIZE[element_type]
             total = elem_size * count
+            # Bounds check: primitive-element array reads used to slice
+            # `data[offset:offset+total]` without verifying the slice
+            # fits in the buffer. Python's slice truncation silently
+            # accepted short bodies (e.g. NDARRAY dim=3 with only 4 bytes
+            # of size[], SENSOR larray=10 with 8 bytes of data). Reject
+            # explicitly so short / tampered bodies raise instead of
+            # decoding a truncated array.
+            remaining = len(data) - offset
+            if total > remaining:
+                raise ValueError(
+                    f"field {field['name']!r}: {count} × {elem_size} "
+                    f"bytes exceeds remaining {remaining}"
+                )
+            if not is_fixed:
+                return bytes(data[offset : offset + total]), offset + total
+            if element_type == "uint8":
+                # Fixed-count uint8 (rare — e.g. POINT.rgba with count=4).
+                # Keep bytes representation for consistency with variable
+                # uint8; Pydantic sees `bytes` either way.
+                return bytes(data[offset : offset + total]), offset + total
             fmt = ">" + FORMAT[element_type] * count
             elements = list(struct.unpack_from(fmt, data, offset))
             return elements, offset + total
@@ -284,14 +299,31 @@ def _pack_field(field: dict[str, Any], value: Any) -> bytes:
     if t in ("array", "struct_array"):
         element_type = field["element_type"]
 
-        # Fast path: primitive element type → one struct.pack call instead
-        # of a Python loop + concat. Hot for IMAGE / POLYDATA / NDARRAY
-        # where arrays are megabytes of primitive data.
+        # Fast path: primitive element type → single slice or one
+        # struct.pack call instead of a Python loop + concat. Hot for
+        # IMAGE / POLYDATA / NDARRAY where arrays are megabytes of
+        # primitive data.
+        #
+        # Accepts multiple input shapes so the typed layer can hand off
+        # whatever representation is natural:
+        #   - bytes/bytearray/memoryview: already wire-format big-endian
+        #     (e.g. directly from unpack, or np.ndarray.tobytes() with a
+        #     big-endian dtype). Pass through unchanged.
+        #   - list/tuple of ints/floats: pack element-by-element via
+        #     struct (the original path).
+        # ndarray / array.array inputs are expected to arrive as bytes
+        # from the typed layer's pack helper.
         if isinstance(element_type, str) and element_type in FORMAT:
+            if isinstance(value, (bytes, bytearray, memoryview)):
+                elem_size = SIZE[element_type]
+                raw = bytes(value)
+                if len(raw) % elem_size != 0:
+                    raise ValueError(
+                        f"bytes length {len(raw)} is not a multiple of "
+                        f"{element_type} element size {elem_size}"
+                    )
+                return raw
             if element_type == "uint8":
-                # Accept bytes or iterable of ints
-                if isinstance(value, (bytes, bytearray, memoryview)):
-                    return bytes(value)
                 return bytes(value)
             fmt = ">" + FORMAT[element_type] * len(value)
             return struct.pack(fmt, *value)

@@ -799,6 +799,7 @@ class MessagePlan:
     body_size_expr: str
     fields: list[FieldPlan]
     nested_structs: list[ElementStructDef]
+    body_size_set: Optional[list[int]] = None
 
 
 def plan_message(schema: dict[str, Any]) -> MessagePlan:
@@ -855,6 +856,10 @@ def plan_message(schema: dict[str, Any]) -> MessagePlan:
         )
         is_fixed_body = False
 
+    body_size_set = schema.get("body_size_set")
+    if body_size_set is not None:
+        body_size_set = sorted(int(x) for x in body_size_set)
+
     return MessagePlan(
         type_id=type_id,
         class_name=cxx_class_name(type_id),
@@ -864,4 +869,5 @@ def plan_message(schema: dict[str, Any]) -> MessagePlan:
         body_size_expr=body_size_expr,
         fields=field_plans,
         nested_structs=nested_structs,
+        body_size_set=body_size_set,
     )

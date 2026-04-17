@@ -5,12 +5,10 @@
 
 from __future__ import annotations
 
-from typing import Annotated, ClassVar
+from typing import Annotated, Any, ClassVar
 
-from pydantic import BaseModel, Field
-
+from pydantic import BaseModel, ConfigDict, Field
 from oigtl_corpus_tools.codec.fields import pack_fields, unpack_fields
-
 
 _FIELDS = [   {'name': 'count', 'type': 'uint16'},
     {   'name': 'index_entries',
@@ -35,6 +33,7 @@ class _IndexEntry(BaseModel):
     value_size: int = 0
 
 class Metadata(BaseModel):
+
     TYPE_ID: ClassVar[str] = "METADATA"
 
     IndexEntry: ClassVar[type[BaseModel]] = _IndexEntry
@@ -42,6 +41,7 @@ class Metadata(BaseModel):
     count: int = 0
     index_entries: list["IndexEntry"] = Field(default_factory=list)
     body: bytes = b""
+
 
     def pack(self) -> bytes:
         """Serialize this message's body to wire bytes."""

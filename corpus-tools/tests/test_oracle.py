@@ -13,6 +13,8 @@ with a reason, so the suite stays green while documenting the gap.
 
 from __future__ import annotations
 
+import struct
+
 import pytest
 
 from oigtl_corpus_tools.codec.header import HEADER_SIZE, unpack_header
@@ -141,7 +143,9 @@ class TestUpstreamVectorFieldValues:
         assert result.ok
         assert result.body["scalar_type"] == 11  # float64
         assert result.body["dim"] == 3
-        assert result.body["size"] == [5, 4, 3]
+        # size is variable-count uint16 → raw wire bytes.
+        # 3 dims × 2 bytes each = 6 bytes big-endian: [5,4,3].
+        assert result.body["size"] == struct.pack(">3H", 5, 4, 3)
 
     def test_bind_structure(self):
         result = verify_wire_bytes(UPSTREAM_VECTORS["bind"])

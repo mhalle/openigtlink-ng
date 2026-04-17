@@ -36,6 +36,7 @@ from typing import Any
 from oigtl_corpus_tools.codec.crc64 import crc64
 from oigtl_corpus_tools.codec.header import HEADER_SIZE, unpack_header
 from oigtl_corpus_tools.codec.message import load_schema, pack_body, unpack_body
+from oigtl_corpus_tools.codec.policy import check_body_size_set
 
 
 # Minimum extended-header size (4 fields: u16, u16, u32, u32 = 12 bytes).
@@ -264,6 +265,15 @@ def verify_wire_bytes(
         schema = load_schema(header["type"])
     except KeyError:
         result.error = f"no schema for type_id={header['type']!r}"
+        return result
+
+    # Spec-level whitelist (e.g. POSITION body ∈ {12, 24, 28}). Reject
+    # before field walking so the error surfaces as MALFORMED rather
+    # than leaking through as a truncation of some interior field.
+    try:
+        check_body_size_set(schema, len(content_bytes))
+    except ValueError as exc:
+        result.error = str(exc)
         return result
 
     try:

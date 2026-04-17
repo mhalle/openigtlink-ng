@@ -5,12 +5,10 @@
 
 from __future__ import annotations
 
-from typing import Annotated, ClassVar
+from typing import Annotated, Any, ClassVar
 
-from pydantic import BaseModel, Field
-
+from pydantic import BaseModel, ConfigDict, Field
 from oigtl_corpus_tools.codec.fields import pack_fields, unpack_fields
-
 
 _FIELDS = [   {'name': 'ncmessages', 'type': 'uint16'},
     {   'name': 'header_entries',
@@ -40,6 +38,7 @@ class _HeaderEntry(BaseModel):
     body_size: int = 0
 
 class Bind(BaseModel):
+
     TYPE_ID: ClassVar[str] = "BIND"
 
     HeaderEntry: ClassVar[type[BaseModel]] = _HeaderEntry
@@ -49,6 +48,7 @@ class Bind(BaseModel):
     nametable_size: int = 0
     name_table: bytes = b""
     bodies: bytes = b""
+
 
     def pack(self) -> bytes:
         """Serialize this message's body to wire bytes."""

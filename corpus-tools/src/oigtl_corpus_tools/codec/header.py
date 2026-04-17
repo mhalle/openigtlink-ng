@@ -34,6 +34,13 @@ def unpack_header(data: bytes) -> dict[str, Any]:
     version, type_raw, name_raw, timestamp, body_size, crc_val = struct.unpack_from(
         _HEADER_FMT, data, 0
     )
+    # The spec defines three versions (v1, v2, v3). A header claiming
+    # any other value is either a tampered packet or a never-specified
+    # future version we cannot safely decode.
+    if version not in (1, 2, 3):
+        raise ValueError(
+            f"header version={version} is not in the supported set {{1, 2, 3}}"
+        )
     return {
         "version": version,
         "type": type_raw.split(b"\x00", 1)[0].decode("ascii"),

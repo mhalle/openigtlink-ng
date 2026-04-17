@@ -14,9 +14,15 @@ Python tooling for the openigtlink-ng project. Three roles:
    `../core-py/`) are cross-checked against. Exposed as a CLI via
    the `oracle` subcommand.
 
-3. **Codegen** — Jinja2-based rendering of typed C++17 and Python
-   message classes from the schemas. Exposed as `codegen cpp` and
-   `codegen python`. Both have drift-check modes for CI.
+3. **Codegen** — Jinja2-based rendering of typed C++17, Python,
+   and TypeScript message classes from the schemas. Exposed as
+   `codegen cpp`, `codegen python`, and `codegen ts`. All have
+   drift-check modes for CI.
+
+4. **Fixture export** — one-shot JSON dump of the upstream test
+   fixtures so non-Python implementations (core-ts, hypothetical
+   future Rust/Go ports) consume the same data without needing the
+   Python `.h` extractor. Exposed as `fixtures export-json`.
 
 Python module with a single `oigtl-corpus` console script and a
 command / subcommand structure. All Python work in the project uses
@@ -88,6 +94,32 @@ flags as `codegen cpp`.
 ```bash
 uv run oigtl-corpus codegen python            # regenerate all
 uv run oigtl-corpus codegen python --check    # CI drift guard
+```
+
+### `codegen ts`
+
+Emits typed TypeScript message classes into
+`../core-ts/src/messages/`, plus an `index.ts` that re-exports
+them and registers them with the runtime dispatcher. Each class
+is an ESM module with `unpack(bytes)` / `pack()` methods using
+the `DataView`-based big-endian helpers from
+`../core-ts/src/runtime/byte_order.ts`.
+
+```bash
+uv run oigtl-corpus codegen ts                # regenerate all
+uv run oigtl-corpus codegen ts --check        # CI drift guard
+```
+
+### `fixtures export-json`
+
+Serializes every upstream test fixture (`UPSTREAM_VECTORS`) to
+`../spec/corpus/upstream-fixtures.json`. Consumed by `core-ts`
+tests and available to any non-Python implementation that wants
+the same conformance data without porting the `.h` extractor.
+
+```bash
+uv run oigtl-corpus fixtures export-json          # regenerate
+uv run oigtl-corpus fixtures export-json --check  # CI drift guard
 ```
 
 ### `oracle verify`

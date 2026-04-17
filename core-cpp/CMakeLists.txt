@@ -94,6 +94,16 @@ add_test(NAME oracle_parity COMMAND oigtl_oracle_parity_test)
 set_tests_properties(oracle_parity PROPERTIES
     WORKING_DIRECTORY "${CMAKE_CURRENT_SOURCE_DIR}/../corpus-tools")
 
+# Negative corpus — every must-reject entry must be rejected by
+# the C++ oracle. Loads spec/corpus/negative/index.json at runtime.
+add_executable(oigtl_negative_corpus_test
+    tests/negative_corpus_test.cpp
+)
+target_link_libraries(oigtl_negative_corpus_test PRIVATE oigtl)
+add_test(NAME negative_corpus COMMAND oigtl_negative_corpus_test)
+set_tests_properties(negative_corpus PROPERTIES
+    WORKING_DIRECTORY "${CMAKE_CURRENT_SOURCE_DIR}")
+
 # Benchmark binary — built but not run by ctest. Invoke manually:
 #   cmake --build build --target oigtl_bench && ./build/oigtl_bench
 # Use a Release build for representative numbers:

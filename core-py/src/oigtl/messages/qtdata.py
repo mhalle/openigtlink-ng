@@ -5,12 +5,10 @@
 
 from __future__ import annotations
 
-from typing import Annotated, ClassVar
+from typing import Annotated, Any, ClassVar
 
-from pydantic import BaseModel, Field
-
+from pydantic import BaseModel, ConfigDict, Field
 from oigtl_corpus_tools.codec.fields import pack_fields, unpack_fields
-
 
 _FIELDS = [   {   'name': 'tools',
         'type': 'array',
@@ -42,11 +40,13 @@ class _Tool(BaseModel):
     quaternion: Annotated[list[float], Field(min_length=4, max_length=4)] = Field(default_factory=lambda: [0.0] * 4, min_length=4, max_length=4)
 
 class Qtdata(BaseModel):
+
     TYPE_ID: ClassVar[str] = "QTDATA"
 
     Tool: ClassVar[type[BaseModel]] = _Tool
 
     tools: list["Tool"] = Field(default_factory=list)
+
 
     def pack(self) -> bytes:
         """Serialize this message's body to wire bytes."""

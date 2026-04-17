@@ -5,20 +5,20 @@
 
 from __future__ import annotations
 
-from typing import Annotated, ClassVar
+from typing import Annotated, Any, ClassVar
 
-from pydantic import BaseModel, Field
-
+from pydantic import BaseModel, ConfigDict, Field
 from oigtl_corpus_tools.codec.fields import pack_fields, unpack_fields
-
 
 _FIELDS = []
 
 
 
 class GetVmeta(BaseModel):
+
     TYPE_ID: ClassVar[str] = "GET_VMETA"
     BODY_SIZE: ClassVar[int] = 0
+
 
 
 

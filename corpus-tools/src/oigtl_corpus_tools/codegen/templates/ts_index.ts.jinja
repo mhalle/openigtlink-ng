@@ -1,0 +1,30 @@
+// GENERATED — do not edit. Regenerate with: uv run oigtl-corpus codegen ts
+/**
+ * Typed message barrel — re-exports every generated class and
+ * registers them with the dispatch registry used by
+ * ``parseMessage`` / ``verifyWireBytes`` in the runtime.
+ */
+
+import { registerMessage, type MessageCtor } from "../runtime/dispatch.js";
+
+{% for e in entries %}
+import { {{ e.class_name }} } from "./{{ e.module_name }}.js";
+{% endfor %}
+
+{% for e in entries %}
+export { {{ e.class_name }} } from "./{{ e.module_name }}.js";
+{% endfor %}
+
+export const REGISTRY: Readonly<Record<string, MessageCtor>> = Object.freeze({
+{% for e in entries %}
+  "{{ e.type_id }}": {{ e.class_name }} as unknown as MessageCtor,
+{% endfor %}
+});
+
+// Register each class with the runtime dispatcher on module load.
+// Import order matters only in that consumers calling `lookup()`
+// before this module loads will not find anything; since the
+// barrel is the canonical import point, that's expected.
+for (const [, ctor] of Object.entries(REGISTRY)) {
+  registerMessage(ctor);
+}

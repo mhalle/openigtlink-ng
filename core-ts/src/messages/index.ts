@@ -1,0 +1,273 @@
+// GENERATED — do not edit. Regenerate with: uv run oigtl-corpus codegen ts
+/**
+ * Typed message barrel — re-exports every generated class and
+ * registers them with the dispatch registry used by
+ * ``parseMessage`` / ``verifyWireBytes`` in the runtime.
+ */
+
+import { registerMessage, type MessageCtor } from "../runtime/dispatch.js";
+
+import { Bind } from "./bind.js";
+import { Capability } from "./capability.js";
+import { Colort } from "./colort.js";
+import { Colortable } from "./colortable.js";
+import { Command } from "./command.js";
+import { ExtHeaderMessage } from "./ext_header.js";
+import { GetBind } from "./get_bind.js";
+import { GetCapabil } from "./get_capabil.js";
+import { GetColort } from "./get_colort.js";
+import { GetImage } from "./get_image.js";
+import { GetImgmeta } from "./get_imgmeta.js";
+import { GetLbmeta } from "./get_lbmeta.js";
+import { GetNdarray } from "./get_ndarray.js";
+import { GetPoint } from "./get_point.js";
+import { GetPolydata } from "./get_polydata.js";
+import { GetPosition } from "./get_position.js";
+import { GetQtdata } from "./get_qtdata.js";
+import { GetQtrans } from "./get_qtrans.js";
+import { GetSensor } from "./get_sensor.js";
+import { GetStatus } from "./get_status.js";
+import { GetString } from "./get_string.js";
+import { GetTdata } from "./get_tdata.js";
+import { GetTraj } from "./get_traj.js";
+import { GetTrans } from "./get_trans.js";
+import { GetVmeta } from "./get_vmeta.js";
+import { HeaderMessage } from "./header.js";
+import { ImageMessage } from "./image.js";
+import { Imgmeta } from "./imgmeta.js";
+import { Lbmeta } from "./lbmeta.js";
+import { Metadata } from "./metadata.js";
+import { Ndarray } from "./ndarray.js";
+import { Point } from "./point.js";
+import { Polydata } from "./polydata.js";
+import { Position } from "./position.js";
+import { Qtdata } from "./qtdata.js";
+import { Qtrans } from "./qtrans.js";
+import { RtsBind } from "./rts_bind.js";
+import { RtsCapabil } from "./rts_capabil.js";
+import { RtsCommand } from "./rts_command.js";
+import { RtsImage } from "./rts_image.js";
+import { RtsImgmeta } from "./rts_imgmeta.js";
+import { RtsLbmeta } from "./rts_lbmeta.js";
+import { RtsNdarray } from "./rts_ndarray.js";
+import { RtsPoint } from "./rts_point.js";
+import { RtsPolydata } from "./rts_polydata.js";
+import { RtsPosition } from "./rts_position.js";
+import { RtsQtdata } from "./rts_qtdata.js";
+import { RtsQtrans } from "./rts_qtrans.js";
+import { RtsSensor } from "./rts_sensor.js";
+import { RtsStatus } from "./rts_status.js";
+import { RtsString } from "./rts_string.js";
+import { RtsTdata } from "./rts_tdata.js";
+import { RtsTraj } from "./rts_traj.js";
+import { RtsTrans } from "./rts_trans.js";
+import { Sensor } from "./sensor.js";
+import { Status } from "./status.js";
+import { StpBind } from "./stp_bind.js";
+import { StpImage } from "./stp_image.js";
+import { StpNdarray } from "./stp_ndarray.js";
+import { StpPolydata } from "./stp_polydata.js";
+import { StpPosition } from "./stp_position.js";
+import { StpQtdata } from "./stp_qtdata.js";
+import { StpQtrans } from "./stp_qtrans.js";
+import { StpSensor } from "./stp_sensor.js";
+import { StpTdata } from "./stp_tdata.js";
+import { StpTrans } from "./stp_trans.js";
+import { StpVideo } from "./stp_video.js";
+import { StringMessage } from "./string.js";
+import { SttBind } from "./stt_bind.js";
+import { SttImage } from "./stt_image.js";
+import { SttNdarray } from "./stt_ndarray.js";
+import { SttPolydata } from "./stt_polydata.js";
+import { SttPosition } from "./stt_position.js";
+import { SttQtdata } from "./stt_qtdata.js";
+import { SttQtrans } from "./stt_qtrans.js";
+import { SttTdata } from "./stt_tdata.js";
+import { SttTrans } from "./stt_trans.js";
+import { SttVideo } from "./stt_video.js";
+import { Tdata } from "./tdata.js";
+import { Traj } from "./traj.js";
+import { Transform } from "./transform.js";
+import { Unit } from "./unit.js";
+import { VideoMessage } from "./video.js";
+import { Videometa } from "./videometa.js";
+
+export { Bind } from "./bind.js";
+export { Capability } from "./capability.js";
+export { Colort } from "./colort.js";
+export { Colortable } from "./colortable.js";
+export { Command } from "./command.js";
+export { ExtHeaderMessage } from "./ext_header.js";
+export { GetBind } from "./get_bind.js";
+export { GetCapabil } from "./get_capabil.js";
+export { GetColort } from "./get_colort.js";
+export { GetImage } from "./get_image.js";
+export { GetImgmeta } from "./get_imgmeta.js";
+export { GetLbmeta } from "./get_lbmeta.js";
+export { GetNdarray } from "./get_ndarray.js";
+export { GetPoint } from "./get_point.js";
+export { GetPolydata } from "./get_polydata.js";
+export { GetPosition } from "./get_position.js";
+export { GetQtdata } from "./get_qtdata.js";
+export { GetQtrans } from "./get_qtrans.js";
+export { GetSensor } from "./get_sensor.js";
+export { GetStatus } from "./get_status.js";
+export { GetString } from "./get_string.js";
+export { GetTdata } from "./get_tdata.js";
+export { GetTraj } from "./get_traj.js";
+export { GetTrans } from "./get_trans.js";
+export { GetVmeta } from "./get_vmeta.js";
+export { HeaderMessage } from "./header.js";
+export { ImageMessage } from "./image.js";
+export { Imgmeta } from "./imgmeta.js";
+export { Lbmeta } from "./lbmeta.js";
+export { Metadata } from "./metadata.js";
+export { Ndarray } from "./ndarray.js";
+export { Point } from "./point.js";
+export { Polydata } from "./polydata.js";
+export { Position } from "./position.js";
+export { Qtdata } from "./qtdata.js";
+export { Qtrans } from "./qtrans.js";
+export { RtsBind } from "./rts_bind.js";
+export { RtsCapabil } from "./rts_capabil.js";
+export { RtsCommand } from "./rts_command.js";
+export { RtsImage } from "./rts_image.js";
+export { RtsImgmeta } from "./rts_imgmeta.js";
+export { RtsLbmeta } from "./rts_lbmeta.js";
+export { RtsNdarray } from "./rts_ndarray.js";
+export { RtsPoint } from "./rts_point.js";
+export { RtsPolydata } from "./rts_polydata.js";
+export { RtsPosition } from "./rts_position.js";
+export { RtsQtdata } from "./rts_qtdata.js";
+export { RtsQtrans } from "./rts_qtrans.js";
+export { RtsSensor } from "./rts_sensor.js";
+export { RtsStatus } from "./rts_status.js";
+export { RtsString } from "./rts_string.js";
+export { RtsTdata } from "./rts_tdata.js";
+export { RtsTraj } from "./rts_traj.js";
+export { RtsTrans } from "./rts_trans.js";
+export { Sensor } from "./sensor.js";
+export { Status } from "./status.js";
+export { StpBind } from "./stp_bind.js";
+export { StpImage } from "./stp_image.js";
+export { StpNdarray } from "./stp_ndarray.js";
+export { StpPolydata } from "./stp_polydata.js";
+export { StpPosition } from "./stp_position.js";
+export { StpQtdata } from "./stp_qtdata.js";
+export { StpQtrans } from "./stp_qtrans.js";
+export { StpSensor } from "./stp_sensor.js";
+export { StpTdata } from "./stp_tdata.js";
+export { StpTrans } from "./stp_trans.js";
+export { StpVideo } from "./stp_video.js";
+export { StringMessage } from "./string.js";
+export { SttBind } from "./stt_bind.js";
+export { SttImage } from "./stt_image.js";
+export { SttNdarray } from "./stt_ndarray.js";
+export { SttPolydata } from "./stt_polydata.js";
+export { SttPosition } from "./stt_position.js";
+export { SttQtdata } from "./stt_qtdata.js";
+export { SttQtrans } from "./stt_qtrans.js";
+export { SttTdata } from "./stt_tdata.js";
+export { SttTrans } from "./stt_trans.js";
+export { SttVideo } from "./stt_video.js";
+export { Tdata } from "./tdata.js";
+export { Traj } from "./traj.js";
+export { Transform } from "./transform.js";
+export { Unit } from "./unit.js";
+export { VideoMessage } from "./video.js";
+export { Videometa } from "./videometa.js";
+
+export const REGISTRY: Readonly<Record<string, MessageCtor>> = Object.freeze({
+  "BIND": Bind as unknown as MessageCtor,
+  "CAPABILITY": Capability as unknown as MessageCtor,
+  "COLORT": Colort as unknown as MessageCtor,
+  "COLORTABLE": Colortable as unknown as MessageCtor,
+  "COMMAND": Command as unknown as MessageCtor,
+  "EXT_HEADER": ExtHeaderMessage as unknown as MessageCtor,
+  "GET_BIND": GetBind as unknown as MessageCtor,
+  "GET_CAPABIL": GetCapabil as unknown as MessageCtor,
+  "GET_COLORT": GetColort as unknown as MessageCtor,
+  "GET_IMAGE": GetImage as unknown as MessageCtor,
+  "GET_IMGMETA": GetImgmeta as unknown as MessageCtor,
+  "GET_LBMETA": GetLbmeta as unknown as MessageCtor,
+  "GET_NDARRAY": GetNdarray as unknown as MessageCtor,
+  "GET_POINT": GetPoint as unknown as MessageCtor,
+  "GET_POLYDATA": GetPolydata as unknown as MessageCtor,
+  "GET_POSITION": GetPosition as unknown as MessageCtor,
+  "GET_QTDATA": GetQtdata as unknown as MessageCtor,
+  "GET_QTRANS": GetQtrans as unknown as MessageCtor,
+  "GET_SENSOR": GetSensor as unknown as MessageCtor,
+  "GET_STATUS": GetStatus as unknown as MessageCtor,
+  "GET_STRING": GetString as unknown as MessageCtor,
+  "GET_TDATA": GetTdata as unknown as MessageCtor,
+  "GET_TRAJ": GetTraj as unknown as MessageCtor,
+  "GET_TRANS": GetTrans as unknown as MessageCtor,
+  "GET_VMETA": GetVmeta as unknown as MessageCtor,
+  "HEADER": HeaderMessage as unknown as MessageCtor,
+  "IMAGE": ImageMessage as unknown as MessageCtor,
+  "IMGMETA": Imgmeta as unknown as MessageCtor,
+  "LBMETA": Lbmeta as unknown as MessageCtor,
+  "METADATA": Metadata as unknown as MessageCtor,
+  "NDARRAY": Ndarray as unknown as MessageCtor,
+  "POINT": Point as unknown as MessageCtor,
+  "POLYDATA": Polydata as unknown as MessageCtor,
+  "POSITION": Position as unknown as MessageCtor,
+  "QTDATA": Qtdata as unknown as MessageCtor,
+  "QTRANS": Qtrans as unknown as MessageCtor,
+  "RTS_BIND": RtsBind as unknown as MessageCtor,
+  "RTS_CAPABIL": RtsCapabil as unknown as MessageCtor,
+  "RTS_COMMAND": RtsCommand as unknown as MessageCtor,
+  "RTS_IMAGE": RtsImage as unknown as MessageCtor,
+  "RTS_IMGMETA": RtsImgmeta as unknown as MessageCtor,
+  "RTS_LBMETA": RtsLbmeta as unknown as MessageCtor,
+  "RTS_NDARRAY": RtsNdarray as unknown as MessageCtor,
+  "RTS_POINT": RtsPoint as unknown as MessageCtor,
+  "RTS_POLYDATA": RtsPolydata as unknown as MessageCtor,
+  "RTS_POSITION": RtsPosition as unknown as MessageCtor,
+  "RTS_QTDATA": RtsQtdata as unknown as MessageCtor,
+  "RTS_QTRANS": RtsQtrans as unknown as MessageCtor,
+  "RTS_SENSOR": RtsSensor as unknown as MessageCtor,
+  "RTS_STATUS": RtsStatus as unknown as MessageCtor,
+  "RTS_STRING": RtsString as unknown as MessageCtor,
+  "RTS_TDATA": RtsTdata as unknown as MessageCtor,
+  "RTS_TRAJ": RtsTraj as unknown as MessageCtor,
+  "RTS_TRANS": RtsTrans as unknown as MessageCtor,
+  "SENSOR": Sensor as unknown as MessageCtor,
+  "STATUS": Status as unknown as MessageCtor,
+  "STP_BIND": StpBind as unknown as MessageCtor,
+  "STP_IMAGE": StpImage as unknown as MessageCtor,
+  "STP_NDARRAY": StpNdarray as unknown as MessageCtor,
+  "STP_POLYDATA": StpPolydata as unknown as MessageCtor,
+  "STP_POSITION": StpPosition as unknown as MessageCtor,
+  "STP_QTDATA": StpQtdata as unknown as MessageCtor,
+  "STP_QTRANS": StpQtrans as unknown as MessageCtor,
+  "STP_SENSOR": StpSensor as unknown as MessageCtor,
+  "STP_TDATA": StpTdata as unknown as MessageCtor,
+  "STP_TRANS": StpTrans as unknown as MessageCtor,
+  "STP_VIDEO": StpVideo as unknown as MessageCtor,
+  "STRING": StringMessage as unknown as MessageCtor,
+  "STT_BIND": SttBind as unknown as MessageCtor,
+  "STT_IMAGE": SttImage as unknown as MessageCtor,
+  "STT_NDARRAY": SttNdarray as unknown as MessageCtor,
+  "STT_POLYDATA": SttPolydata as unknown as MessageCtor,
+  "STT_POSITION": SttPosition as unknown as MessageCtor,
+  "STT_QTDATA": SttQtdata as unknown as MessageCtor,
+  "STT_QTRANS": SttQtrans as unknown as MessageCtor,
+  "STT_TDATA": SttTdata as unknown as MessageCtor,
+  "STT_TRANS": SttTrans as unknown as MessageCtor,
+  "STT_VIDEO": SttVideo as unknown as MessageCtor,
+  "TDATA": Tdata as unknown as MessageCtor,
+  "TRAJ": Traj as unknown as MessageCtor,
+  "TRANSFORM": Transform as unknown as MessageCtor,
+  "UNIT": Unit as unknown as MessageCtor,
+  "VIDEO": VideoMessage as unknown as MessageCtor,
+  "VIDEOMETA": Videometa as unknown as MessageCtor,
+});
+
+// Register each class with the runtime dispatcher on module load.
+// Import order matters only in that consumers calling `lookup()`
+// before this module loads will not find anything; since the
+// barrel is the canonical import point, that's expected.
+for (const [, ctor] of Object.entries(REGISTRY)) {
+  registerMessage(ctor);
+}

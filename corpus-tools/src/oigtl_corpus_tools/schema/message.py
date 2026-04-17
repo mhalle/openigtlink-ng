@@ -146,6 +146,15 @@ class MessageSchema(BaseModel):
             "if determined by the fields at encode time."
         ),
     )
+    body_size_set: Optional[list[int]] = Field(
+        default=None,
+        description=(
+            "When ``body_size`` is 'variable' but the spec restricts it "
+            "to a finite set of legal values, list them here. Codecs "
+            "MUST reject any body whose length is not in this set "
+            "before any field access. Used by POSITION (12, 24, 28)."
+        ),
+    )
     fields: list[FieldSchema] = Field(
         description=(
             "Ordered list of fields in the message body. Fields are "

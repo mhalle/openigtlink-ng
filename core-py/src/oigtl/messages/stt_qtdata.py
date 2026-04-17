@@ -5,12 +5,10 @@
 
 from __future__ import annotations
 
-from typing import Annotated, ClassVar
+from typing import Annotated, Any, ClassVar
 
-from pydantic import BaseModel, Field
-
+from pydantic import BaseModel, ConfigDict, Field
 from oigtl_corpus_tools.codec.fields import pack_fields, unpack_fields
-
 
 _FIELDS = [   {'name': 'resolution', 'type': 'int32'},
     {   'name': 'coord_name',
@@ -22,12 +20,14 @@ _FIELDS = [   {'name': 'resolution', 'type': 'int32'},
 
 
 class SttQtdata(BaseModel):
+
     TYPE_ID: ClassVar[str] = "STT_QTDATA"
     BODY_SIZE: ClassVar[int] = 36
 
 
     resolution: int = 0
     coord_name: str = ""
+
 
     def pack(self) -> bytes:
         """Serialize this message's body to wire bytes."""

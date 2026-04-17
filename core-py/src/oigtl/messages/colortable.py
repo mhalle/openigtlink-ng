@@ -5,12 +5,10 @@
 
 from __future__ import annotations
 
-from typing import Annotated, ClassVar
+from typing import Annotated, Any, ClassVar
 
-from pydantic import BaseModel, Field
-
+from pydantic import BaseModel, ConfigDict, Field
 from oigtl_corpus_tools.codec.fields import pack_fields, unpack_fields
-
 
 _FIELDS = [   {'name': 'index_type', 'type': 'int8'},
     {'name': 'map_type', 'type': 'int8'},
@@ -22,12 +20,14 @@ _FIELDS = [   {'name': 'index_type', 'type': 'int8'},
 
 
 class Colortable(BaseModel):
+
     TYPE_ID: ClassVar[str] = "COLORTABLE"
 
 
     index_type: int = 0
     map_type: int = 0
     table: bytes = b""
+
 
     def pack(self) -> bytes:
         """Serialize this message's body to wire bytes."""

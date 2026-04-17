@@ -1,0 +1,52 @@
+{
+  "name": "@openigtlink/core",
+  "version": "0.1.0",
+  "description": "Typed TypeScript wire codec for the OpenIGTLink protocol.",
+  "license": "Apache-2.0",
+  "type": "module",
+  "engines": {
+    "node": ">=20"
+  },
+  "main": "./dist/index.js",
+  "types": "./dist/index.d.ts",
+  "exports": {
+    ".": {
+      "types": "./dist/index.d.ts",
+      "import": "./dist/index.js"
+    },
+    "./messages": {
+      "types": "./dist/messages/index.d.ts",
+      "import": "./dist/messages/index.js"
+    },
+    "./messages/*": {
+      "types": "./dist/messages/*.d.ts",
+      "import": "./dist/messages/*.js"
+    },
+    "./runtime": {
+      "types": "./dist/runtime/index.d.ts",
+      "import": "./dist/runtime/index.js"
+    },
+    "./runtime/*": {
+      "types": "./dist/runtime/*.d.ts",
+      "import": "./dist/runtime/*.js"
+    }
+  },
+  "files": [
+    "dist",
+    "README.md",
+    "LICENSE"
+  ],
+  "scripts": {
+    "build": "tsc -p tsconfig.build.json",
+    "test": "tsc -p tsconfig.json && node --test 'build-tests/**/*.test.js'",
+    "typecheck": "tsc -p tsconfig.json --noEmit",
+    "format": "biome format --write .",
+    "lint": "biome check .",
+    "clean": "rm -rf dist build-tests"
+  },
+  "devDependencies": {
+    "@biomejs/biome": "^1.9.4",
+    "@types/node": "^22.10.0",
+    "typescript": "^5.7.0"
+  }
+}

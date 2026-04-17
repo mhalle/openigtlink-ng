@@ -5,12 +5,10 @@
 
 from __future__ import annotations
 
-from typing import Annotated, ClassVar
+from typing import Annotated, Any, ClassVar
 
-from pydantic import BaseModel, Field
-
+from pydantic import BaseModel, ConfigDict, Field
 from oigtl_corpus_tools.codec.fields import pack_fields, unpack_fields
-
 
 _FIELDS = [   {'name': 'npoints', 'type': 'uint32'},
     {'name': 'nvertices', 'type': 'uint32'},
@@ -69,6 +67,7 @@ class _AttributeHeader(BaseModel):
     n: int = 0
 
 class Polydata(BaseModel):
+
     TYPE_ID: ClassVar[str] = "POLYDATA"
 
     Point: ClassVar[type[BaseModel]] = _Point
@@ -91,6 +90,7 @@ class Polydata(BaseModel):
     triangle_strips: bytes = b""
     attribute_headers: list["AttributeHeader"] = Field(default_factory=list)
     attribute_data: bytes = b""
+
 
     def pack(self) -> bytes:
         """Serialize this message's body to wire bytes."""

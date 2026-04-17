@@ -38,14 +38,18 @@ warranted.
 - [`core-py/`](core-py/) — typed Python library (`oigtl` package).
   84 generated Pydantic message classes on top of the reference codec,
   with `parse_message()` one-call typed dispatch.
+- [`core-ts/`](core-ts/) — typed TypeScript library
+  (`@openigtlink/core` package). 84 generated ES-module classes with
+  `DataView`-based codec, runs in Node ≥20, browsers, Bun, and Deno.
+  Zero runtime dependencies.
 
 ## Status
 
 **Wire codec: done.** All 84 message types from the spec are
-implemented in three symmetric codecs (reference Python, typed
-Python, typed C++17), all cross-checked against each other and
-against the upstream test fixtures. Transport, session management,
-and v4 protocol extensions remain future work.
+implemented in four symmetric codecs (reference Python, typed
+Python, typed C++17, typed TypeScript), all cross-checked against
+each other and against the upstream test fixtures. Transport,
+session management, and v4 protocol extensions remain future work.
 
 Current implementation state:
 
@@ -53,9 +57,10 @@ Current implementation state:
 |---|---|
 | Message schemas (`spec/schemas/`) | 84 schemas, all fixture round-trip verified |
 | Python reference codec (`corpus-tools/`) | complete, 110 tests |
-| Python typed library (`core-py/`) | complete, 126 tests |
+| Python typed library (`core-py/`) | complete, 149 tests |
 | C++17 typed library (`core-cpp/`) | complete, 24-fixture corpus + cross-language oracle parity |
-| Schema-driven codegen (C++, Python) | complete, drift-checked in CI |
+| TypeScript library (`core-ts/`) | complete, 103 tests + cross-language parity |
+| Schema-driven codegen (C++, Python, TS) | complete, drift-checked in CI |
 | Transport layer (ASIO, TLS, session) | not started |
 | v4 / NG protocol extensions | not designed |
 

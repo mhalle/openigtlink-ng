@@ -1,7 +1,27 @@
 # core-py numpy-native bulk arrays — plan
 
-Status: planning document. No code written yet. This file is durable
-state for resuming work after context compaction.
+Status: **complete (Phases 1-4)**. Phase 5 (POLYDATA struct-array
+flattening) remains out of scope and deferred.
+
+Summary of what shipped:
+
+- Codec returns raw big-endian wire bytes for variable-count
+  primitive fields (all types, not just uint8).
+- `oigtl.runtime.arrays` coerces those bytes to `np.ndarray` (with
+  the `[numpy]` extra) or `array.array` (stdlib fallback), keyed on
+  wire element type.
+- Python codegen emits `@field_validator` + `pack()` preprocessing
+  for every variable-count non-uint8 primitive field.
+- `oigtl.semantic.pixel_array(img)` / `data_array(nd)` give users
+  a one-liner for the IMAGE/NDARRAY reshape-and-dtype flow.
+- `[numpy]` packaging extra added; benchmarks in
+  `core-py/benches/bench_numpy.py`.
+- Total core-py tests: 126 → 149 (23 new in
+  `test_variable_arrays.py` + `test_semantic.py`).
+
+Historical plan retained below.
+
+---
 
 ## Goal
 

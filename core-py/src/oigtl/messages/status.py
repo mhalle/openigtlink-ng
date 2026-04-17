@@ -5,12 +5,10 @@
 
 from __future__ import annotations
 
-from typing import Annotated, ClassVar
+from typing import Annotated, Any, ClassVar
 
-from pydantic import BaseModel, Field
-
+from pydantic import BaseModel, ConfigDict, Field
 from oigtl_corpus_tools.codec.fields import pack_fields, unpack_fields
-
 
 _FIELDS = [   {'name': 'code', 'type': 'uint16'},
     {'name': 'subcode', 'type': 'int64'},
@@ -27,6 +25,7 @@ _FIELDS = [   {'name': 'code', 'type': 'uint16'},
 
 
 class Status(BaseModel):
+
     TYPE_ID: ClassVar[str] = "STATUS"
 
 
@@ -34,6 +33,7 @@ class Status(BaseModel):
     subcode: int = 0
     error_name: str = ""
     status_message: str = ""
+
 
     def pack(self) -> bytes:
         """Serialize this message's body to wire bytes."""

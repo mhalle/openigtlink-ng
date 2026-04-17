@@ -5,12 +5,10 @@
 
 from __future__ import annotations
 
-from typing import Annotated, ClassVar
+from typing import Annotated, Any, ClassVar
 
-from pydantic import BaseModel, Field
-
+from pydantic import BaseModel, ConfigDict, Field
 from oigtl_corpus_tools.codec.fields import pack_fields, unpack_fields
-
 
 _FIELDS = [   {'name': 'command_id', 'type': 'uint32'},
     {   'name': 'command_name',
@@ -28,6 +26,7 @@ _FIELDS = [   {'name': 'command_id', 'type': 'uint32'},
 
 
 class RtsCommand(BaseModel):
+
     TYPE_ID: ClassVar[str] = "RTS_COMMAND"
 
 
@@ -36,6 +35,7 @@ class RtsCommand(BaseModel):
     encoding: int = 0
     length: int = 0
     command: bytes = b""
+
 
     def pack(self) -> bytes:
         """Serialize this message's body to wire bytes."""

@@ -5,12 +5,15 @@
 
 from __future__ import annotations
 
-from typing import Annotated, ClassVar
+from typing import Annotated, Any, ClassVar
 
-from pydantic import BaseModel, Field
-
+from pydantic import BaseModel, ConfigDict, Field, field_validator
 from oigtl_corpus_tools.codec.fields import pack_fields, unpack_fields
-
+from oigtl.runtime.arrays import (
+    coerce_variable_array,
+    empty_variable_array,
+    pack_variable_array,
+)
 
 _FIELDS = [   {'name': 'larray', 'type': 'uint8'},
     {'name': 'status', 'type': 'uint8'},
@@ -23,17 +26,29 @@ _FIELDS = [   {'name': 'larray', 'type': 'uint8'},
 
 
 class Sensor(BaseModel):
+    model_config = ConfigDict(arbitrary_types_allowed=True)
+
     TYPE_ID: ClassVar[str] = "SENSOR"
 
 
     larray: int = 0
     status: int = 0
     unit: int = 0
-    data: list[float] = Field(default_factory=list)
+    data: Any = Field(default_factory=lambda: empty_variable_array('float64'))
+
+    @field_validator("data", mode="before")
+    @classmethod
+    def _coerce_data(cls, v: Any) -> Any:
+        return coerce_variable_array(v, "float64")
+
 
     def pack(self) -> bytes:
         """Serialize this message's body to wire bytes."""
-        return pack_fields(_FIELDS, self.model_dump())
+        data = self.model_dump()
+        data["data"] = pack_variable_array(
+            self.data, "float64"
+        )
+        return pack_fields(_FIELDS, data)
 
     @classmethod
     def unpack(cls, data: bytes) -> "Sensor":

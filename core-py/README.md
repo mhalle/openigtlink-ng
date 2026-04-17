@@ -7,8 +7,10 @@ Typed Python wire codec for the OpenIGTLink protocol — symmetric to
 ## Status
 
 **Complete.** 84 generated typed message classes, each round-trips
-the upstream fixture byte-for-byte. 126 tests covering typed
-round-trip, default construction, dispatch, and the oracle wrapper.
+the upstream fixture byte-for-byte. 149 tests covering typed
+round-trip, default construction, dispatch, the oracle wrapper,
+variable-count primitive array coercion (numpy and array.array
+paths), and semantic helpers (`pixel_array` / `data_array`).
 
 ## Two Python codecs in one project
 
@@ -33,7 +35,7 @@ result in Pydantic models.
 ## Usage
 
 ```python
-from oigtl.messages import Transform, Status, parse_message
+from oigtl.messages import Transform, Status, Image, parse_message
 from oigtl.runtime.oracle import verify_wire_bytes
 
 # Construct + pack
@@ -56,17 +58,49 @@ match msg:
 result = verify_wire_bytes(wire_bytes)
 if not result.ok:
     print(result.error)
+
+# Semantic helpers for IMAGE / NDARRAY (require the `[numpy]` extra):
+from oigtl.semantic import pixel_array, data_array
+if isinstance(msg, Image):
+    arr = pixel_array(msg)        # ndarray shape (depth, h, w[, C])
+    # arr.dtype reflects scalar_type; endian field is honored.
 ```
+
+## Array representation
+
+Variable-count primitive array fields (`SENSOR.data`,
+`POSITION.quaternion`, `NDARRAY.size`, ...) are carried at the
+user-facing type layer as:
+
+| Wire element | With `[numpy]` | Without `[numpy]` |
+|---|---|---|
+| `uint8` | `bytes` | `bytes` |
+| fixed-count non-`uint8` | `list[T]` | `list[T]` |
+| variable-count non-`uint8` | `np.ndarray` (dtype=`>f4`/`>i2`/…) | `array.array` (native-endian) |
+
+Constructor accepts any of `bytes`, `list`, `tuple`, `array.array`,
+or `np.ndarray` — a Pydantic validator coerces to the canonical
+form. `pack()` accepts all shapes and produces the correct wire
+bytes.
 
 ## Install + test
 
 ```bash
 cd core-py
-uv sync
+uv sync --all-extras      # includes [numpy] for full test coverage
 uv run pytest
 ```
 
-All 126 tests should pass in under half a second.
+All 149 tests should pass in under half a second. Without
+`--all-extras` the runtime falls back to `array.array` and the
+semantic helper tests are skipped.
+
+For end users:
+
+```bash
+pip install oigtl              # stdlib-only (array.array fallback)
+pip install 'oigtl[numpy]'     # recommended for imaging / sensor workloads
+```
 
 ## Performance
 
@@ -121,6 +155,12 @@ CI enforces drift via `oigtl-corpus codegen python --check`.
 - [`crcmod`](https://pypi.org/project/crcmod/) ≥ 1.7 — C-extension
   CRC-64 fast path. Hard runtime dep because parse_message latency
   on multi-KB bodies is dominated by CRC.
+- [`numpy`](https://numpy.org) ≥ 1.24 — **optional** `[numpy]` extra.
+  Enables ndarray-valued variable-count primitive fields and the
+  `oigtl.semantic.pixel_array` / `data_array` helpers. Follows the
+  convention used by `polars[numpy]` / `pyarrow[numpy]`. Without it
+  the library falls back to stdlib `array.array` — correct but
+  measurably slower on bulk float arrays.
 - `oigtl-corpus-tools` — sibling package, provides the codec
   primitives (pack_fields / unpack_fields / header). Depended on
   as an editable path install during monorepo development.

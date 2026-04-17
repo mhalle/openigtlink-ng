@@ -5,12 +5,10 @@
 
 from __future__ import annotations
 
-from typing import Annotated, ClassVar
+from typing import Annotated, Any, ClassVar
 
-from pydantic import BaseModel, Field
-
+from pydantic import BaseModel, ConfigDict, Field
 from oigtl_corpus_tools.codec.fields import pack_fields, unpack_fields
-
 
 _FIELDS = [   {   'name': 'position',
         'type': 'array',
@@ -24,12 +22,14 @@ _FIELDS = [   {   'name': 'position',
 
 
 class Qtrans(BaseModel):
+
     TYPE_ID: ClassVar[str] = "QTRANS"
     BODY_SIZE: ClassVar[int] = 28
 
 
     position: Annotated[list[float], Field(min_length=3, max_length=3)] = Field(default_factory=lambda: [0.0] * 3, min_length=3, max_length=3)
     quaternion: Annotated[list[float], Field(min_length=4, max_length=4)] = Field(default_factory=lambda: [0.0] * 4, min_length=4, max_length=4)
+
 
     def pack(self) -> bytes:
         """Serialize this message's body to wire bytes."""

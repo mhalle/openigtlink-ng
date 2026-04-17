@@ -44,6 +44,12 @@ Header unpack_header(const std::uint8_t* data, std::size_t length) {
     }
     Header h;
     h.version     = byte_order::read_be_u16(data + 0);
+    if (h.version != 1 && h.version != 2 && h.version != 3) {
+        std::ostringstream oss;
+        oss << "header version=" << h.version
+            << " is not in the supported set {1, 2, 3}";
+        throw oigtl::error::MalformedMessageError(oss.str());
+    }
     h.type_id     = read_null_padded(data + 2, 12);
     h.device_name = read_null_padded(data + 14, 20);
     h.timestamp   = byte_order::read_be_u64(data + 34);

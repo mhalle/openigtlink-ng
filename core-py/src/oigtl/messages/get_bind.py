@@ -5,12 +5,10 @@
 
 from __future__ import annotations
 
-from typing import Annotated, ClassVar
+from typing import Annotated, Any, ClassVar
 
-from pydantic import BaseModel, Field
-
+from pydantic import BaseModel, ConfigDict, Field
 from oigtl_corpus_tools.codec.fields import pack_fields, unpack_fields
-
 
 _FIELDS = [   {'name': 'ncmessages', 'type': 'uint16'},
     {   'name': 'type_ids',
@@ -29,6 +27,7 @@ _FIELDS = [   {'name': 'ncmessages', 'type': 'uint16'},
 
 
 class GetBind(BaseModel):
+
     TYPE_ID: ClassVar[str] = "GET_BIND"
 
 
@@ -36,6 +35,7 @@ class GetBind(BaseModel):
     type_ids: list[str] = Field(default_factory=list)
     nametable_size: int = 0
     name_table: bytes = b""
+
 
     def pack(self) -> bytes:
         """Serialize this message's body to wire bytes."""

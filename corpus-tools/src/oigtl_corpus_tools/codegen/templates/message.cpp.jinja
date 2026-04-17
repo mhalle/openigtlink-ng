@@ -35,6 +35,19 @@ std::vector<std::uint8_t> {{ plan.class_name }}::pack() const {
         throw oigtl::error::ShortBufferError(oss.str());
     }
     {% endif %}
+    {% if plan.body_size_set %}
+    {
+        const std::size_t _allowed[] = { {{ plan.body_size_set|join(', ') }} };
+        bool _ok = false;
+        for (std::size_t _v : _allowed) { if (length == _v) { _ok = true; break; } }
+        if (!_ok) {
+            std::ostringstream oss;
+            oss << "{{ plan.type_id }} body_size=" << length
+                << " is not in the allowed set { {{ plan.body_size_set|join(', ') }} }";
+            throw oigtl::error::MalformedMessageError(oss.str());
+        }
+    }
+    {% endif %}
     {{ plan.class_name }} out;
     std::size_t off = 0;
     {% for f in plan.fields %}

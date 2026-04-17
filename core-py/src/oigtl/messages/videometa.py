@@ -5,12 +5,10 @@
 
 from __future__ import annotations
 
-from typing import Annotated, ClassVar
+from typing import Annotated, Any, ClassVar
 
-from pydantic import BaseModel, Field
-
+from pydantic import BaseModel, ConfigDict, Field
 from oigtl_corpus_tools.codec.fields import pack_fields, unpack_fields
-
 
 _FIELDS = [   {   'name': 'videos',
         'type': 'array',
@@ -67,11 +65,13 @@ class _Video(BaseModel):
     reserved: int = 0
 
 class Videometa(BaseModel):
+
     TYPE_ID: ClassVar[str] = "VIDEOMETA"
 
     Video: ClassVar[type[BaseModel]] = _Video
 
     videos: list["Video"] = Field(default_factory=list)
+
 
     def pack(self) -> bytes:
         """Serialize this message's body to wire bytes."""

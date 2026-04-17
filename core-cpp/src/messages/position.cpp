@@ -31,6 +31,17 @@ std::vector<std::uint8_t> Position::pack() const {
 }
 
 Position Position::unpack(const std::uint8_t* data, std::size_t length) {
+    {
+        const std::size_t _allowed[] = { 12, 24, 28 };
+        bool _ok = false;
+        for (std::size_t _v : _allowed) { if (length == _v) { _ok = true; break; } }
+        if (!_ok) {
+            std::ostringstream oss;
+            oss << "POSITION body_size=" << length
+                << " is not in the allowed set { 12, 24, 28 }";
+            throw oigtl::error::MalformedMessageError(oss.str());
+        }
+    }
     Position out;
     std::size_t off = 0;
     // position

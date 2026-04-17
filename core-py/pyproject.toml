@@ -27,13 +27,23 @@ dependencies = [
 ]
 
 [project.optional-dependencies]
+# `numpy` extra: enables ndarray-valued variable-count non-uint8
+# primitive array fields (SENSOR.data, POSITION.quaternion variable,
+# etc.). Without it the library falls back to stdlib ``array.array``.
+# Mirrors the convention used by polars[numpy] / pyarrow[numpy] /
+# pandas[numpy]. See src/oigtl/runtime/arrays.py.
+numpy = [
+    "numpy>=1.24",
+]
 dev = [
     "pytest>=8",
+    "numpy>=1.24",
 ]
 
 [dependency-groups]
 dev = [
     "pytest>=8",
+    "numpy>=1.24",
 ]
 
 [build-system]

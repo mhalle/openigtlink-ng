@@ -414,6 +414,15 @@
       "description": "Total body size in bytes if fixed, or the string 'variable' if determined by the fields at encode time.",
       "title": "Body Size"
     },
+    "body_size_set": {
+      "default": null,
+      "description": "When ``body_size`` is 'variable' but the spec restricts it to a finite set of legal values, list them here. Codecs MUST reject any body whose length is not in this set before any field access. Used by POSITION (12, 24, 28).",
+      "items": {
+        "type": "integer"
+      },
+      "title": "Body Size Set",
+      "type": "array"
+    },
     "fields": {
       "description": "Ordered list of fields in the message body. Fields are parsed in order.",
       "items": {

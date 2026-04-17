@@ -5,12 +5,10 @@
 
 from __future__ import annotations
 
-from typing import Annotated, ClassVar
+from typing import Annotated, Any, ClassVar
 
-from pydantic import BaseModel, Field
-
+from pydantic import BaseModel, ConfigDict, Field
 from oigtl_corpus_tools.codec.fields import pack_fields, unpack_fields
-
 
 _FIELDS = [   {   'name': 'images',
         'type': 'array',
@@ -65,11 +63,13 @@ class _Image(BaseModel):
     reserved: int = 0
 
 class Imgmeta(BaseModel):
+
     TYPE_ID: ClassVar[str] = "IMGMETA"
 
     Image: ClassVar[type[BaseModel]] = _Image
 
     images: list["Image"] = Field(default_factory=list)
+
 
     def pack(self) -> bytes:
         """Serialize this message's body to wire bytes."""
