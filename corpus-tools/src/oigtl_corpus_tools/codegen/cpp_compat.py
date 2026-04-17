@@ -57,7 +57,7 @@ _DATA_MESSAGES: dict[str, str] = {
     "NDARRAY":    "NDArrayMessage",
     "POINT":      "PointMessage",
     "POLYDATA":   "PolyDataMessage",
-    "POSITION":   "PositionMessage",
+    # POSITION is hand-written; intentionally omitted.
     "QTDATA":     "QuaternionTrackingDataMessage",
     "QUERY":      "QueryMessage",
     "SENSOR":     "SensorMessage",

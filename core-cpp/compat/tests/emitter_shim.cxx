@@ -19,6 +19,7 @@
 #include "igtl/igtlGetStatusMessage.h"
 #include "igtl/igtlMath.h"
 #include "igtl/igtlStartTrackingDataMessage.h"
+#include "igtl/igtlPositionMessage.h"
 #include "igtl/igtlStatusMessage.h"
 #include "igtl/igtlStringMessage.h"
 #include "igtl/igtlTransformMessage.h"
@@ -80,6 +81,23 @@ static int emit_get_status() {
 
 // For STT_TDATA we only compare the 58-byte header — upstream's
 // StartTrackingDataMessage carries a body we don't pack.
+// POSITION variants: 12 B (POSITION_ONLY), 24 B (WITH_QUATERNION3),
+// 28 B (ALL). Non-trivial position + non-identity rotation.
+static int emit_position(int pack_type) {
+    auto msg = igtl::PositionMessage::New();
+    msg->SetHeaderVersion(2);
+    msg->SetDeviceName("Probe_B");
+    msg->SetTimeStamp(1718455896u, 0);
+    msg->SetPackType(pack_type);
+    msg->SetPosition(7.5f, -2.25f, 13.0f);
+    // Asymmetric quaternion: Rz(60°) ≈ (0, 0, 0.5, 0.866025...)
+    msg->SetQuaternion(0.0f, 0.0f, 0.5f, 0.8660254f);
+    msg->Pack();
+    ::write(1, msg->GetPackPointer(),
+            static_cast<size_t>(msg->GetPackSize()));
+    return 0;
+}
+
 static int emit_string() {
     auto msg = igtl::StringMessage::New();
     msg->SetHeaderVersion(2);
@@ -129,6 +147,12 @@ int main(int argc, char** argv) {
     if (c == "get_status_v2")      return emit_get_status();
     if (c == "status_v2")          return emit_status();
     if (c == "string_v2")          return emit_string();
+    if (c == "position_only_v2")   return emit_position(
+                                       igtl::PositionMessage::POSITION_ONLY);
+    if (c == "position_quat3_v2")  return emit_position(
+                                       igtl::PositionMessage::WITH_QUATERNION3);
+    if (c == "position_all_v2")    return emit_position(
+                                       igtl::PositionMessage::ALL);
     if (c == "stt_tdata_v2")       return emit_stt_tdata_header_only();
     std::fprintf(stderr, "unknown case: %s\n", argv[1]);
     return 2;

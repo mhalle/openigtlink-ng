@@ -144,7 +144,8 @@ def _cmd_cpp_compat(args: argparse.Namespace) -> int:
 
     # Skip type_ids whose facades are hand-written (already present
     # in core-cpp/compat/src/).
-    hand_written = {"TRANSFORM", "GET_TRANS", "STATUS", "STRING"}
+    hand_written = {"TRANSFORM", "GET_TRANS", "STATUS", "STRING",
+                    "POSITION"}
 
     files = all_shim_files(skip_type_ids=hand_written)
 

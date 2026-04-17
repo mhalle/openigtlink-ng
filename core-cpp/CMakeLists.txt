@@ -126,6 +126,7 @@ add_library(igtl_compat STATIC
     compat/src/igtlTransformMessage.cxx
     compat/src/igtlStatusMessage.cxx
     compat/src/igtlStringMessage.cxx
+    compat/src/igtlPositionMessage.cxx
 )
 target_include_directories(igtl_compat PUBLIC compat/include)
 # Pack/Unpack in the facades goes through our runtime codec.
@@ -250,7 +251,8 @@ if(EXISTS "${IGTL_UPSTREAM_BUILD}/lib/libOpenIGTLink.a")
     # difference, not a codec defect.
     foreach(case transform_v1 transform_v2 transform_v2_meta
                  transform_v2_rot90z get_status_v2 status_v2
-                 string_v2)
+                 string_v2 position_only_v2 position_quat3_v2
+                 position_all_v2)
         add_test(NAME compat_parity_${case}
             COMMAND bash -c
                 "cmp <(${CMAKE_CURRENT_BINARY_DIR}/compat_emitter_shim ${case}) <(${CMAKE_CURRENT_BINARY_DIR}/compat_emitter_upstream ${case})")
