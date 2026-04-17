@@ -199,10 +199,10 @@ static int emit_colort() {
     msg->SetTimeStamp(1718455896u, 0);
     msg->SetIndexTypeToUint8();
     msg->SetMapTypeToUint8();
-    // Upstream allocates the table via Pack itself using the
-    // index/map types; we need to populate GetTablePointer() after
-    // that. Easiest: Pack once to allocate, then rewrite table.
-    msg->Pack();
+    // Upstream's API requires AllocateTable() before writing;
+    // PackContent casts m_ColorTableHeader which is NULL until
+    // AllocateTable runs. Missing this call segfaults.
+    msg->AllocateTable();
     auto* tbl = static_cast<std::uint8_t*>(msg->GetTablePointer());
     for (int i = 0; i < 256; ++i) tbl[i] = static_cast<std::uint8_t>(i);
     msg->Pack();
