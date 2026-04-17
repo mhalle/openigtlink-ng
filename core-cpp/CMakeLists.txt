@@ -124,6 +124,7 @@ add_library(igtl_compat STATIC
     compat/src/igtlMath.cxx
     compat/src/igtlMessageBase.cxx
     compat/src/igtlTransformMessage.cxx
+    compat/src/igtlStatusMessage.cxx
 )
 target_include_directories(igtl_compat PUBLIC compat/include)
 # Pack/Unpack in the facades goes through our runtime codec.
@@ -247,7 +248,7 @@ if(EXISTS "${IGTL_UPSTREAM_BUILD}/lib/libOpenIGTLink.a")
     # that our codegen stub doesn't populate. It's a stub-vs-facade
     # difference, not a codec defect.
     foreach(case transform_v1 transform_v2 transform_v2_meta
-                 transform_v2_rot90z get_status_v2)
+                 transform_v2_rot90z get_status_v2 status_v2)
         add_test(NAME compat_parity_${case}
             COMMAND bash -c
                 "cmp <(${CMAKE_CURRENT_BINARY_DIR}/compat_emitter_shim ${case}) <(${CMAKE_CURRENT_BINARY_DIR}/compat_emitter_upstream ${case})")

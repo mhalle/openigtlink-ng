@@ -59,6 +59,21 @@ static int emit_get_status() {
     return 0;
 }
 
+static int emit_status() {
+    auto msg = igtl::StatusMessage::New();
+    msg->SetHeaderVersion(2);
+    msg->SetDeviceName("Probe");
+    msg->SetTimeStamp(1718455896u, 0);
+    msg->SetCode(igtl::StatusMessage::STATUS_NOT_READY);
+    msg->SetSubCode(static_cast<igtlInt64>(0x1122334455667788LL));
+    msg->SetErrorName("INIT_FAIL");
+    msg->SetStatusString("scanner not warmed up yet");
+    msg->Pack();
+    ::write(1, msg->GetPackPointer(),
+            static_cast<size_t>(msg->GetPackSize()));
+    return 0;
+}
+
 static int emit_stt_tdata_header_only() {
     auto msg = igtl::StartTrackingDataMessage::New();
     msg->SetHeaderVersion(2);
@@ -77,6 +92,7 @@ int main(int argc, char** argv) {
     if (c == "transform_v2_meta")     return emit_transform(2, true, 0);
     if (c == "transform_v2_rot90z")   return emit_transform(2, false, 1);
     if (c == "get_status_v2")      return emit_get_status();
+    if (c == "status_v2")          return emit_status();
     if (c == "stt_tdata_v2")       return emit_stt_tdata_header_only();
     std::fprintf(stderr, "unknown case: %s\n", argv[1]);
     return 2;

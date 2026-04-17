@@ -61,7 +61,7 @@ _DATA_MESSAGES: dict[str, str] = {
     "QTDATA":     "QuaternionTrackingDataMessage",
     "QUERY":      "QueryMessage",
     "SENSOR":     "SensorMessage",
-    "STATUS":     "StatusMessage",
+    # STATUS is hand-written; intentionally omitted.
     "STRING":     "StringMessage",
     "TDATA":      "TrackingDataMessage",
     "TRAJ":       "TrajectoryMessage",
