@@ -161,6 +161,14 @@ target_link_libraries(oigtl_transport_tcp_test
 add_test(NAME transport_tcp COMMAND oigtl_transport_tcp_test)
 set_tests_properties(transport_tcp PROPERTIES TIMEOUT 60)
 
+# Transport Phase 4 — sync::block_on bridge for blocking callers.
+add_executable(oigtl_transport_sync_test
+    tests/transport_sync_test.cpp
+)
+target_link_libraries(oigtl_transport_sync_test
+    PRIVATE oigtl_transport oigtl_runtime)
+add_test(NAME transport_sync COMMAND oigtl_transport_sync_test)
+
 # Oracle CLI — persistent subprocess for `oigtl-corpus fuzz differential`.
 # Reads hex-encoded wire bytes from stdin, emits JSON reports on stdout.
 # Not a test target; built but never invoked by ctest.
