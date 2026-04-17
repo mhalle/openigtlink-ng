@@ -62,7 +62,7 @@ _DATA_MESSAGES: dict[str, str] = {
     "QUERY":      "QueryMessage",
     "SENSOR":     "SensorMessage",
     # STATUS is hand-written; intentionally omitted.
-    "STRING":     "StringMessage",
+    # STRING is hand-written; intentionally omitted.
     "TDATA":      "TrackingDataMessage",
     "TRAJ":       "TrajectoryMessage",
     # TRANSFORM is hand-written; intentionally omitted.

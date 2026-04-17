@@ -9,6 +9,7 @@
 
 #include "igtlMath.h"
 #include "igtlStatusMessage.h"        // GetStatusMessage
+#include "igtlStringMessage.h"
 #include "igtlTrackingDataMessage.h"  // StartTrackingDataMessage
 #include "igtlTransformMessage.h"
 
@@ -59,6 +60,19 @@ static int emit_get_status() {
     return 0;
 }
 
+static int emit_string() {
+    auto msg = igtl::StringMessage::New();
+    msg->SetHeaderVersion(2);
+    msg->SetDeviceName("Logger");
+    msg->SetTimeStamp(1718455896u, 0);
+    msg->SetEncoding(106);
+    msg->SetString("temperature out of range: 38.2°C");
+    msg->Pack();
+    ::write(1, msg->GetPackPointer(),
+            static_cast<size_t>(msg->GetPackSize()));
+    return 0;
+}
+
 static int emit_status() {
     auto msg = igtl::StatusMessage::New();
     msg->SetHeaderVersion(2);
@@ -93,6 +107,7 @@ int main(int argc, char** argv) {
     if (c == "transform_v2_rot90z")   return emit_transform(2, false, 1);
     if (c == "get_status_v2")      return emit_get_status();
     if (c == "status_v2")          return emit_status();
+    if (c == "string_v2")          return emit_string();
     if (c == "stt_tdata_v2")       return emit_stt_tdata_header_only();
     std::fprintf(stderr, "unknown case: %s\n", argv[1]);
     return 2;
