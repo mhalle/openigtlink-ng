@@ -26,9 +26,14 @@
 #include <cstring>
 #include <deque>
 #include <memory>
+#include <mutex>
 #include <string>
 #include <utility>
 #include <vector>
+
+#include <sys/socket.h>    // ::send, MSG_NOSIGNAL
+#include <poll.h>          // ::poll for EAGAIN recovery
+#include <cerrno>
 
 #include "io_runtime.hpp"
 #include "oigtl/transport/connection.hpp"
@@ -56,6 +61,10 @@ struct ConnImpl : std::enable_shared_from_this<ConnImpl> {
     std::uint16_t peer_port_ = 0;
     bool closed = false;
     bool read_armed = false;
+
+    // Serialises concurrent send_sync callers against each other
+    // and against the framer used to wrap outbound bytes.
+    std::mutex send_sync_mu;
 
     explicit ConnImpl(asio::io_context& ctx)
         : socket(ctx), framer(make_v3_framer()) {}
@@ -204,6 +213,63 @@ class TcpConnection final : public Connection {
         return f;
     }
 
+    // Direct POSIX write in the caller's thread — bypasses the
+    // io_context thread-hop. Safe concurrently with the io-thread-
+    // owned async_read (kernel handles TCP full-duplex); a mutex
+    // serialises concurrent send_sync callers so bytes don't
+    // interleave.
+    void send_sync(const std::uint8_t* wire,
+                   std::size_t length) override {
+        std::lock_guard<std::mutex> lk(impl_->send_sync_mu);
+        if (impl_->closed) {
+            throw ConnectionClosedError{};
+        }
+        // v3 framer::frame is identity; skip the vector copy on
+        // the fast path. A future non-identity framer (v4 chunked)
+        // will need to materialise and we'll fall back through
+        // framer->frame().
+        const std::uint8_t* buf = wire;
+        std::size_t buf_len = length;
+        std::vector<std::uint8_t> framed_store;
+        if (impl_->framer->name() != "v3") {
+            framed_store = impl_->framer->frame(wire, length);
+            buf = framed_store.data();
+            buf_len = framed_store.size();
+        }
+
+        const int fd = impl_->socket.native_handle();
+#ifdef MSG_NOSIGNAL
+        const int flags = MSG_NOSIGNAL;  // Linux: don't SIGPIPE
+#else
+        const int flags = 0;             // macOS: set SO_NOSIGPIPE elsewhere
+#endif
+        std::size_t off = 0;
+        while (off < buf_len) {
+            ssize_t n = ::send(fd, buf + off,
+                               buf_len - off, flags);
+            if (n > 0) { off += static_cast<std::size_t>(n); continue; }
+            if (n < 0) {
+                if (errno == EINTR) continue;
+                if (errno == EAGAIN || errno == EWOULDBLOCK) {
+                    // asio keeps the fd non-blocking; wait for the
+                    // kernel send buffer to drain.
+                    struct pollfd pfd{};
+                    pfd.fd = fd;
+                    pfd.events = POLLOUT;
+                    int r = ::poll(&pfd, 1, -1);
+                    if (r < 0 && errno != EINTR) {
+                        throw ConnectionClosedError(
+                            std::string("poll: ") +
+                            std::strerror(errno));
+                    }
+                    continue;
+                }
+                throw ConnectionClosedError(
+                    std::string("send: ") + std::strerror(errno));
+            }
+        }
+    }
+
     Future<void> send(const std::uint8_t* wire,
                       std::size_t length) override {
         Promise<void> p;
@@ -246,9 +312,23 @@ class TcpConnection final : public Connection {
     std::shared_ptr<ConnImpl> impl_;
 };
 
-// Helper: populate peer_addr / peer_port from a connected socket.
+// Helper: populate peer_addr / peer_port from a connected socket,
+// and set TCP_NODELAY — small-frame latency matters for real-time
+// tracking streams and for loopback throughput (Nagle defers sub-
+// MSS packets waiting for ACKs otherwise).
 void populate_peer(ConnImpl& impl) {
     asio::error_code ec;
+    impl.socket.set_option(tcp::no_delay(true), ec);
+    ec.clear();
+
+    // macOS has no MSG_NOSIGNAL; set SO_NOSIGPIPE instead so a
+    // send() on a closed peer doesn't kill the process.
+#ifdef SO_NOSIGPIPE
+    int on = 1;
+    (void)::setsockopt(impl.socket.native_handle(), SOL_SOCKET,
+                       SO_NOSIGPIPE, &on, sizeof(on));
+#endif
+
     auto ep = impl.socket.remote_endpoint(ec);
     if (!ec) {
         impl.peer_addr = ep.address().to_string();

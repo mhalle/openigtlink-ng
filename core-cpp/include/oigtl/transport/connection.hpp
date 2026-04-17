@@ -56,6 +56,25 @@ class Connection {
         return send(wire.data(), wire.size());
     }
 
+    // Blocking write on the caller's thread — no io_context hop.
+    // Throws `ConnectionClosedError` on failure. Safe to call
+    // concurrently with an outstanding async `receive()`
+    // (TCP is full-duplex at the kernel level); NOT safe to call
+    // concurrently with itself from multiple threads unless the
+    // implementation documents otherwise. The TCP backend
+    // serialises concurrent send_sync callers with an internal
+    // mutex, so in practice it is safe from multiple threads too.
+    //
+    // This is the fast path the ergonomic Client uses — round-trip
+    // through an executor per send is the kind of overhead that
+    // shows up at 50k+ msg/s.
+    virtual void send_sync(const std::uint8_t* wire,
+                           std::size_t length) = 0;
+
+    void send_sync(const std::vector<std::uint8_t>& wire) {
+        send_sync(wire.data(), wire.size());
+    }
+
     // Graceful close. Pending receive() resolves with
     // ConnectionClosedError. Idempotent.
     virtual Future<void> close() = 0;

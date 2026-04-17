@@ -270,6 +270,35 @@ add_executable(tracker_pair
     examples/tracker_pair.cpp
 )
 target_link_libraries(tracker_pair PRIVATE oigtl)
+
+# Transport micro-benchmark — TRANSFORM throughput through our API.
+add_executable(oigtl_bench_transport_ours
+    benches/bench_transport_ours.cpp
+)
+target_link_libraries(oigtl_bench_transport_ours PRIVATE oigtl)
+
+# Optional: transport micro-benchmark via upstream's ClientSocket /
+# ServerSocket for apples-to-apples comparison. Requires upstream
+# already built at corpus-tools/reference-libs/openigtlink-upstream.
+set(IGTL_UPSTREAM_BUILD
+    "${CMAKE_CURRENT_SOURCE_DIR}/../corpus-tools/reference-libs/openigtlink-upstream/build"
+    CACHE PATH "Path to upstream OpenIGTLink build directory")
+if(EXISTS "${IGTL_UPSTREAM_BUILD}/lib/libOpenIGTLink.a")
+    add_executable(oigtl_bench_transport_upstream
+        benches/bench_transport_upstream.cpp
+    )
+    target_include_directories(oigtl_bench_transport_upstream PRIVATE
+        "${CMAKE_CURRENT_SOURCE_DIR}/../corpus-tools/reference-libs/openigtlink-upstream/Source"
+        "${CMAKE_CURRENT_SOURCE_DIR}/../corpus-tools/reference-libs/openigtlink-upstream/Source/igtlutil"
+        "${IGTL_UPSTREAM_BUILD}"
+    )
+    target_link_libraries(oigtl_bench_transport_upstream PRIVATE
+        "${IGTL_UPSTREAM_BUILD}/lib/libOpenIGTLink.a")
+    # Suppress -Werror: upstream header has legacy signed/unsigned
+    # comparisons and we are not going to patch it.
+    target_compile_options(oigtl_bench_transport_upstream PRIVATE
+        -Wno-error -Wno-unused-parameter)
+endif()
 target_link_libraries(oigtl_bench PRIVATE oigtl)
 target_include_directories(oigtl_bench PRIVATE
     "${IGTL_UPSTREAM_FIXTURES}")

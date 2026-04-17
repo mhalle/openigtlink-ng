@@ -119,6 +119,14 @@ class LoopbackConnection final : public Connection {
         return fut;
     }
 
+    void send_sync(const std::uint8_t* wire,
+                   std::size_t length) override {
+        // Loopback is already synchronous under the shared mutex;
+        // just reuse the same path and unwrap the immediate Future.
+        auto fut = send(wire, length);
+        fut.get();
+    }
+
     Future<void> send(const std::uint8_t* wire,
                       std::size_t length) override {
         Promise<void> p;
