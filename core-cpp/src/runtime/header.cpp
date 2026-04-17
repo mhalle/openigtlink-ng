@@ -14,9 +14,27 @@ namespace {
 // Read a fixed-width null-padded ASCII field, dropping anything from
 // the first NUL byte onward. Matches the Python codec's behaviour
 // (split(b"\x00", 1)[0]).
-std::string read_null_padded(const std::uint8_t* p, std::size_t n) {
+//
+// Every byte before the first NUL must be printable ASCII (0x20–0x7E)
+// per the v3 spec. The reference Python codec validates this via
+// `bytes.decode("ascii")`. A byte >= 0x80 in type_id or device_name
+// is always malformed — type_id is a registry key (non-ASCII can
+// never match a registered type) and device_name is a
+// human-readable label (non-ASCII in deployed systems is observed
+// only as uninitialized memory or adversarial input). Strict
+// rejection closes a cross-language divergence class without any
+// observed compatibility cost.
+std::string read_null_padded(const std::uint8_t* p, std::size_t n,
+                             const char* field_name) {
     std::size_t len = 0;
     while (len < n && p[len] != 0) {
+        if (p[len] >= 0x80) {
+            std::ostringstream oss;
+            oss << field_name << " contains non-ASCII byte 0x"
+                << std::hex << static_cast<unsigned>(p[len])
+                << " at offset " << std::dec << len;
+            throw oigtl::error::MalformedMessageError(oss.str());
+        }
         ++len;
     }
     return std::string(reinterpret_cast<const char*>(p), len);
@@ -50,8 +68,8 @@ Header unpack_header(const std::uint8_t* data, std::size_t length) {
             << " is not in the supported set {1, 2, 3}";
         throw oigtl::error::MalformedMessageError(oss.str());
     }
-    h.type_id     = read_null_padded(data + 2, 12);
-    h.device_name = read_null_padded(data + 14, 20);
+    h.type_id     = read_null_padded(data + 2, 12, "type_id");
+    h.device_name = read_null_padded(data + 14, 20, "device_name");
     h.timestamp   = byte_order::read_be_u64(data + 34);
     h.body_size   = byte_order::read_be_u64(data + 42);
     h.crc         = byte_order::read_be_u64(data + 50);

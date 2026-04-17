@@ -18,19 +18,49 @@ import {
 } from "../runtime/byte_order.js";
 import { BodyDecodeError } from "../runtime/errors.js";
 
-// Minimal ASCII helpers used by fixed_string / struct-array sub-fields.
-// Split out so the generated classes can stay import-light.
+// Strict ASCII helpers used for fixed_string fields, struct-array
+// sub-fields, and the encoding="ascii" variants of
+// length_prefixed_string / trailing_string.
+//
+// Both helpers reject any byte >= 0x80, matching the reference
+// Python codec's `bytes.decode("ascii")`. Mixing ASCII-strict and
+// permissive decoders across codecs caused 24 of the 32
+// disagreements in the first 100k differential-fuzz run; strict
+// everywhere closes the class.
 function _readAscii(bytes: Uint8Array, offset: number, size: number): string {
-  let end = offset + size;
-  while (end > offset && bytes[end - 1] === 0) end--;
+  // Null-padded: stop at the first NUL byte, discard the rest.
+  // Bytes before the first NUL must be ASCII (< 0x80).
+  const fieldEnd = offset + size;
+  let end = offset;
+  while (end < fieldEnd && bytes[end] !== 0) end++;
   let out = "";
-  for (let i = offset; i < end; i++) out += String.fromCharCode(bytes[i] as number);
+  for (let i = offset; i < end; i++) {
+    const b = bytes[i] as number;
+    if (b >= 0x80) {
+      throw new BodyDecodeError(
+        `non-ASCII byte 0x${b.toString(16)} at content offset ${i}`,
+      );
+    }
+    out += String.fromCharCode(b);
+  }
   return out;
 }
 
 function _readAsciiRaw(bytes: Uint8Array, offset: number, size: number): string {
+  // Exact-size: read all `size` bytes, no NUL stripping. Used for
+  // null_padded=false fields and for length_prefixed / trailing
+  // strings carrying encoding="ascii".
+  const end = offset + size;
   let out = "";
-  for (let i = offset; i < offset + size; i++) out += String.fromCharCode(bytes[i] as number);
+  for (let i = offset; i < end; i++) {
+    const b = bytes[i] as number;
+    if (b >= 0x80) {
+      throw new BodyDecodeError(
+        `non-ASCII byte 0x${b.toString(16)} at content offset ${i}`,
+      );
+    }
+    out += String.fromCharCode(b);
+  }
   return out;
 }
 
@@ -46,9 +76,35 @@ function _writeAscii(
     );
   }
   for (let i = 0; i < value.length; i++) {
-    bytes[offset + i] = value.charCodeAt(i) & 0xff;
+    const c = value.charCodeAt(i);
+    if (c >= 0x80) {
+      throw new BodyDecodeError(
+        `non-ASCII char 0x${c.toString(16)} at position ${i}; ` +
+          `ASCII-only field`,
+      );
+    }
+    bytes[offset + i] = c;
   }
   // Remaining bytes left as 0.
+}
+
+function _encodeAscii(value: string): Uint8Array {
+  // Strict ASCII pack helper used by length_prefixed_string and
+  // trailing_string fields with encoding="ascii". Rejects any
+  // char >= 0x80 rather than silently truncating or emitting
+  // encoded bytes — mirrors the Python codec's `value.encode("ascii")`.
+  const out = new Uint8Array(value.length);
+  for (let i = 0; i < value.length; i++) {
+    const c = value.charCodeAt(i);
+    if (c >= 0x80) {
+      throw new BodyDecodeError(
+        `non-ASCII char 0x${c.toString(16)} at position ${i}; ` +
+          `ASCII-only field`,
+      );
+    }
+    out[i] = c;
+  }
+  return out;
 }
 
 export interface ToolEntry {

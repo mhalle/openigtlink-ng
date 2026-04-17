@@ -353,12 +353,22 @@ def _plan_top_field(
             )
             pack_payload = f"this.{name}"
             pack_len_expr = f"this.{name}.length"
+        elif enc == "ascii":
+            # Strict ASCII — matches Python's bytes.decode("ascii").
+            # Neither browser nor Node's TextDecoder rejects non-ASCII
+            # on label "ascii" (aliased to windows-1252 per the
+            # Encoding spec), so we can't rely on it here.
+            ts_type = "string"
+            default = '""'
+            unpack_body = f"_readAsciiRaw(bytes, offset, _len)"
+            pack_payload = f"_encodeAscii(this.{name})"
+            pack_len_expr = f"_payload_{name}.length"
         else:
             ts_type = "string"
             default = '""'
             unpack_body = (
-                f"new TextDecoder(\"{enc}\").decode(bytes.subarray("
-                f"offset, offset + _len))"
+                f"new TextDecoder(\"{enc}\", {{ fatal: true }}).decode("
+                f"bytes.subarray(offset, offset + _len))"
             )
             pack_payload = f"new TextEncoder().encode(this.{name})"
             pack_len_expr = f"_payload_{name}.length"
@@ -412,10 +422,18 @@ def _plan_top_field(
                 f"{' - 1' if null_terminated else ''}))"
             )
             pack_payload = f"this.{name}"
+        elif enc == "ascii":
+            # Strict ASCII — see length_prefixed_string for rationale.
+            end_expr = (
+                "bytes.length - 1" if null_terminated else "bytes.length"
+            )
+            unpack_body = f"_readAsciiRaw(bytes, offset, {end_expr} - offset)"
+            pack_payload = f"_encodeAscii(this.{name})"
         else:
             unpack_body = (
-                f"new TextDecoder(\"{enc}\").decode(bytes.subarray("
-                f"offset, bytes.length{' - 1' if null_terminated else ''}))"
+                f"new TextDecoder(\"{enc}\", {{ fatal: true }}).decode("
+                f"bytes.subarray(offset, bytes.length"
+                f"{' - 1' if null_terminated else ''}))"
             )
             pack_payload = f"new TextEncoder().encode(this.{name})"
         unpack_lines = [

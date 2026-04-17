@@ -69,26 +69,41 @@ export function unpackHeader(bytes: Uint8Array): Header {
       `header version=${version} is not in the supported set {1, 2, 3}`,
     );
   }
-  const typeId = _readAsciiNullPadded(bytes, 2, TYPE_ID_SIZE);
-  const deviceName = _readAsciiNullPadded(bytes, 14, DEVICE_NAME_SIZE);
+  const typeId = _readAsciiNullPadded(bytes, 2, TYPE_ID_SIZE, "type_id");
+  const deviceName = _readAsciiNullPadded(bytes, 14, DEVICE_NAME_SIZE, "device_name");
   const timestamp = readU64(view, 34);
   const bodySize = readU64(view, 42);
   const crc = readU64(view, 50);
   return { version, typeId, deviceName, timestamp, bodySize, crc };
 }
 
-function _readAsciiNullPadded(bytes: Uint8Array, offset: number, size: number): string {
+function _readAsciiNullPadded(
+  bytes: Uint8Array,
+  offset: number,
+  size: number,
+  fieldName: string,
+): string {
   // Read up to the first NUL byte within the field's byte range.
   // Matches the reference Python and C++ implementations
-  // (`bytes.split(b"\x00", 1)[0]` and the equivalent in core-cpp):
-  // bytes after the first NUL are padding regardless of value, and
-  // must not leak into the decoded string. The previous "strip
-  // only trailing NULs" approach allowed adversarial inputs like
-  // `DeviceName\x00\x00\x00\x80` to round-trip as a 15-char string
-  // while the other codecs produced `"DeviceName"`.
+  // (`bytes.split(b"\x00", 1)[0]` and the equivalent in core-cpp).
+  //
+  // Every byte before the first NUL must be ASCII (< 0x80) per the
+  // v3 spec. Non-ASCII in `type_id` or `device_name` is always
+  // malformed — see core-cpp/src/runtime/header.cpp for the full
+  // rationale. Strict rejection here closes a cross-language
+  // divergence class surfaced by the differential fuzzer.
   const end = offset + size;
   let stop = offset;
-  while (stop < end && bytes[stop] !== 0) stop++;
+  while (stop < end && bytes[stop] !== 0) {
+    const b = bytes[stop] as number;
+    if (b >= 0x80) {
+      throw new HeaderParseError(
+        `${fieldName} contains non-ASCII byte 0x${b.toString(16)} ` +
+          `at offset ${stop - offset}`,
+      );
+    }
+    stop++;
+  }
   let out = "";
   for (let i = offset; i < stop; i++) out += String.fromCharCode(bytes[i] as number);
   return out;
