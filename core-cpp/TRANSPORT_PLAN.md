@@ -487,37 +487,72 @@ changes.
   `strict_invariants` flag for shim permissive mode.
 - `.github/workflows/ci.yml` — new `shim-parity` job.
 
-## Open questions to resolve before Phase 1
+## Decisions (resolved before Phase 1)
 
-1. **Async primitive.** Do we vendor our own `Future<T>` or use
-   `std::future` + an executor? Leaning toward a minimal custom
-   one — `std::future` lacks cancellation and composability.
-   Alternative: folly-style `SemiFuture` / `Task`. Decide before
-   Phase 1 or it's expensive to change.
+1. **Async primitive: custom `Future<T>` / `Promise<T>`.** `std::future`
+   is disqualified: no cancellation, no `.then()`, no `when_all`/
+   `when_any`. Every `receive()` must be cancellable (timeouts, close,
+   shutdown); the accept loop wants to race accept against a shutdown
+   signal. A ~300-line `Future<T>` with `then`, `cancel`, blocking
+   `get`, and `when_all` exactly fits the contract. Folly /
+   `asio::awaitable` rejected as overkill for our surface. C++20
+   coroutines are a future simplification; we're C++17 for now.
 
-2. **Executor exposure.** Do we give consumers an `asio::io_context&`
-   accessor, or hide asio entirely? Hiding keeps us free to swap
-   backends (epoll, io_uring) later. Exposing makes composition with
-   existing asio apps seamless.
+2. **Executor exposure: hide asio.** No asio types in public headers.
+   Same principle as "no upstream-isms past the transport line" —
+   no asio-isms past the transport public API. Keeps us free to swap
+   backends (io_uring / epoll / kqueue) later without API break. The
+   "compose with an existing asio app" use case doesn't apply to our
+   consumer set (Slicer, PLUS, research code — none asio-based). Cost
+   is a thin forwarding layer inside `transport/`.
 
-3. **Vendored asio.** Standalone asio is header-only but large.
-   Vendor or `find_package(asio)`? Leaning vendor (standalone is
-   the only known-good version for our build, and avoids a system-
-   dependency footgun).
+3. **Asio acquisition: `FetchContent_Declare` at configure time.**
+   Pinned to a known-good tag (**asio-1-30-2** at plan time, bumped
+   at implementation). No git submodule — cleaner fresh-clone story,
+   no `submodule init` step, CMake handles the pin. Re-evaluate
+   (vendor / submodule) if CI fetch flakiness becomes a problem.
 
-4. **mbedTLS version.** 3.x is current but API-different from 2.x.
-   Pin to a specific tag. Vendored source.
+4. **mbedTLS: 3.6.x LTS, vendored via FetchContent.** 3.6 is the
+   current LTS line (support through 2027). 2.x → 3.x API break is
+   behind us. Pin to **mbedtls-3.6.2** or latest 3.6.x patch at
+   implementation time. Built as part of our CMake, not system-
+   packaged.
 
-5. **Strict-mode signal in the shim.** Thread-local flag in the
-   runtime, or a per-message bool? Thread-local is cleaner (matches
-   upstream's "global permissive" default) but interacts poorly with
-   async / thread-pool consumers. Decide before Phase 6.
+5. **Strict-mode signal: thread-local with RAII scope guard.**
 
-6. **Server-side accept API shape.** `for (auto conn : acceptor)`
-   iterator, or `Future<Connection> accept()` loop? The latter is
-   more async-friendly; the former is more idiomatic C++. We can
-   offer both — iterator over futures — but the primitive decides
-   complexity.
+   ```cpp
+   namespace oigtl::runtime::policy {
+       bool strict_invariants_enabled();     // reads TLS
+       class StrictInvariantsScope {         // RAII toggle
+           bool prev_;
+        public:
+           explicit StrictInvariantsScope(bool enable);
+           ~StrictInvariantsScope();
+       };
+   }
+   ```
+
+   Shim's `Unpack()` wraps each call in `StrictInvariantsScope(false)`;
+   native callers get strict (default TLS value = `true`). TLS is
+   safe because `Unpack()` is synchronous on one thread with no
+   yielding — the async-thread-hop concern was theoretical. Per-
+   message `bool` rejected: would plumb through every codec's unpack
+   signature (84 generated codecs).
+
+6. **Accept API: `Future<std::unique_ptr<Connection>> accept()` as
+   primitive, iterator as adapter.** The future-returning form
+   composes with the rest of the async API (`when_any(accept(),
+   shutdown_signal)` for graceful server exit). Iterator is a ~20-
+   line adapter on top:
+
+   ```cpp
+   class Acceptor {
+    public:
+       Future<std::unique_ptr<Connection>> accept();
+       AcceptIterator begin();   // for (auto fut : acceptor)
+       AcceptIterator end();     // represents "closed"
+   };
+   ```
 
 ## Resuming from cold
 
