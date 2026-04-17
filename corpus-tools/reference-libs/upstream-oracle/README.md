@@ -81,9 +81,10 @@ uv run oigtl-corpus fuzz roundtrip -n 10000 --type IMAGE \
     --oracle py-ref --oracle cpp --oracle ts
 ```
 
-Supported generator types: `TRANSFORM`, `POSITION`, `STATUS`,
-`STRING`, `SENSOR`, `POINT`, `IMAGE`. Round-robins all seven when
-`--type` is omitted.
+Supported generator types (15): `TRANSFORM`, `POSITION`, `STATUS`,
+`STRING`, `SENSOR`, `POINT`, `IMAGE`, `NDARRAY`, `COLORT`, `BIND`,
+`POLYDATA`, `TDATA`, `QTDATA`, `TRAJ`, `CAPABILITY`. Round-robins
+all fifteen when `--type` is omitted.
 
 ## Notes on upstream coverage
 

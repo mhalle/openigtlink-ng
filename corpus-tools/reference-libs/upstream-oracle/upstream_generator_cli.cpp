@@ -37,13 +37,21 @@
 #include <string>
 #include <vector>
 
+#include "igtlBindMessage.h"
+#include "igtlCapabilityMessage.h"
+#include "igtlColorTableMessage.h"
 #include "igtlImageMessage.h"
 #include "igtlMessageBase.h"
+#include "igtlNDArrayMessage.h"
 #include "igtlPointMessage.h"
+#include "igtlPolyDataMessage.h"
 #include "igtlPositionMessage.h"
+#include "igtlQuaternionTrackingDataMessage.h"
 #include "igtlSensorMessage.h"
 #include "igtlStatusMessage.h"
 #include "igtlStringMessage.h"
+#include "igtlTrackingDataMessage.h"
+#include "igtlTrajectoryMessage.h"
 #include "igtlTransformMessage.h"
 
 namespace {
@@ -234,6 +242,234 @@ std::vector<std::uint8_t> gen_image(std::mt19937_64& rng) {
     return {p, p + msg->GetBufferSize()};
 }
 
+// NDARRAY — 1D float64 array. The upstream templated Array<T>
+// + SetArray(TYPE, ArrayBase*) pattern (see igtlNDArrayMessageTest.cxx).
+// Keep to 1 dimension with a small extent so the full set of
+// invariant checks (scalar_type ∈ set, data == product(size) × bps)
+// is exercised without blowing up payload size.
+std::vector<std::uint8_t> gen_ndarray(std::mt19937_64& rng) {
+    auto msg = igtl::NDArrayMessage::New();
+    apply_common(msg, rng);
+    std::uniform_int_distribution<std::size_t> n(1, 32);
+    const std::size_t N = n(rng);
+    igtl::Array<igtl_float64> array;
+    igtl::ArrayBase::IndexType size(1);
+    size[0] = static_cast<igtlUint16>(N);
+    array.SetSize(size);
+    std::vector<igtl_float64> buf(N);
+    std::uniform_real_distribution<double> f(-1.0, 1.0);
+    for (std::size_t i = 0; i < N; ++i) buf[i] = f(rng);
+    array.SetArray(buf.data());
+    msg->SetArray(igtl::NDArrayMessage::TYPE_FLOAT64, &array);
+    msg->Pack();
+    auto* p = static_cast<const std::uint8_t*>(msg->GetBufferPointer());
+    return {p, p + msg->GetBufferSize()};
+}
+
+// COLORT — COLORTABLE with the short "COLORT" wire name upstream
+// uses. Exercises all 6 valid (index_type, map_type) combinations
+// uniformly; each trigger a different table size.
+std::vector<std::uint8_t> gen_colort(std::mt19937_64& rng) {
+    auto msg = igtl::ColorTableMessage::New();
+    apply_common(msg, rng);
+    static const int kIndex[] = {3, 5};      // uint8=256, uint16=65536
+    static const int kMap[]   = {3, 5, 19};  // uint8=1, uint16=2, RGB=3
+    std::uniform_int_distribution<std::size_t> idx_i(0, 1);
+    std::uniform_int_distribution<std::size_t> map_i(0, 2);
+    const int index_type = kIndex[idx_i(rng)];
+    const int map_type   = kMap[map_i(rng)];
+    msg->SetIndexType(index_type);
+    msg->SetMapType(map_type);
+    msg->AllocateTable();
+    std::uint8_t* table = static_cast<std::uint8_t*>(msg->GetTablePointer());
+    const std::size_t table_size =
+        static_cast<std::size_t>(msg->GetColorTableSize());
+    std::uniform_int_distribution<int> b(0, 255);
+    for (std::size_t i = 0; i < table_size; ++i) {
+        table[i] = static_cast<std::uint8_t>(b(rng));
+    }
+    msg->Pack();
+    auto* p = static_cast<const std::uint8_t*>(msg->GetBufferPointer());
+    return {p, p + msg->GetBufferSize()};
+}
+
+// BIND — container bundling 1-3 pre-packed children. Only the
+// simplest child types (TRANSFORM, STATUS, SENSOR) to keep the
+// generator deterministic and avoid nested variable-count surprises.
+std::vector<std::uint8_t> gen_bind(std::mt19937_64& rng) {
+    auto msg = igtl::BindMessage::New();
+    apply_common(msg, rng);
+    msg->Init();
+    std::uniform_int_distribution<int> nchild(1, 3);
+    const int n = nchild(rng);
+    // Keep children in local Pointers so they outlive AppendChild.
+    std::vector<igtl::MessageBase::Pointer> children;
+    std::uniform_int_distribution<int> pick(0, 2);
+    std::uniform_real_distribution<float> f(-100.0f, 100.0f);
+    for (int i = 0; i < n; ++i) {
+        igtl::MessageBase::Pointer child;
+        switch (pick(rng)) {
+            case 0: {
+                auto t = igtl::TransformMessage::New();
+                t->SetDeviceName(random_ascii_name(rng, 10).c_str());
+                t->SetTimeStamp(0, 1);
+                igtl::Matrix4x4 m;
+                igtl::IdentityMatrix(m);
+                for (int r = 0; r < 3; ++r)
+                    for (int c = 0; c < 4; ++c) m[r][c] = f(rng);
+                t->SetMatrix(m);
+                t->Pack();
+                child = t;
+                break;
+            }
+            case 1: {
+                auto s = igtl::StatusMessage::New();
+                s->SetDeviceName(random_ascii_name(rng, 10).c_str());
+                s->SetTimeStamp(0, 1);
+                s->SetCode(0);
+                s->SetSubCode(0);
+                s->SetErrorName(random_ascii_name(rng, 10).c_str());
+                s->SetStatusString(random_ascii_name(rng, 20).c_str());
+                s->Pack();
+                child = s;
+                break;
+            }
+            default: {
+                auto sen = igtl::SensorMessage::New();
+                sen->SetDeviceName(random_ascii_name(rng, 10).c_str());
+                sen->SetTimeStamp(0, 1);
+                std::uniform_int_distribution<unsigned> m(0, 4);
+                const unsigned larray = m(rng);
+                sen->SetLength(larray);
+                for (unsigned k = 0; k < larray; ++k) sen->SetValue(k, 0.5);
+                sen->Pack();
+                child = sen;
+                break;
+            }
+        }
+        children.push_back(child);
+        msg->AppendChildMessage(child);
+    }
+    msg->Pack();
+    auto* p = static_cast<const std::uint8_t*>(msg->GetBufferPointer());
+    return {p, p + msg->GetBufferSize()};
+}
+
+// POLYDATA — a small mesh with points and polygons. Upstream's
+// section-size bookkeeping is tricky; restrict to the simple case
+// of points+polygons only (no lines, vertices, triangle strips, or
+// attributes) to keep the vector small and deterministic.
+std::vector<std::uint8_t> gen_polydata(std::mt19937_64& rng) {
+    auto msg = igtl::PolyDataMessage::New();
+    apply_common(msg, rng);
+    msg->SetHeaderVersion(IGTL_HEADER_VERSION_1);
+    auto pts = igtl::PolyDataPointArray::New();
+    auto polys = igtl::PolyDataCellArray::New();
+    std::uniform_int_distribution<int> npts_dist(3, 8);
+    const int npts = npts_dist(rng);
+    std::uniform_real_distribution<float> f(-10.0f, 10.0f);
+    for (int i = 0; i < npts; ++i) {
+        float pt[3] = {f(rng), f(rng), f(rng)};
+        pts->AddPoint(pt);
+    }
+    // One triangle fan cell so polygons array has exactly one entry
+    // of length npts.
+    std::list<igtlUint32> cell;
+    for (int i = 0; i < npts; ++i) cell.push_back(static_cast<igtlUint32>(i));
+    polys->AddCell(cell);
+    msg->SetPoints(pts);
+    msg->SetPolygons(polys);
+    msg->Pack();
+    auto* p = static_cast<const std::uint8_t*>(msg->GetBufferPointer());
+    return {p, p + msg->GetBufferSize()};
+}
+
+// TDATA — 1-3 tracking-data elements, each with a transform matrix.
+std::vector<std::uint8_t> gen_tdata(std::mt19937_64& rng) {
+    auto msg = igtl::TrackingDataMessage::New();
+    apply_common(msg, rng);
+    std::uniform_int_distribution<int> n(1, 3);
+    std::uniform_real_distribution<float> f(-100.0f, 100.0f);
+    for (int i = 0, m = n(rng); i < m; ++i) {
+        auto e = igtl::TrackingDataElement::New();
+        e->SetName(random_ascii_name(rng, 15).c_str());
+        e->SetType(igtl::TrackingDataElement::TYPE_TRACKER);
+        igtl::Matrix4x4 mat;
+        igtl::IdentityMatrix(mat);
+        for (int r = 0; r < 3; ++r)
+            for (int c = 0; c < 4; ++c) mat[r][c] = f(rng);
+        e->SetMatrix(mat);
+        msg->AddTrackingDataElement(e);
+    }
+    msg->Pack();
+    auto* p = static_cast<const std::uint8_t*>(msg->GetBufferPointer());
+    return {p, p + msg->GetBufferSize()};
+}
+
+// QTDATA — 1-3 quaternion-tracking-data elements.
+std::vector<std::uint8_t> gen_qtdata(std::mt19937_64& rng) {
+    auto msg = igtl::QuaternionTrackingDataMessage::New();
+    apply_common(msg, rng);
+    std::uniform_int_distribution<int> n(1, 3);
+    std::uniform_real_distribution<float> f(-1.0f, 1.0f);
+    for (int i = 0, m = n(rng); i < m; ++i) {
+        auto e = igtl::QuaternionTrackingDataElement::New();
+        e->SetName(random_ascii_name(rng, 15).c_str());
+        e->SetType(igtl::QuaternionTrackingDataElement::TYPE_TRACKER);
+        e->SetPosition(f(rng) * 100, f(rng) * 100, f(rng) * 100);
+        e->SetQuaternion(f(rng), f(rng), f(rng), f(rng));
+        msg->AddQuaternionTrackingDataElement(e);
+    }
+    msg->Pack();
+    auto* p = static_cast<const std::uint8_t*>(msg->GetBufferPointer());
+    return {p, p + msg->GetBufferSize()};
+}
+
+// TRAJ — 1-3 trajectory elements, each with entry+target positions.
+std::vector<std::uint8_t> gen_traj(std::mt19937_64& rng) {
+    auto msg = igtl::TrajectoryMessage::New();
+    apply_common(msg, rng);
+    std::uniform_int_distribution<int> n(1, 3);
+    std::uniform_real_distribution<float> f(-100.0f, 100.0f);
+    std::uniform_int_distribution<int> byte(0, 255);
+    for (int i = 0, m = n(rng); i < m; ++i) {
+        auto e = igtl::TrajectoryElement::New();
+        e->SetName(random_ascii_name(rng, 15).c_str());
+        e->SetGroupName(random_ascii_name(rng, 15).c_str());
+        e->SetType(igtl::TrajectoryElement::TYPE_ENTRY_TARGET);
+        e->SetRGBA(
+            static_cast<igtlUint8>(byte(rng)),
+            static_cast<igtlUint8>(byte(rng)),
+            static_cast<igtlUint8>(byte(rng)),
+            static_cast<igtlUint8>(byte(rng)));
+        e->SetEntryPosition(f(rng), f(rng), f(rng));
+        e->SetTargetPosition(f(rng), f(rng), f(rng));
+        e->SetRadius(static_cast<float>(std::abs(f(rng))));
+        e->SetOwner(random_ascii_name(rng, 15).c_str());
+        msg->AddTrajectoryElement(e);
+    }
+    msg->Pack();
+    auto* p = static_cast<const std::uint8_t*>(msg->GetBufferPointer());
+    return {p, p + msg->GetBufferSize()};
+}
+
+// CAPABILITY — a list of supported type_id strings.
+std::vector<std::uint8_t> gen_capability(std::mt19937_64& rng) {
+    auto msg = igtl::CapabilityMessage::New();
+    apply_common(msg, rng);
+    std::uniform_int_distribution<int> n(1, 6);
+    std::vector<std::string> types;
+    const int m = n(rng);
+    types.reserve(m);
+    for (int i = 0; i < m; ++i) {
+        types.push_back(random_ascii_name(rng, 11));
+    }
+    msg->SetTypes(types);
+    msg->Pack();
+    auto* p = static_cast<const std::uint8_t*>(msg->GetBufferPointer());
+    return {p, p + msg->GetBufferSize()};
+}
+
 // Round-robin dispatch. Ordering is stable across seeds so a given
 // (seed, iteration) maps to a deterministic type.
 using Generator = std::vector<std::uint8_t>(*)(std::mt19937_64&);
@@ -242,13 +478,21 @@ struct NamedGenerator {
     Generator fn;
 };
 const NamedGenerator kGenerators[] = {
-    {"TRANSFORM", gen_transform},
-    {"POSITION",  gen_position},
-    {"STATUS",    gen_status},
-    {"STRING",    gen_string},
-    {"SENSOR",    gen_sensor},
-    {"POINT",     gen_point},
-    {"IMAGE",     gen_image},
+    {"TRANSFORM",  gen_transform},
+    {"POSITION",   gen_position},
+    {"STATUS",     gen_status},
+    {"STRING",     gen_string},
+    {"SENSOR",     gen_sensor},
+    {"POINT",      gen_point},
+    {"IMAGE",      gen_image},
+    {"NDARRAY",    gen_ndarray},
+    {"COLORT",     gen_colort},
+    {"BIND",       gen_bind},
+    {"POLYDATA",   gen_polydata},
+    {"TDATA",      gen_tdata},
+    {"QTDATA",     gen_qtdata},
+    {"TRAJ",       gen_traj},
+    {"CAPABILITY", gen_capability},
 };
 
 }  // namespace

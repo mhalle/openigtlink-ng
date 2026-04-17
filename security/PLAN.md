@@ -540,8 +540,19 @@ The second CLI `upstream_generator_cli` closes this direction.
 
 **First-run result:** 50,000 upstream-generated vectors across 5
 seeds × 4 codecs (py-ref, typed py, cpp, ts), **0 rejects, 0
-disagreements**. Pack and unpack are bit-compatible with upstream
-across the 7 types exercised.
+disagreements** across 7 types (TRANSFORM, POSITION, STATUS,
+STRING, SENSOR, POINT, IMAGE).
+
+**Extended run (2026-04-17):** generator coverage grown to 15
+types — the 7 above plus NDARRAY, COLORT, BIND, POLYDATA (the
+four with invariants we added), TDATA, QTDATA, TRAJ, CAPABILITY.
+50,000 vectors × 5 seeds × 4 codecs, again **0 rejects, 0
+disagreements**. Pack and unpack are bit-compatible with
+upstream across every type we wire through its API.
+
+Remaining uncovered (still deferred): COMMAND (v3-only;
+upstream's v3 support is partial), IMGMETA, LBMETA. These would
+be incremental per-type work if we need them.
 
 ### Phase 5 — Upstream parity fuzzer — CLOSED (not pursued)
 
