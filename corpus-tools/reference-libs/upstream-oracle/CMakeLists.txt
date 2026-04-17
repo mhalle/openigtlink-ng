@@ -38,18 +38,20 @@ if(NOT EXISTS "${UPSTREAM_BUILD}/lib/libOpenIGTLink.a")
         "Build upstream first; see the header of this CMakeLists.txt.")
 endif()
 
-add_executable(upstream_oracle_cli oracle_cli.cpp)
-
-# Upstream's headers live in two places: the curated public API
-# (Source/) and the generated igtlConfigure.h under the build tree.
-target_include_directories(upstream_oracle_cli PRIVATE
-    "${UPSTREAM_ROOT}/Source"
-    "${UPSTREAM_ROOT}/Source/igtlutil"
-    "${UPSTREAM_BUILD}/Source"
-    "${UPSTREAM_BUILD}"
-)
-
-target_link_libraries(upstream_oracle_cli PRIVATE
-    "${UPSTREAM_BUILD}/lib/libOpenIGTLink.a"
-    "${UPSTREAM_BUILD}/lib/libigtlutil.a"
-)
+foreach(pair
+        "upstream_oracle_cli;oracle_cli.cpp"
+        "upstream_generator_cli;upstream_generator_cli.cpp")
+    list(GET pair 0 target)
+    list(GET pair 1 source)
+    add_executable(${target} ${source})
+    target_include_directories(${target} PRIVATE
+        "${UPSTREAM_ROOT}/Source"
+        "${UPSTREAM_ROOT}/Source/igtlutil"
+        "${UPSTREAM_BUILD}/Source"
+        "${UPSTREAM_BUILD}"
+    )
+    target_link_libraries(${target} PRIVATE
+        "${UPSTREAM_BUILD}/lib/libOpenIGTLink.a"
+        "${UPSTREAM_BUILD}/lib/libigtlutil.a"
+    )
+endforeach()

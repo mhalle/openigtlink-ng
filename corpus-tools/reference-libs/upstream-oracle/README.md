@@ -1,9 +1,23 @@
-# upstream-oracle — 6th oracle: upstream reference-library conformance
+# upstream-oracle — conformance against the pinned reference library
 
-A thin wrapper around the pinned upstream OpenIGTLink C++ reference
-library (`../openigtlink-upstream`). Same stdin-hex → stdout-JSON
-protocol as `core-cpp/src/oracle_cli.cpp`, so it plugs into
-`oigtl-corpus fuzz differential` as the `--oracle upstream` option.
+Two CLIs wrapping the pinned upstream OpenIGTLink C++ reference
+library (`../openigtlink-upstream`):
+
+1. **`upstream_oracle_cli`** — consumer. Same stdin-hex → stdout-JSON
+   protocol as `core-cpp/src/oracle_cli.cpp`, plugs into
+   `oigtl-corpus fuzz differential` as `--oracle upstream`.
+2. **`upstream_generator_cli`** — producer. Emits wire messages
+   built via upstream's `Pack()` path (one lowercase hex line per
+   stdout line). Drives `oigtl-corpus fuzz roundtrip`.
+
+The two directions catch different bug classes:
+
+- The consumer oracle catches divergences where *our pack* emits
+  bytes upstream accepts — any cross-oracle disagreement on semantic
+  fields for the same input is a bug.
+- The producer oracle catches divergences where *upstream emits*
+  bytes one of our codecs can't handle — any reject or round-trip
+  mismatch on upstream-generated input is a bug in our codec.
 
 ## Scope
 
@@ -45,12 +59,31 @@ cmake --build corpus-tools/reference-libs/upstream-oracle/build --parallel
 
 ## Run
 
+Consumer oracle (cross-codec comparison on fuzzer-generated inputs):
+
 ```bash
 cd corpus-tools
 uv run oigtl-corpus fuzz differential -n 100000 \
     --oracle py-ref --oracle cpp --oracle ts --oracle upstream \
     --progress-every 25000
 ```
+
+Producer oracle (roundtrip valid upstream-emitted vectors through
+our codecs):
+
+```bash
+cd corpus-tools
+uv run oigtl-corpus fuzz roundtrip -n 10000 -s 1 \
+    --oracle py-ref --oracle cpp --oracle ts
+
+# Or restrict to one upstream type:
+uv run oigtl-corpus fuzz roundtrip -n 10000 --type IMAGE \
+    --oracle py-ref --oracle cpp --oracle ts
+```
+
+Supported generator types: `TRANSFORM`, `POSITION`, `STATUS`,
+`STRING`, `SENSOR`, `POINT`, `IMAGE`. Round-robins all seven when
+`--type` is omitted.
 
 ## Notes on upstream coverage
 

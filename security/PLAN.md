@@ -522,6 +522,27 @@ distinctly via the oracle CLI and filtered:
 
 Both quirks are filtered in ``fuzz/runner.py::_compare``.
 
+### Producer direction: upstream-generated roundtrip *(shipped 2026-04-17)*
+
+Consumer-only coverage can miss a class of bugs: our *pack* path
+emitting bytes upstream can't parse, which by definition won't
+surface as a "cross-oracle disagreement on the same fuzzer input."
+The second CLI `upstream_generator_cli` closes this direction.
+
+- Drives upstream's `Pack()` with randomized valid payloads across
+  7 message types (TRANSFORM, POSITION, STATUS, STRING, SENSOR,
+  POINT, IMAGE). Emits one hex line per message on stdout.
+- New subcommand `oigtl-corpus fuzz roundtrip` pipes the generator
+  through every selected oracle and requires all to accept,
+  round-trip byte-exactly, and agree on semantic fields.
+- Upstream is *not* an oracle in this mode — it is the generator,
+  and running it against its own output would be tautological.
+
+**First-run result:** 50,000 upstream-generated vectors across 5
+seeds × 4 codecs (py-ref, typed py, cpp, ts), **0 rejects, 0
+disagreements**. Pack and unpack are bit-compatible with upstream
+across the 7 types exercised.
+
 ### Phase 5 — Upstream parity fuzzer — CLOSED (not pursued)
 
 Original premise: wire the pinned upstream C library as a 6th
