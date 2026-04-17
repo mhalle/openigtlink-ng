@@ -127,6 +127,16 @@ class LoopbackConnection final : public Connection {
         fut.get();
     }
 
+    Incoming receive_sync(std::chrono::milliseconds timeout) override {
+        auto fut = receive();
+        if (timeout.count() < 0) return fut.get();
+        if (!fut.wait_for(timeout)) {
+            fut.cancel();
+            throw TimeoutError{};
+        }
+        return fut.get();
+    }
+
     Future<void> send(const std::uint8_t* wire,
                       std::size_t length) override {
         Promise<void> p;

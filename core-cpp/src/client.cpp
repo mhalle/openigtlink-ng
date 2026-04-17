@@ -68,12 +68,14 @@ Client Client::adopt(std::unique_ptr<transport::Connection> conn,
 }
 
 transport::Incoming Client::receive_any() {
-    auto fut = conn_->receive();
-    if (!fut.wait_for(opt_.receive_timeout)) {
-        fut.cancel();
-        throw transport::TimeoutError{};
+    // Direct-read fast path — same rationale as send_sync.
+    // `receive_timeout == milliseconds::max()` maps to "no deadline";
+    // anything else is honoured by the underlying poll().
+    constexpr auto kForever = std::chrono::milliseconds::max();
+    if (opt_.receive_timeout >= kForever / 2) {
+        return conn_->receive_sync();
     }
-    return fut.get();
+    return conn_->receive_sync(opt_.receive_timeout);
 }
 
 Client& Client::on_unknown(
@@ -93,17 +95,12 @@ void Client::run() {
     while (!stop_requested_.load()) {
         transport::Incoming inc;
         try {
-            // Use shorter polling so stop_requested() responds
-            // promptly even if no message arrives.
-            auto fut = conn_->receive();
-            const auto poll = std::chrono::milliseconds(250);
-            while (!fut.wait_for(poll)) {
-                if (stop_requested_.load()) {
-                    fut.cancel();
-                    return;
-                }
-            }
-            inc = fut.get();
+            // Short timeout keeps stop_requested responsive even
+            // on idle connections; fast path on a busy stream is
+            // a direct ::recv.
+            inc = conn_->receive_sync(std::chrono::milliseconds(250));
+        } catch (const transport::TimeoutError&) {
+            continue;
         } catch (const transport::ConnectionClosedError&) {
             if (on_error_) {
                 on_error_(std::current_exception());

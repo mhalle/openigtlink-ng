@@ -11,6 +11,7 @@
 #ifndef OIGTL_TRANSPORT_CONNECTION_HPP
 #define OIGTL_TRANSPORT_CONNECTION_HPP
 
+#include <chrono>
 #include <cstdint>
 #include <memory>
 #include <optional>
@@ -73,6 +74,24 @@ class Connection {
 
     void send_sync(const std::vector<std::uint8_t>& wire) {
         send_sync(wire.data(), wire.size());
+    }
+
+    // Blocking receive on the caller's thread — no io_context hop.
+    // `timeout < 0` means block indefinitely.
+    //
+    // Throws `TimeoutError` on deadline expiry,
+    // `ConnectionClosedError` on peer close / error, or whatever
+    // the framer throws on malformed bytes.
+    //
+    // Mixing `receive()` (async) and `receive_sync()` on the same
+    // Connection is undefined — they'd race on the inbox. Pick one
+    // mode per Connection. The ergonomic Client uses
+    // receive_sync exclusively.
+    virtual Incoming
+    receive_sync(std::chrono::milliseconds timeout) = 0;
+
+    Incoming receive_sync() {
+        return receive_sync(std::chrono::milliseconds(-1));
     }
 
     // Graceful close. Pending receive() resolves with

@@ -66,6 +66,13 @@ struct ConnImpl : std::enable_shared_from_this<ConnImpl> {
     // and against the framer used to wrap outbound bytes.
     std::mutex send_sync_mu;
 
+    // Sync-receive state. Has its own inbox so a future async
+    // receive() on the same Connection (undefined today) would
+    // at least keep the two streams textually separate. Mutex
+    // serialises concurrent receive_sync callers.
+    std::mutex recv_sync_mu;
+    std::vector<std::uint8_t> sync_inbox;
+
     explicit ConnImpl(asio::io_context& ctx)
         : socket(ctx), framer(make_v3_framer()) {}
 
@@ -191,6 +198,69 @@ class TcpConnection final : public Connection {
     std::string peer_address() const override { return impl_->peer_addr; }
     std::uint16_t peer_port() const override { return impl_->peer_port_; }
     std::uint16_t negotiated_version() const override { return 0; }
+
+    Incoming receive_sync(
+            std::chrono::milliseconds timeout) override {
+        std::lock_guard<std::mutex> lk(impl_->recv_sync_mu);
+
+        const int fd = impl_->socket.native_handle();
+        const bool has_deadline = timeout.count() >= 0;
+        const auto deadline =
+            std::chrono::steady_clock::now() + timeout;
+
+        auto try_current = [&]() -> std::optional<Incoming> {
+            return impl_->framer->try_parse(impl_->sync_inbox);
+        };
+
+        // Drain anything the inbox already has.
+        if (auto inc = try_current()) return std::move(*inc);
+
+        std::array<std::uint8_t, 8192> buf{};
+        for (;;) {
+            if (impl_->closed) throw ConnectionClosedError{};
+
+            // Compute poll timeout.
+            int poll_ms = -1;
+            if (has_deadline) {
+                auto remaining = deadline -
+                                 std::chrono::steady_clock::now();
+                if (remaining <= std::chrono::milliseconds::zero()) {
+                    throw TimeoutError{};
+                }
+                poll_ms = static_cast<int>(
+                    std::chrono::duration_cast<std::chrono::
+                        milliseconds>(remaining).count());
+            }
+
+            struct pollfd pfd{};
+            pfd.fd = fd;
+            pfd.events = POLLIN;
+            int pr = ::poll(&pfd, 1, poll_ms);
+            if (pr == 0) throw TimeoutError{};
+            if (pr < 0) {
+                if (errno == EINTR) continue;
+                throw ConnectionClosedError(
+                    std::string("poll: ") + std::strerror(errno));
+            }
+
+            ssize_t n = ::recv(fd, buf.data(), buf.size(), 0);
+            if (n == 0) {
+                impl_->closed = true;
+                throw ConnectionClosedError{};
+            }
+            if (n < 0) {
+                if (errno == EINTR || errno == EAGAIN ||
+                    errno == EWOULDBLOCK) continue;
+                throw ConnectionClosedError(
+                    std::string("recv: ") + std::strerror(errno));
+            }
+            impl_->sync_inbox.insert(
+                impl_->sync_inbox.end(),
+                buf.begin(), buf.begin() + n);
+
+            if (auto inc = try_current()) return std::move(*inc);
+        }
+    }
 
     Future<Incoming> receive() override {
         Promise<Incoming> p;

@@ -243,16 +243,9 @@ Envelope<Reply> Client::wait_for_typed(
         if (remaining <= std::chrono::milliseconds::zero()) {
             throw transport::TimeoutError{};
         }
-        auto fut = conn_->receive();
-        const auto chunk = std::min<std::chrono::milliseconds>(
+        auto inc = conn_->receive_sync(
             std::chrono::duration_cast<std::chrono::milliseconds>(
-                remaining),
-            std::chrono::milliseconds(250));
-        if (!fut.wait_for(chunk)) {
-            fut.cancel();
-            continue;
-        }
-        auto inc = fut.get();
+                remaining));
         if (inc.header.type_id == Reply::kTypeId) {
             return unpack<Reply>(inc);
         }
