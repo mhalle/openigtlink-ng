@@ -376,9 +376,12 @@ endforeach()
 # ReceiveServer.cxx and TrackerClient.cxx as subprocesses.
 if(TARGET upstream_ReceiveServer_via_shim
    AND TARGET upstream_TrackerClient_via_shim)
+    # Portable across Linux / macOS / Windows — stdlib Python,
+    # no uv, no bash. Python3 is required anywhere we build.
+    find_package(Python3 COMPONENTS Interpreter REQUIRED)
     add_test(NAME compat_upstream_examples_interop
-        COMMAND bash
-            "${CMAKE_CURRENT_SOURCE_DIR}/compat/tests/upstream_examples_interop.sh"
+        COMMAND ${Python3_EXECUTABLE}
+            "${CMAKE_CURRENT_SOURCE_DIR}/compat/tests/upstream_examples_interop.py"
             "$<TARGET_FILE:upstream_ReceiveServer_via_shim>"
             "$<TARGET_FILE:upstream_TrackerClient_via_shim>"
             "18956")
@@ -407,12 +410,16 @@ if(EXISTS "${IGTL_UPSTREAM_BUILD}/lib/libOpenIGTLink.a")
     target_compile_options(compat_emitter_upstream PRIVATE
         -Wno-error -Wno-unused-parameter)
 
-    # One ctest per parity case. Uses bash process-substitution
-    # (requires bash, not plain sh).
+    # One ctest per parity case. The bash process-substitution
+    # original (`cmp <(A) <(B)`) is non-portable; the -P helper
+    # runs each emitter, captures stdout to a temp file, and
+    # uses `cmake -E compare_files`. Works on Linux / macOS /
+    # Windows alike.
     # STT_TDATA intentionally excluded — upstream's
     # StartTrackingDataMessage carries a body (resolution + coord_name)
     # that our codegen stub doesn't populate. It's a stub-vs-facade
     # difference, not a codec defect.
+    set(OIGTL_PARITY_WORKDIR "${CMAKE_CURRENT_BINARY_DIR}/_parity")
     foreach(case transform_v1 transform_v2 transform_v2_meta
                  transform_v2_rot90z get_status_v2 status_v2
                  string_v2 position_only_v2 position_quat3_v2
@@ -422,8 +429,12 @@ if(EXISTS "${IGTL_UPSTREAM_BUILD}/lib/libOpenIGTLink.a")
                  traj_v2 ndarray_v2 colort_v2
                  polydata_empty_v2 polydata_tri_v2)
         add_test(NAME compat_parity_${case}
-            COMMAND bash -c
-                "cmp <(${CMAKE_CURRENT_BINARY_DIR}/compat_emitter_shim ${case}) <(${CMAKE_CURRENT_BINARY_DIR}/compat_emitter_upstream ${case})")
+            COMMAND ${CMAKE_COMMAND}
+                -DSHIM=$<TARGET_FILE:compat_emitter_shim>
+                -DUPSTREAM=$<TARGET_FILE:compat_emitter_upstream>
+                -DCASE=${case}
+                -DWORKDIR=${OIGTL_PARITY_WORKDIR}
+                -P "${CMAKE_CURRENT_SOURCE_DIR}/cmake/run_parity_compare.cmake")
     endforeach()
 endif()
 
@@ -695,43 +706,72 @@ Cflags: -I\${includedir}
 endif()
 
 # ----------------------------------------------------------------------------
-# Merged liboigtl.a — one archive containing every component object
-# file. Produced by extracting each component .a with `ar -x` into
-# a scratch directory, then reassembling with `ar qcs`. Works
-# identically on Linux + macOS.
+# Merged archive — one library file containing every component's
+# object code.
+#
+# POSIX (GNU/BSD `ar`): extract each component .a into a scratch
+# directory with `ar -x`, then reassemble into liboigtl.a with
+# `ar qcs` over the extracted .o files. The shell-glob for `.o`
+# gets done in a CMake -P helper so there's no bash dependency.
+#
+# Windows (MSVC `lib.exe`): `lib.exe` doesn't support extraction,
+# but it does accept multiple input archives directly and merges
+# them — single command, no scratch dir, produces oigtl.lib.
 # ----------------------------------------------------------------------------
 if(OIGTL_BUILD_MERGED)
-    set(OIGTL_MERGED_DIR "${CMAKE_CURRENT_BINARY_DIR}/_merge")
-    set(OIGTL_MERGED_ARCHIVE
-        "${CMAKE_CURRENT_BINARY_DIR}/liboigtl.a")
+    if(MSVC)
+        set(OIGTL_MERGED_ARCHIVE
+            "${CMAKE_CURRENT_BINARY_DIR}/oigtl.lib")
+        add_custom_command(
+            OUTPUT "${OIGTL_MERGED_ARCHIVE}"
+            COMMAND ${CMAKE_COMMAND} -E rm -f "${OIGTL_MERGED_ARCHIVE}"
+            # lib.exe merges inputs directly — no extract step.
+            # CMAKE_AR under MSVC resolves to lib.exe; use it as-is.
+            COMMAND "${CMAKE_AR}"
+                /NOLOGO
+                /OUT:${OIGTL_MERGED_ARCHIVE}
+                $<TARGET_FILE:oigtl_runtime>
+                $<TARGET_FILE:oigtl_messages>
+                $<TARGET_FILE:oigtl_transport>
+                $<TARGET_FILE:oigtl_ergo>
+                $<TARGET_FILE:igtl_compat>
+            DEPENDS oigtl_runtime oigtl_messages oigtl_transport
+                    oigtl_ergo   igtl_compat
+            VERBATIM
+            COMMENT "Merging five component archives → oigtl.lib")
+    else()
+        set(OIGTL_MERGED_DIR "${CMAKE_CURRENT_BINARY_DIR}/_merge")
+        set(OIGTL_MERGED_ARCHIVE
+            "${CMAKE_CURRENT_BINARY_DIR}/liboigtl.a")
 
-    add_custom_command(
-        OUTPUT "${OIGTL_MERGED_ARCHIVE}"
-        # Clean scratch + archive.
-        COMMAND ${CMAKE_COMMAND} -E rm -rf "${OIGTL_MERGED_DIR}"
-        COMMAND ${CMAKE_COMMAND} -E make_directory "${OIGTL_MERGED_DIR}"
-        COMMAND ${CMAKE_COMMAND} -E rm -f "${OIGTL_MERGED_ARCHIVE}"
-        # Extract each component archive into the scratch dir. cd
-        # into it so extracted .o files land there, not in the
-        # build root.
-        COMMAND ${CMAKE_COMMAND} -E chdir "${OIGTL_MERGED_DIR}"
-                ${CMAKE_AR} -x $<TARGET_FILE:oigtl_runtime>
-        COMMAND ${CMAKE_COMMAND} -E chdir "${OIGTL_MERGED_DIR}"
-                ${CMAKE_AR} -x $<TARGET_FILE:oigtl_messages>
-        COMMAND ${CMAKE_COMMAND} -E chdir "${OIGTL_MERGED_DIR}"
-                ${CMAKE_AR} -x $<TARGET_FILE:oigtl_transport>
-        COMMAND ${CMAKE_COMMAND} -E chdir "${OIGTL_MERGED_DIR}"
-                ${CMAKE_AR} -x $<TARGET_FILE:oigtl_ergo>
-        COMMAND ${CMAKE_COMMAND} -E chdir "${OIGTL_MERGED_DIR}"
-                ${CMAKE_AR} -x $<TARGET_FILE:igtl_compat>
-        # Reassemble via a shell glob (the .o names are unique
-        # per-component in our setup — no collisions observed).
-        COMMAND bash -c
-            "cd '${OIGTL_MERGED_DIR}' && ${CMAKE_AR} qcs '${OIGTL_MERGED_ARCHIVE}' *.o"
-        DEPENDS oigtl_runtime oigtl_messages oigtl_transport
-                oigtl_ergo   igtl_compat
-        VERBATIM
-        COMMENT "Merging five component archives → liboigtl.a")
+        add_custom_command(
+            OUTPUT "${OIGTL_MERGED_ARCHIVE}"
+            # Clean scratch + archive.
+            COMMAND ${CMAKE_COMMAND} -E rm -rf "${OIGTL_MERGED_DIR}"
+            COMMAND ${CMAKE_COMMAND} -E make_directory "${OIGTL_MERGED_DIR}"
+            COMMAND ${CMAKE_COMMAND} -E rm -f "${OIGTL_MERGED_ARCHIVE}"
+            # Extract each component archive into the scratch dir.
+            COMMAND ${CMAKE_COMMAND} -E chdir "${OIGTL_MERGED_DIR}"
+                    ${CMAKE_AR} -x $<TARGET_FILE:oigtl_runtime>
+            COMMAND ${CMAKE_COMMAND} -E chdir "${OIGTL_MERGED_DIR}"
+                    ${CMAKE_AR} -x $<TARGET_FILE:oigtl_messages>
+            COMMAND ${CMAKE_COMMAND} -E chdir "${OIGTL_MERGED_DIR}"
+                    ${CMAKE_AR} -x $<TARGET_FILE:oigtl_transport>
+            COMMAND ${CMAKE_COMMAND} -E chdir "${OIGTL_MERGED_DIR}"
+                    ${CMAKE_AR} -x $<TARGET_FILE:oigtl_ergo>
+            COMMAND ${CMAKE_COMMAND} -E chdir "${OIGTL_MERGED_DIR}"
+                    ${CMAKE_AR} -x $<TARGET_FILE:igtl_compat>
+            # Glob + reassemble from CMake, no bash.
+            COMMAND ${CMAKE_COMMAND}
+                    -DAR=${CMAKE_AR}
+                    -DMERGE_DIR=${OIGTL_MERGED_DIR}
+                    -DOUT=${OIGTL_MERGED_ARCHIVE}
+                    -P "${CMAKE_CURRENT_SOURCE_DIR}/cmake/ar_merge_objects.cmake"
+            DEPENDS oigtl_runtime oigtl_messages oigtl_transport
+                    oigtl_ergo   igtl_compat
+            VERBATIM
+            COMMENT "Merging five component archives → liboigtl.a")
+    endif()
 
     add_custom_target(oigtl_merged ALL
         DEPENDS "${OIGTL_MERGED_ARCHIVE}")
@@ -740,12 +780,18 @@ if(OIGTL_BUILD_MERGED)
         install(FILES "${OIGTL_MERGED_ARCHIVE}"
                 DESTINATION ${CMAKE_INSTALL_LIBDIR})
 
-        # Optional: also install as libOpenIGTLink.a for literal
-        # filename-level drop-in compat with the upstream project.
+        # Optional: also install under the upstream filename
+        # (libOpenIGTLink.a on POSIX, OpenIGTLink.lib on MSVC) for
+        # literal filename-level drop-in compat.
         if(OIGTL_DROP_IN_NAME)
+            if(MSVC)
+                set(OIGTL_DROP_IN_FILENAME "OpenIGTLink.lib")
+            else()
+                set(OIGTL_DROP_IN_FILENAME "libOpenIGTLink.a")
+            endif()
             install(FILES "${OIGTL_MERGED_ARCHIVE}"
                     DESTINATION ${CMAKE_INSTALL_LIBDIR}
-                    RENAME libOpenIGTLink.a)
+                    RENAME ${OIGTL_DROP_IN_FILENAME})
         endif()
     endif()
 endif()
