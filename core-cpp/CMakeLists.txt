@@ -9,7 +9,21 @@
 # Phase-2+ work will replace src/messages/*.cpp with codegen output.
 
 cmake_minimum_required(VERSION 3.16)
-project(oigtl_core CXX)
+project(oigtl VERSION 0.1.0 LANGUAGES CXX)
+
+# Phase 9 — packaging options. Control knobs:
+#   OIGTL_INSTALL       build the install/export rules (default ON)
+#   OIGTL_BUILD_MERGED  produce a single merged liboigtl.a archive (ON)
+#   OIGTL_DROP_IN_NAME  ALSO install merged archive as
+#                       libOpenIGTLink.a for literal filename
+#                       replacement of the upstream library (OFF).
+option(OIGTL_INSTALL      "Emit install / export rules"            ON)
+option(OIGTL_BUILD_MERGED "Build a single merged liboigtl.a"       ON)
+option(OIGTL_DROP_IN_NAME "Also install merged archive as libOpenIGTLink.a" OFF)
+
+# Include GNUInstallDirs early so CMAKE_INSTALL_INCLUDEDIR is
+# available when targets set their $<INSTALL_INTERFACE:> paths.
+include(GNUInstallDirs)
 
 set(CMAKE_CXX_STANDARD 17)
 set(CMAKE_CXX_STANDARD_REQUIRED ON)
@@ -38,7 +52,9 @@ add_library(oigtl_runtime STATIC
     src/runtime/metadata.cpp
     src/runtime/oracle.cpp
 )
-target_include_directories(oigtl_runtime PUBLIC include)
+target_include_directories(oigtl_runtime PUBLIC
+    $<BUILD_INTERFACE:${CMAKE_CURRENT_SOURCE_DIR}/include>
+    $<INSTALL_INTERFACE:${CMAKE_INSTALL_INCLUDEDIR}>)
 
 # ---------------------------------------------------------------------------
 # Transport library — async Connection + Framer.
@@ -59,22 +75,29 @@ FetchContent_Declare(
     SOURCE_SUBDIR  _disabled_cmake_subdir
 )
 FetchContent_MakeAvailable(asio)
-add_library(oigtl_asio_headers INTERFACE)
-target_include_directories(oigtl_asio_headers
-    SYSTEM INTERFACE "${asio_SOURCE_DIR}/asio/include")
-target_compile_definitions(oigtl_asio_headers INTERFACE
-    ASIO_STANDALONE ASIO_NO_DEPRECATED)
 
+# asio is a private, build-only dep — header-only, nothing leaks
+# through public API. We attach the include dir + macros directly
+# to oigtl_transport rather than via a named INTERFACE target
+# because INTERFACE libs pulled in as linker deps get recorded in
+# the install(EXPORT) set even when wrapped with $<BUILD_INTERFACE:>.
+# Since asio headers aren't shipped, they must disappear from the
+# export entirely.
 add_library(oigtl_transport STATIC
     src/transport/framer_v3.cpp
     src/transport/connection_loopback.cpp
     src/transport/io_runtime.cpp
     src/transport/connection_tcp.cpp
 )
-target_include_directories(oigtl_transport PUBLIC include)
+target_include_directories(oigtl_transport
+    PUBLIC
+        $<BUILD_INTERFACE:${CMAKE_CURRENT_SOURCE_DIR}/include>
+        $<INSTALL_INTERFACE:${CMAKE_INSTALL_INCLUDEDIR}>
+    PRIVATE
+        $<BUILD_INTERFACE:${asio_SOURCE_DIR}/asio/include>)
+target_compile_definitions(oigtl_transport PRIVATE
+    ASIO_STANDALONE ASIO_NO_DEPRECATED)
 target_link_libraries(oigtl_transport PUBLIC oigtl_runtime)
-# asio is a private dep — no asio types leak through public headers.
-target_link_libraries(oigtl_transport PRIVATE oigtl_asio_headers)
 # Future<T> uses condition variables; pthread on Linux.
 find_package(Threads REQUIRED)
 target_link_libraries(oigtl_transport PUBLIC Threads::Threads)
@@ -102,7 +125,9 @@ add_library(oigtl_ergo STATIC
     src/client.cpp
     src/server.cpp
 )
-target_include_directories(oigtl_ergo PUBLIC include)
+target_include_directories(oigtl_ergo PUBLIC
+    $<BUILD_INTERFACE:${CMAKE_CURRENT_SOURCE_DIR}/include>
+    $<INSTALL_INTERFACE:${CMAKE_INSTALL_INCLUDEDIR}>)
 target_link_libraries(oigtl_ergo PUBLIC oigtl_runtime oigtl_transport)
 
 add_library(oigtl INTERFACE)
@@ -148,8 +173,15 @@ add_library(igtl_compat STATIC
     compat/src/igtlServerSocket.cxx
 )
 target_include_directories(igtl_compat PUBLIC
-    compat/include           # our sources use "igtl/igtlFoo.h"
-    compat/include/igtl)     # upstream code uses bare "igtlFoo.h"
+    # Build-tree: both layered (igtl/igtlFoo.h) and bare (igtlFoo.h)
+    # includes need to resolve.
+    $<BUILD_INTERFACE:${CMAKE_CURRENT_SOURCE_DIR}/compat/include>
+    $<BUILD_INTERFACE:${CMAKE_CURRENT_SOURCE_DIR}/compat/include/igtl>
+    # Install-tree: headers land under include/igtl/ (layered) and
+    # include/oigtl-compat/ (bare-name duplicates). Both get
+    # exported so consumers of `oigtl::igtl_compat` work unmodified.
+    $<INSTALL_INTERFACE:${CMAKE_INSTALL_INCLUDEDIR}>
+    $<INSTALL_INTERFACE:${CMAKE_INSTALL_INCLUDEDIR}/oigtl-compat>)
 # Upstream examples / consumers gate v2+ includes behind the
 # protocol-version macro. Our shim supports v3 — advertise it so
 # consumer code picks up the full type set.
@@ -492,3 +524,176 @@ endif()
 target_link_libraries(oigtl_bench PRIVATE oigtl)
 target_include_directories(oigtl_bench PRIVATE
     "${IGTL_UPSTREAM_FIXTURES}")
+
+# ============================================================================
+# Phase 9 — Install, Package, Merged Archive
+# ============================================================================
+#
+# Produces three consumption models on install(DESTINATION):
+#
+#   1. Granular imported targets (oigtl::runtime, oigtl::messages,
+#      oigtl::transport, oigtl::ergo, oigtl::compat, oigtl::oigtl).
+#      Use via `find_package(oigtl)` + `target_link_libraries`.
+#
+#   2. Merged archive: liboigtl.a — all five component object files
+#      in one .a file. For Makefile / autotools consumers, or
+#      anyone who doesn't want to learn CMake imported targets.
+#      Exposed as the `oigtl::oigtl_merged` imported target too.
+#
+#   3. (optional) libOpenIGTLink.a alias — literal filename
+#      replacement of the upstream library. Gate: OIGTL_DROP_IN_NAME.
+#
+# All three consumption models point at the same bytes on disk
+# (modulo archive packaging). A consumer picks whichever fits
+# their build system best.
+
+if(OIGTL_INSTALL)
+    include(GNUInstallDirs)
+    include(CMakePackageConfigHelpers)
+
+    # Public targets + their linker-visible transitive deps.
+    install(TARGETS
+                oigtl_runtime
+                oigtl_messages
+                oigtl_transport
+                oigtl_ergo
+                igtl_compat
+                oigtl
+            EXPORT oigtlTargets
+            ARCHIVE  DESTINATION ${CMAKE_INSTALL_LIBDIR}
+            LIBRARY  DESTINATION ${CMAKE_INSTALL_LIBDIR}
+            RUNTIME  DESTINATION ${CMAKE_INSTALL_BINDIR}
+            INCLUDES DESTINATION ${CMAKE_INSTALL_INCLUDEDIR})
+
+    # New-API headers (under `oigtl/...`).
+    install(DIRECTORY include/oigtl
+            DESTINATION ${CMAKE_INSTALL_INCLUDEDIR})
+
+    # Upstream-compat headers. Install both under `igtl/igtlFoo.h`
+    # (our canonical path) and directly as bare `igtlFoo.h` so
+    # consumer code that writes `#include "igtlFoo.h"` resolves
+    # without extra -I flags.
+    install(DIRECTORY compat/include/igtl
+            DESTINATION ${CMAKE_INSTALL_INCLUDEDIR})
+    # The bare-name duplicate copies aren't strictly required — a
+    # consumer can add `-I include/igtl` — but shipping them makes
+    # "swap `-lOpenIGTLink` → `-loigtl`" genuinely zero-touch.
+    install(DIRECTORY compat/include/igtl/
+            DESTINATION ${CMAKE_INSTALL_INCLUDEDIR}/oigtl-compat
+            FILES_MATCHING PATTERN "*.h")
+
+    # ------------------------------------------------------------------
+    # Export set → oigtlTargets.cmake (installed), plus a build-tree
+    # export so consumers can `find_package(oigtl)` against an
+    # uninstalled build via `CMAKE_PREFIX_PATH=${build}`.
+    # ------------------------------------------------------------------
+    install(EXPORT oigtlTargets
+            FILE        oigtlTargets.cmake
+            NAMESPACE   oigtl::
+            DESTINATION ${CMAKE_INSTALL_LIBDIR}/cmake/oigtl)
+
+    export(EXPORT oigtlTargets
+           FILE      ${CMAKE_CURRENT_BINARY_DIR}/oigtlTargets.cmake
+           NAMESPACE oigtl::)
+
+    # ------------------------------------------------------------------
+    # oigtlConfig.cmake — the entry point `find_package(oigtl)` loads.
+    # Kept tiny: it just loads the targets file. Version sanity is
+    # handled by oigtlConfigVersion.cmake (SameMajorVersion).
+    # ------------------------------------------------------------------
+    set(OIGTL_CONFIG_IN "${CMAKE_CURRENT_BINARY_DIR}/oigtlConfig.cmake")
+    file(WRITE  "${OIGTL_CONFIG_IN}"
+"# oigtlConfig.cmake — openigtlink-ng consumer entry point.
+# Generated; do not edit by hand.
+include(CMakeFindDependencyMacro)
+find_dependency(Threads)
+include(\"\${CMAKE_CURRENT_LIST_DIR}/oigtlTargets.cmake\")
+")
+    install(FILES       "${OIGTL_CONFIG_IN}"
+            DESTINATION ${CMAKE_INSTALL_LIBDIR}/cmake/oigtl)
+
+    write_basic_package_version_file(
+        "${CMAKE_CURRENT_BINARY_DIR}/oigtlConfigVersion.cmake"
+        VERSION ${PROJECT_VERSION}
+        COMPATIBILITY SameMajorVersion)
+    install(FILES
+        "${CMAKE_CURRENT_BINARY_DIR}/oigtlConfigVersion.cmake"
+        DESTINATION ${CMAKE_INSTALL_LIBDIR}/cmake/oigtl)
+
+    # ------------------------------------------------------------------
+    # pkg-config file (oigtl.pc) for autotools / Makefile consumers.
+    # Points at the merged archive by default so `-loigtl` just works.
+    # ------------------------------------------------------------------
+    set(OIGTL_PC "${CMAKE_CURRENT_BINARY_DIR}/oigtl.pc")
+    file(WRITE "${OIGTL_PC}"
+"prefix=${CMAKE_INSTALL_PREFIX}
+exec_prefix=\${prefix}
+libdir=\${prefix}/${CMAKE_INSTALL_LIBDIR}
+includedir=\${prefix}/${CMAKE_INSTALL_INCLUDEDIR}
+
+Name: openigtlink-ng
+Description: Modern C++ OpenIGTLink with drop-in upstream compatibility
+URL: https://github.com/openigtlink/openigtlink-ng
+Version: ${PROJECT_VERSION}
+Libs: -L\${libdir} -loigtl -lpthread
+Cflags: -I\${includedir}
+")
+    install(FILES "${OIGTL_PC}"
+            DESTINATION ${CMAKE_INSTALL_LIBDIR}/pkgconfig)
+endif()
+
+# ----------------------------------------------------------------------------
+# Merged liboigtl.a — one archive containing every component object
+# file. Produced by extracting each component .a with `ar -x` into
+# a scratch directory, then reassembling with `ar qcs`. Works
+# identically on Linux + macOS.
+# ----------------------------------------------------------------------------
+if(OIGTL_BUILD_MERGED)
+    set(OIGTL_MERGED_DIR "${CMAKE_CURRENT_BINARY_DIR}/_merge")
+    set(OIGTL_MERGED_ARCHIVE
+        "${CMAKE_CURRENT_BINARY_DIR}/liboigtl.a")
+
+    add_custom_command(
+        OUTPUT "${OIGTL_MERGED_ARCHIVE}"
+        # Clean scratch + archive.
+        COMMAND ${CMAKE_COMMAND} -E rm -rf "${OIGTL_MERGED_DIR}"
+        COMMAND ${CMAKE_COMMAND} -E make_directory "${OIGTL_MERGED_DIR}"
+        COMMAND ${CMAKE_COMMAND} -E rm -f "${OIGTL_MERGED_ARCHIVE}"
+        # Extract each component archive into the scratch dir. cd
+        # into it so extracted .o files land there, not in the
+        # build root.
+        COMMAND ${CMAKE_COMMAND} -E chdir "${OIGTL_MERGED_DIR}"
+                ${CMAKE_AR} -x $<TARGET_FILE:oigtl_runtime>
+        COMMAND ${CMAKE_COMMAND} -E chdir "${OIGTL_MERGED_DIR}"
+                ${CMAKE_AR} -x $<TARGET_FILE:oigtl_messages>
+        COMMAND ${CMAKE_COMMAND} -E chdir "${OIGTL_MERGED_DIR}"
+                ${CMAKE_AR} -x $<TARGET_FILE:oigtl_transport>
+        COMMAND ${CMAKE_COMMAND} -E chdir "${OIGTL_MERGED_DIR}"
+                ${CMAKE_AR} -x $<TARGET_FILE:oigtl_ergo>
+        COMMAND ${CMAKE_COMMAND} -E chdir "${OIGTL_MERGED_DIR}"
+                ${CMAKE_AR} -x $<TARGET_FILE:igtl_compat>
+        # Reassemble via a shell glob (the .o names are unique
+        # per-component in our setup — no collisions observed).
+        COMMAND bash -c
+            "cd '${OIGTL_MERGED_DIR}' && ${CMAKE_AR} qcs '${OIGTL_MERGED_ARCHIVE}' *.o"
+        DEPENDS oigtl_runtime oigtl_messages oigtl_transport
+                oigtl_ergo   igtl_compat
+        VERBATIM
+        COMMENT "Merging five component archives → liboigtl.a")
+
+    add_custom_target(oigtl_merged ALL
+        DEPENDS "${OIGTL_MERGED_ARCHIVE}")
+
+    if(OIGTL_INSTALL)
+        install(FILES "${OIGTL_MERGED_ARCHIVE}"
+                DESTINATION ${CMAKE_INSTALL_LIBDIR})
+
+        # Optional: also install as libOpenIGTLink.a for literal
+        # filename-level drop-in compat with the upstream project.
+        if(OIGTL_DROP_IN_NAME)
+            install(FILES "${OIGTL_MERGED_ARCHIVE}"
+                    DESTINATION ${CMAKE_INSTALL_LIBDIR}
+                    RENAME libOpenIGTLink.a)
+        endif()
+    endif()
+endif()

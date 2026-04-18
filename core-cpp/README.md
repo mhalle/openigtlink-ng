@@ -144,6 +144,45 @@ uv run --project corpus-tools oigtl-corpus codegen cpp
 
 CI enforces drift via `oigtl-corpus codegen cpp --check`.
 
+## Install & consume
+
+```bash
+cmake -S core-cpp -B build -DCMAKE_BUILD_TYPE=Release
+cmake --build build
+cmake --install build --prefix /your/prefix
+```
+
+Installs five granular static archives, a merged `liboigtl.a`,
+`oigtlConfig.cmake` with imported targets (`oigtl::runtime`,
+`oigtl::messages`, `oigtl::transport`, `oigtl::ergo`, `oigtl::igtl_compat`,
+`oigtl::oigtl`), and a pkg-config file.
+
+CMake consumer:
+
+```cmake
+find_package(oigtl REQUIRED)
+target_link_libraries(your_app PRIVATE oigtl::oigtl)
+```
+
+Makefile / autotools consumer:
+
+```
+$(pkg-config --cflags oigtl)
+$(pkg-config --libs   oigtl)
+```
+
+### Drop-in for upstream libOpenIGTLink
+
+If you have a C++ codebase written against the upstream
+OpenIGTLink library (`igtl::TransformMessage`, `igtl::ClientSocket`,
+etc.), you can relink against our library unchanged — the
+`igtl::` namespace is provided in full by `oigtl::igtl_compat`.
+See [`compat/MIGRATION.md`](compat/MIGRATION.md) for specifics.
+
+Configure with `-DOIGTL_DROP_IN_NAME=ON` to also install the
+merged archive under the literal filename `libOpenIGTLink.a` for
+consumers who can't easily change a Makefile.
+
 ## License
 
 Apache 2.0. See [`../LICENSE`](../LICENSE).
