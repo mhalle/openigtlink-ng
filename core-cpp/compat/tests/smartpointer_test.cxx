@@ -110,21 +110,25 @@ void test_is_null_semantics() {
     REQUIRE(empty.GetPointer() == nullptr);
 }
 
+// File-scope constants — used inside a lambda body in
+// test_concurrent_register_unregister below. Kept at
+// namespace scope to sidestep a MSVC quirk: under /permissive-
+// its lambda-capture rules demand a named capture for even
+// block-scope \`constexpr int\` (C3493), which in turn makes
+// Apple-clang warn -Wunused-lambda-capture. Pulling them out
+// makes the capture list trivially correct on both compilers.
+constexpr int kConcurrentIters   = 1000;
+constexpr int kConcurrentThreads = 8;
+
 void test_concurrent_register_unregister() {
     std::fprintf(stderr, "test_concurrent_register_unregister\n");
     auto p = Probe::New();
-    // `constexpr` rather than `const int` so MSVC strict mode
-    // treats it as a compile-time constant and doesn't demand
-    // named capture inside the lambda below. Clang in turn would
-    // warn (-Wunused-lambda-capture) if we captured it explicitly.
-    constexpr int N = 1000;
-    constexpr int threads = 8;
 
     std::vector<std::thread> ts;
-    ts.reserve(threads);
-    for (int i = 0; i < threads; ++i) {
+    ts.reserve(kConcurrentThreads);
+    for (int i = 0; i < kConcurrentThreads; ++i) {
         ts.emplace_back([&p]() {
-            for (int j = 0; j < N; ++j) {
+            for (int j = 0; j < kConcurrentIters; ++j) {
                 p->Register();
                 p->UnRegister();
             }
