@@ -40,6 +40,12 @@ int {{ plan.struct_array.element.type_prefix }}_unpack(
     if (len < {{ plan.struct_array.element.size_macro }})
         return OIGTL_ERR_SHORT_BUFFER;
 
+    /* Zero the whole out struct so trailing bytes after a short
+     * null-padded string are deterministic rather than whatever
+     * the caller's stack held. Otherwise two unpacks of the same
+     * bytes into different stack frames produce structs that are
+     * logically equal but differ under memcmp. */
+    memset(out, 0, sizeof *out);
     size_t eoff = 0;
 {% for m in plan.struct_array.element.members %}
 {% for line in m.unpack_lines %}
@@ -205,6 +211,11 @@ int {{ plan.fn_prefix }}_unpack(const uint8_t *buf, size_t len,
 {% if plan.is_fixed_body and plan.body_size > 0 %}
     if (len < (size_t){{ plan.body_size }}) return OIGTL_ERR_SHORT_BUFFER;
 {% endif %}
+    /* Zero the output so trailing bytes after fixed_string fields
+     * and unset view pointers are deterministic. Callers doing a
+     * memcmp on two unpack results of the same wire bytes will see
+     * equality rather than uninit-memory differences. */
+    memset(out, 0, sizeof *out);
 {% if plan.body_size_set %}
     {
         static const size_t k_allowed[] = {

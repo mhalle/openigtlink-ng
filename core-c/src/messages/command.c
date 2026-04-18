@@ -58,6 +58,11 @@ int oigtl_command_pack(const oigtl_command_t *msg,
 int oigtl_command_unpack(const uint8_t *buf, size_t len,
                                 oigtl_command_t *out) {
     if (buf == NULL || out == NULL) return OIGTL_ERR_INVALID_ARG;
+    /* Zero the output so trailing bytes after fixed_string fields
+     * and unset view pointers are deterministic. Callers doing a
+     * memcmp on two unpack results of the same wire bytes will see
+     * equality rather than uninit-memory differences. */
+    memset(out, 0, sizeof *out);
 
     size_t off = 0;
     /* command_id */

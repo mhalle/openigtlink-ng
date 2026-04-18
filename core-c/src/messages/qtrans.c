@@ -44,6 +44,11 @@ int oigtl_qtrans_unpack(const uint8_t *buf, size_t len,
                                 oigtl_qtrans_t *out) {
     if (buf == NULL || out == NULL) return OIGTL_ERR_INVALID_ARG;
     if (len < (size_t)28) return OIGTL_ERR_SHORT_BUFFER;
+    /* Zero the output so trailing bytes after fixed_string fields
+     * and unset view pointers are deterministic. Callers doing a
+     * memcmp on two unpack results of the same wire bytes will see
+     * equality rather than uninit-memory differences. */
+    memset(out, 0, sizeof *out);
 
     size_t off = 0;
     /* position */

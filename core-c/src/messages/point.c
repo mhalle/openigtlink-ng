@@ -65,6 +65,12 @@ int oigtl_point_element_unpack(
     if (len < OIGTL_POINT_ELEMENT_SIZE)
         return OIGTL_ERR_SHORT_BUFFER;
 
+    /* Zero the whole out struct so trailing bytes after a short
+     * null-padded string are deterministic rather than whatever
+     * the caller's stack held. Otherwise two unpacks of the same
+     * bytes into different stack frames produce structs that are
+     * logically equal but differ under memcmp. */
+    memset(out, 0, sizeof *out);
     size_t eoff = 0;
     {
         int n = oigtl_null_padded_length(buf + eoff, 64);
