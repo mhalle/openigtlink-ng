@@ -14,7 +14,7 @@ cmake_minimum_required(VERSION 3.16)
 # v0.1.0 (which is a released, immutable set of bits). CMake's
 # VERSION field requires numeric components only — no `-dev`
 # pre-release suffix is possible here, so we bump the MINOR.
-project(oigtl VERSION 0.2.0 LANGUAGES CXX)
+project(oigtl VERSION 0.3.0 LANGUAGES CXX)
 
 # Phase 9 — packaging options. Control knobs:
 #   OIGTL_INSTALL       build the install/export rules (default ON)
