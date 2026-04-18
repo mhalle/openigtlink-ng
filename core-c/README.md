@@ -79,3 +79,43 @@ The CRC-64 table is identical to the one in
 `corpus-tools/.../codec/crc64.py`, which is itself ported from
 upstream `igtl_util.c`. Don't change any of these without running
 the oracle parity suite.
+
+## Safety contract
+
+Split between what the codec guarantees and what the caller owns.
+The split matters — C's safety surface extends past the library.
+
+**Codec guarantees** — fuzz-verified under libFuzzer + ASan +
+UBSan in CI, one target per field-shape category covering
+TRANSFORM / STATUS / POSITION / SENSOR, ~120 million iterations
+per run:
+
+- Any `(buf, len)` input to `*_unpack()` returns without OOB
+  read, OOB write, or undefined behavior.
+- Malformed wire bytes produce a negative `OIGTL_ERR_*` code;
+  never UB, never a silent garbage struct.
+- `pack(unpack(x))` is byte-identical to the first N bytes of
+  the original input, where N is the pack size. No silent data
+  corruption under round-trip.
+- A successful `*_pack()` writes exactly `packed_size()` bytes
+  into the destination and never past `cap`.
+
+**Caller's responsibility** — documented here, not enforced by
+the codec:
+
+- **Lifetime.** Variable-length fields in the unpacked struct
+  (`const char *` trailing strings, `const uint8_t *` view
+  arrays) point into the source wire buffer. Copy via
+  `oigtl_copy_string()` / a manual `memcpy` before the wire
+  buffer's lifetime ends if you need to persist them.
+- **Aliasing.** Don't pass overlapping pointers for `buf` and
+  `msg->*` fields. The codec doesn't detect aliasing; UB if
+  you break it.
+- **Return codes.** Check the return of `*_unpack()` before
+  reading struct fields. Reading after a failure is undefined.
+- **Thread safety.** The codec itself is reentrant (no globals,
+  no allocation). Whether your caller code is safe to share
+  structs across threads is your problem.
+
+See `core-c/FUZZ_PLAN.md` for the fuzz target design and
+planned future coverage (struct-element arrays, metadata).
