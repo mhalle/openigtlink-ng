@@ -58,6 +58,18 @@ class FramingError : public TransportError {
     using TransportError::TransportError;
 };
 
+// Client's offline buffer was full when a send() tried to enqueue
+// and the overflow policy was DropNewest. Derives from
+// ConnectionClosedError for source-compatibility with callers that
+// already catch the "can't send right now" case — a buffer-full
+// event is morally identical to "the wire isn't accepting writes
+// at the moment".
+class BufferOverflowError : public ConnectionClosedError {
+ public:
+    BufferOverflowError()
+        : ConnectionClosedError("offline buffer full") {}
+};
+
 }  // namespace oigtl::transport
 
 #endif  // OIGTL_TRANSPORT_ERRORS_HPP

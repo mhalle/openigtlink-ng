@@ -211,6 +211,10 @@ class TcpConnection final : public Connection {
     std::uint16_t peer_port() const override { return impl_->peer_port_; }
     std::uint16_t negotiated_version() const override { return 0; }
 
+    detail::socket_t native_socket() const override {
+        return impl_->socket.native_handle();
+    }
+
     Incoming receive_sync(
             std::chrono::milliseconds timeout) override {
         std::lock_guard<std::mutex> lk(impl_->recv_sync_mu);

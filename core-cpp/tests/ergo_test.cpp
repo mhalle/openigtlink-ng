@@ -370,6 +370,187 @@ void test_server_allow_peer_range_refuses_outside() {
     if (acc_th.joinable()) acc_th.join();
 }
 
+// ==========================================================================
+// Resilience tests — auto_reconnect, offline buffer, keepalive hooks.
+//
+// The hard part of testing TCP drop detection is that a send() into
+// a half-dead connection doesn't fail immediately — the kernel
+// buffers writes until an RST surfaces from the peer. We force
+// drop detection by having the client attempt a read (which sees
+// the peer's FIN and throws synchronously).
+// ==========================================================================
+
+namespace rtest {
+
+// Force the client to observe a drop. Tries a short receive; on
+// a disconnected connection this throws ConnectionClosedError
+// which the client catches internally (with auto_reconnect) or
+// propagates (without). Either way, state transitions to
+// "disconnected" before we return. Assumes the Client was
+// constructed with a bounded receive_timeout so this call
+// itself returns promptly.
+void force_drop_detection(oigtl::Client& c) {
+    try {
+        (void)c.receive_any();
+    } catch (const oigtl::transport::TransportError&) {
+        // Expected — drop has been detected.
+    } catch (...) {
+        // Unexpected exception shape; still advanced the state.
+    }
+}
+
+// Shared options used by resilience tests — keeps the receive
+// timeout short so force_drop_detection doesn't hang.
+oigtl::ClientOptions resilient_options_base() {
+    oigtl::ClientOptions opt;
+    opt.receive_timeout = std::chrono::milliseconds(200);
+    opt.auto_reconnect = true;
+    opt.reconnect_initial_backoff = std::chrono::milliseconds(25);
+    opt.reconnect_max_backoff = std::chrono::milliseconds(100);
+    return opt;
+}
+
+// Wait up to `budget` for `pred()` to return true. Returns true
+// iff pred became true. Polls every 10 ms — plenty fast for
+// tests, doesn't burn CPU.
+template <class Pred>
+bool wait_for(std::chrono::milliseconds budget, Pred pred) {
+    const auto deadline =
+        std::chrono::steady_clock::now() + budget;
+    while (std::chrono::steady_clock::now() < deadline) {
+        if (pred()) return true;
+        std::this_thread::sleep_for(std::chrono::milliseconds(10));
+    }
+    return pred();
+}
+
+}  // namespace rtest
+
+void test_offline_buffer_disabled_throws() {
+    std::fprintf(stderr, "test_offline_buffer_disabled_throws\n");
+    // auto_reconnect on but offline_buffer_capacity == 0 → send
+    // on disconnected client throws ConnectionClosedError rather
+    // than silently dropping.
+    auto opt = rtest::resilient_options_base();
+    opt.offline_buffer_capacity = 0;
+
+    auto server = oigtl::Server::listen(0);
+    const auto port = server.local_port();
+    std::thread acc([&] { (void)server.accept(); });
+    auto c = oigtl::Client::connect("127.0.0.1", port, opt);
+    acc.join();
+
+    server.close();
+    rtest::force_drop_detection(c);
+
+    oigtl::messages::Status s; s.code = 1;
+    bool threw = false;
+    try { c.send(s); }
+    catch (const oigtl::transport::ConnectionClosedError&) { threw = true; }
+    REQUIRE(threw);
+}
+
+void test_offline_buffer_drop_oldest_preserves_send() {
+    std::fprintf(stderr, "test_offline_buffer_drop_oldest_preserves_send\n");
+    auto opt = rtest::resilient_options_base();
+    opt.offline_buffer_capacity = 3;
+    opt.offline_overflow_policy =
+        oigtl::ClientOptions::OfflineOverflow::DropOldest;
+
+    auto server = oigtl::Server::listen(0);
+    const auto port = server.local_port();
+    std::thread acc([&] { (void)server.accept(); });
+    auto c = oigtl::Client::connect("127.0.0.1", port, opt);
+    acc.join();
+
+    server.close();
+    rtest::force_drop_detection(c);
+
+    // With the worker busy trying to reconnect against a closed
+    // server, sends should land in the offline buffer without
+    // exceptions (DropOldest policy).
+    oigtl::messages::Status s; s.code = 1;
+    int throws = 0;
+    for (int i = 0; i < 10; ++i) {
+        try { c.send(s); }
+        catch (const oigtl::transport::ConnectionClosedError&) { ++throws; }
+    }
+    // DropOldest should NEVER throw BufferOverflow; other
+    // exceptions indicate a bug or terminal failure.
+    REQUIRE(throws == 0);
+}
+
+void test_offline_buffer_drop_newest_surfaces_overflow() {
+    std::fprintf(stderr,
+                 "test_offline_buffer_drop_newest_surfaces_overflow\n");
+    auto opt = rtest::resilient_options_base();
+    opt.offline_buffer_capacity = 2;
+    opt.offline_overflow_policy =
+        oigtl::ClientOptions::OfflineOverflow::DropNewest;
+    opt.reconnect_initial_backoff = std::chrono::milliseconds(1000);
+    opt.reconnect_max_backoff = std::chrono::milliseconds(1000);
+
+    auto server = oigtl::Server::listen(0);
+    const auto port = server.local_port();
+    std::thread acc([&] { (void)server.accept(); });
+    auto c = oigtl::Client::connect("127.0.0.1", port, opt);
+    acc.join();
+
+    server.close();
+    rtest::force_drop_detection(c);
+
+    oigtl::messages::Status s; s.code = 1;
+    // Two sends fill the buffer.
+    c.send(s);
+    c.send(s);
+    // Third send with DropNewest throws BufferOverflowError.
+    bool threw_overflow = false;
+    try { c.send(s); }
+    catch (const oigtl::transport::BufferOverflowError&) {
+        threw_overflow = true;
+    }
+    REQUIRE(threw_overflow);
+}
+
+void test_reconnect_max_attempts_exhaustion() {
+    std::fprintf(stderr, "test_reconnect_max_attempts_exhaustion\n");
+    auto opt = rtest::resilient_options_base();
+    opt.offline_buffer_capacity = 5;
+    opt.reconnect_max_attempts = 2;
+
+    auto server = oigtl::Server::listen(0);
+    const auto port = server.local_port();
+    std::thread acc([&] { (void)server.accept(); });
+    auto c = oigtl::Client::connect("127.0.0.1", port, opt);
+    acc.join();
+
+    std::atomic<int> failures{0};
+    c.on_reconnect_failed([&](int, auto) { ++failures; });
+
+    server.close();
+    rtest::force_drop_detection(c);
+
+    // Wait for 2 failed reconnect attempts (reconnect_max_backoff
+    // = 50 ms, so 2 attempts total is ~150 ms; budget 2 s for
+    // scheduling jitter).
+    const bool got_failures = rtest::wait_for(
+        std::chrono::seconds(2),
+        [&] { return failures.load() >= 2; });
+    REQUIRE(got_failures);
+
+    // After exhaustion, send should throw terminally.
+    oigtl::messages::Status s; s.code = 1;
+    bool got_terminal = rtest::wait_for(
+        std::chrono::seconds(1),
+        [&] {
+            try { c.send(s); return false; }
+            catch (const oigtl::transport::ConnectionClosedError&) {
+                return true;
+            }
+        });
+    REQUIRE(got_terminal);
+}
+
 int main() {
     test_timestamp_roundtrip();
     test_metadata_helpers();
@@ -381,6 +562,10 @@ int main() {
     test_dispatch_loop();
     test_server_restrict_loopback_accepts();
     test_server_allow_peer_range_refuses_outside();
+    test_offline_buffer_disabled_throws();
+    test_offline_buffer_drop_oldest_preserves_send();
+    test_offline_buffer_drop_newest_surfaces_overflow();
+    test_reconnect_max_attempts_exhaustion();
 
     if (g_fail_count == 0) {
         std::fprintf(stderr, "ergo_test: all passed\n");

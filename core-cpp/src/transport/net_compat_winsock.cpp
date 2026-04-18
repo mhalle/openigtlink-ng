@@ -216,6 +216,38 @@ void suppress_sigpipe(socket_t /*s*/) {
     // Winsock has no SIGPIPE.
 }
 
+void configure_keepalive(socket_t s,
+                         std::chrono::seconds idle,
+                         std::chrono::seconds interval,
+                         int count) {
+    /* Windows uses SIO_KEEPALIVE_VALS via WSAIoctl instead of the
+     * POSIX getsockopt chain. The `count` (number of probes) is
+     * not individually tunable on Windows — the kernel defaults
+     * to its own retry policy. We pass the idle + interval and
+     * document the count omission. */
+    (void)count;
+    struct tcp_keepalive_ex {
+        ULONG onoff;
+        ULONG keepalivetime;     // idle time in milliseconds
+        ULONG keepaliveinterval; // probe interval in milliseconds
+    } ka;
+    ka.onoff             = 1;
+    ka.keepalivetime     = static_cast<ULONG>(
+        std::chrono::duration_cast<std::chrono::milliseconds>(idle)
+            .count());
+    ka.keepaliveinterval = static_cast<ULONG>(
+        std::chrono::duration_cast<std::chrono::milliseconds>(interval)
+            .count());
+
+    DWORD bytes_returned = 0;
+    (void)::WSAIoctl(static_cast<SOCKET>(s),
+                     SIO_KEEPALIVE_VALS,
+                     &ka, sizeof ka,
+                     nullptr, 0,
+                     &bytes_returned,
+                     nullptr, nullptr);
+}
+
 // ---------------------------------------------------------------
 // address parsing
 // ---------------------------------------------------------------

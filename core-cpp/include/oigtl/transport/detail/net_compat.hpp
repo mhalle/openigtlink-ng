@@ -114,6 +114,28 @@ void set_recv_timeout(socket_t s, std::chrono::milliseconds ms);
 // (no SIGPIPE at all).
 void suppress_sigpipe(socket_t s);
 
+// Enable TCP keepalive with tuned intervals. When the peer goes
+// silent for `idle` seconds the kernel starts probing; after
+// `count` unanswered probes spaced `interval` apart, the kernel
+// closes the socket and subsequent reads return 0 (EOF).
+//
+// Platform mapping:
+//   Linux:    SO_KEEPALIVE + TCP_KEEPIDLE + TCP_KEEPINTVL + TCP_KEEPCNT
+//   macOS:    SO_KEEPALIVE + TCP_KEEPALIVE (seconds) + TCP_KEEPINTVL +
+//             TCP_KEEPCNT
+//   Windows:  SIO_KEEPALIVE_VALS (count isn't individually tunable
+//             on Windows; we ignore it there, documented in the
+//             implementation)
+//
+// Non-fatal: any setsockopt failure is silently swallowed. A
+// working connection that can't have keepalive tuned is still a
+// working connection — dying silently would be worse than having
+// keepalive misconfigured.
+void configure_keepalive(socket_t s,
+                         std::chrono::seconds idle,
+                         std::chrono::seconds interval,
+                         int count);
+
 // ---------------------------------------------------------------
 // Close
 // ---------------------------------------------------------------

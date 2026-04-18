@@ -137,6 +137,41 @@ void suppress_sigpipe(socket_t s) {
 #endif
 }
 
+void configure_keepalive(socket_t s,
+                         std::chrono::seconds idle,
+                         std::chrono::seconds interval,
+                         int count) {
+    int on = 1;
+    (void)::setsockopt(s, SOL_SOCKET, SO_KEEPALIVE, &on, sizeof(on));
+
+    const int idle_s     = static_cast<int>(idle.count());
+    const int interval_s = static_cast<int>(interval.count());
+
+#if defined(TCP_KEEPIDLE)     // Linux, FreeBSD >= 9.0
+    (void)::setsockopt(s, IPPROTO_TCP, TCP_KEEPIDLE,
+                       &idle_s, sizeof(idle_s));
+#elif defined(TCP_KEEPALIVE)  // macOS: TCP_KEEPALIVE is "idle seconds"
+    (void)::setsockopt(s, IPPROTO_TCP, TCP_KEEPALIVE,
+                       &idle_s, sizeof(idle_s));
+#else
+    (void)idle_s;
+#endif
+
+#ifdef TCP_KEEPINTVL
+    (void)::setsockopt(s, IPPROTO_TCP, TCP_KEEPINTVL,
+                       &interval_s, sizeof(interval_s));
+#else
+    (void)interval_s;
+#endif
+
+#ifdef TCP_KEEPCNT
+    (void)::setsockopt(s, IPPROTO_TCP, TCP_KEEPCNT,
+                       &count, sizeof(count));
+#else
+    (void)count;
+#endif
+}
+
 // ---------------------------------------------------------------
 // address parsing
 // ---------------------------------------------------------------

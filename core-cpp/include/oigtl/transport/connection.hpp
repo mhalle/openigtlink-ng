@@ -19,6 +19,7 @@
 #include <string_view>
 #include <utility>
 
+#include "oigtl/transport/detail/net_compat.hpp"
 #include "oigtl/transport/framer.hpp"
 #include "oigtl/transport/future.hpp"
 #include "oigtl/transport/policy.hpp"
@@ -98,6 +99,17 @@ class Connection {
     // Graceful close. Pending receive() resolves with
     // ConnectionClosedError. Idempotent.
     virtual Future<void> close() = 0;
+
+    // Return the underlying native socket descriptor, or
+    // `detail::invalid_socket` if the Connection isn't backed by a
+    // real socket (loopback, mocks). Exposed so high-level
+    // facades (e.g. Client) can configure socket-level knobs like
+    // SO_KEEPALIVE that the Connection itself doesn't wrap. The
+    // socket is still owned by the Connection; callers must not
+    // close it.
+    virtual detail::socket_t native_socket() const {
+        return detail::invalid_socket;
+    }
 
     virtual ~Connection() = default;
 };
