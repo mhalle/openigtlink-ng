@@ -112,8 +112,11 @@ int main() {
     std::atomic<int> rx1{0};
     std::atomic<int> rx2{0};
 
-    // Phase 1 server on a random free port.
-    auto s1 = std::make_unique<ServerSession>(0, rx1);
+    // Phase 1 server on a random free port. `std::uint16_t{0}`
+    // rather than bare 0 so MSVC's /W4 doesn't warn about
+    // narrowing the int literal through make_unique's perfect
+    // forwarding.
+    auto s1 = std::make_unique<ServerSession>(std::uint16_t{0}, rx1);
     const auto port = s1->port();
 
     oigtl::ClientOptions opt;
