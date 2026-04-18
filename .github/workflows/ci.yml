@@ -1,9 +1,9 @@
 # Continuous integration: build + test the C++ codec and the
 # Python codegen / corpus tools across the platforms we expect
-# downstream consumers to run on. MSVC is intentionally omitted
-# until someone adds it; nothing in core-cpp/ is Unix-specific
-# but we haven't proved it builds clean on MSVC's stricter
-# warning set yet.
+# downstream consumers to run on — Linux (gcc + clang), macOS,
+# and Windows / MSVC. Windows CI validates the Winsock backend
+# of the transport's net_compat abstraction (see
+# core-cpp/WINDOWS_PLAN.md).
 
 name: CI
 
@@ -29,6 +29,15 @@ jobs:
           - os: macos-latest
             cc: clang
             cxx: clang++
+          # Windows / MSVC 2022. The upstream-dependent tests
+          # (compat_parity_*, compat_upstream_examples_interop)
+          # self-gate on the upstream build artifact being present;
+          # since we don't build upstream libOpenIGTLink on Windows,
+          # those tests simply don't register. The rest of the
+          # suite exercises the Winsock backend end-to-end.
+          - os: windows-latest
+            cc: ''
+            cxx: ''
 
     steps:
       - uses: actions/checkout@v4
@@ -39,9 +48,7 @@ jobs:
       # intentionally — see spec/corpus/ORACLE_VERSION.md.
       - name: Clone upstream OpenIGTLink (pinned oracle)
         run: |
-          git clone --no-tags --depth 1 \
-              https://github.com/openigtlink/OpenIGTLink.git \
-              corpus-tools/reference-libs/openigtlink-upstream
+          git clone --no-tags --depth 1 https://github.com/openigtlink/OpenIGTLink.git corpus-tools/reference-libs/openigtlink-upstream
           cd corpus-tools/reference-libs/openigtlink-upstream
           git fetch --depth 1 origin 94244fed7051e00cbcd4c341a7d7656be8ac404a
           git checkout 94244fed7051e00cbcd4c341a7d7656be8ac404a
@@ -69,18 +76,38 @@ jobs:
         working-directory: corpus-tools
         run: uv sync --all-extras
 
-      - name: Configure
+      # POSIX: single-config Makefile/Ninja. Windows: we use the
+      # Visual Studio 17 2022 multi-config generator explicitly so
+      # MSBuild picks up MSVC 2022 without environment gymnastics.
+      # --config Release propagates through build + ctest below.
+      - name: Configure (POSIX)
+        if: runner.os != 'Windows'
         env:
           CC: ${{ matrix.cc }}
           CXX: ${{ matrix.cxx }}
         run: cmake -S core-cpp -B core-cpp/build
 
-      - name: Build
+      - name: Configure (Windows / MSVC 2022)
+        if: runner.os == 'Windows'
+        run: cmake -S core-cpp -B core-cpp/build -G "Visual Studio 17 2022" -A x64
+
+      - name: Build (POSIX)
+        if: runner.os != 'Windows'
         run: cmake --build core-cpp/build --parallel
 
-      - name: Test
+      - name: Build (Windows)
+        if: runner.os == 'Windows'
+        run: cmake --build core-cpp/build --parallel --config Release
+
+      - name: Test (POSIX)
+        if: runner.os != 'Windows'
         working-directory: core-cpp/build
         run: ctest --output-on-failure
+
+      - name: Test (Windows)
+        if: runner.os == 'Windows'
+        working-directory: core-cpp/build
+        run: ctest --output-on-failure -C Release
 
   python:
     name: Python codegen + tests
