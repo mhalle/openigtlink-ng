@@ -44,6 +44,12 @@ if(CMAKE_CXX_COMPILER_ID MATCHES "GNU|Clang|AppleClang")
                         -Wno-unused-parameter)
 elseif(MSVC)
     add_compile_options(/W4 /WX)
+    # Codegen emits nested `for (std::size_t i = 0; ...)` loops and
+    # pack() locals named after class members (body_size). MSVC
+    # flags these as C4456 / C4458 — stylistic shadowing, not
+    # bugs. We suppress here rather than regenerate every message:
+    # the right fix is in the codegen templates (tracked).
+    add_compile_options(/wd4456 /wd4458)
 endif()
 
 # ---------------------------------------------------------------------------
@@ -219,6 +225,15 @@ target_include_directories(igtl_compat PUBLIC
 # consumer code picks up the full type set.
 target_compile_definitions(igtl_compat PUBLIC
     OpenIGTLink_PROTOCOL_VERSION=3)
+# Compat layer mimics upstream's 2008-era API (strncpy, strcpy,
+# etc.). MSVC flags these as C4996 "deprecated"; the underlying
+# C functions aren't actually deprecated by any standard — MSVC
+# just prefers its _s variants. Disable the warning on the compat
+# TUs only; our own code uses std:: equivalents and stays strict.
+if(MSVC)
+    target_compile_definitions(igtl_compat PRIVATE
+        _CRT_SECURE_NO_WARNINGS)
+endif()
 # Pack/Unpack in the facades goes through our runtime codec.
 # Socket / ClientSocket / ServerSocket delegate to oigtl_transport.
 target_link_libraries(igtl_compat PUBLIC oigtl_runtime oigtl_transport)

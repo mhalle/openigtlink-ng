@@ -126,7 +126,9 @@ int MessageBase::Pack() {
         for (const auto& kv : m_MetaData) {
             rt::MetadataEntry e;
             e.key = kv.first;
-            e.value_encoding = kv.second.first;
+            // IANA_ENCODING_TYPE is an unscoped enum (int-width);
+            // value_encoding is uint16_t. Explicit narrowing cast.
+            e.value_encoding = static_cast<std::uint16_t>(kv.second.first);
             e.value.assign(kv.second.second.begin(),
                            kv.second.second.end());
             entries.push_back(std::move(e));
