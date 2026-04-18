@@ -33,6 +33,19 @@ jobs:
     steps:
       - uses: actions/checkout@v4
 
+      # Clone upstream OpenIGTLink at the pinned oracle SHA. Tests,
+      # codegen, and parity checks read upstream's test vectors from
+      # this directory. The .gitignore excludes it from our repo
+      # intentionally — see spec/corpus/ORACLE_VERSION.md.
+      - name: Clone upstream OpenIGTLink (pinned oracle)
+        run: |
+          git clone --no-tags --depth 1 \
+              https://github.com/openigtlink/OpenIGTLink.git \
+              corpus-tools/reference-libs/openigtlink-upstream
+          cd corpus-tools/reference-libs/openigtlink-upstream
+          git fetch --depth 1 origin 94244fed7051e00cbcd4c341a7d7656be8ac404a
+          git checkout 94244fed7051e00cbcd4c341a7d7656be8ac404a
+
       - name: Install GCC 13 (Ubuntu)
         if: runner.os == 'Linux' && startsWith(matrix.cxx, 'g++')
         run: |
@@ -54,7 +67,7 @@ jobs:
 
       - name: Sync corpus-tools (so `uv run oigtl-corpus` works)
         working-directory: corpus-tools
-        run: uv sync
+        run: uv sync --all-extras
 
       - name: Configure
         env:
@@ -75,6 +88,15 @@ jobs:
     steps:
       - uses: actions/checkout@v4
 
+      - name: Clone upstream OpenIGTLink (pinned oracle)
+        run: |
+          git clone --no-tags --depth 1 \
+              https://github.com/openigtlink/OpenIGTLink.git \
+              corpus-tools/reference-libs/openigtlink-upstream
+          cd corpus-tools/reference-libs/openigtlink-upstream
+          git fetch --depth 1 origin 94244fed7051e00cbcd4c341a7d7656be8ac404a
+          git checkout 94244fed7051e00cbcd4c341a7d7656be8ac404a
+
       - name: Set up Python
         uses: actions/setup-python@v5
         with:
@@ -82,6 +104,10 @@ jobs:
 
       - name: Install uv
         uses: astral-sh/setup-uv@v3
+
+      - name: Sync corpus-tools with dev deps (pytest etc.)
+        working-directory: corpus-tools
+        run: uv sync --all-extras
 
       - name: Run pytest
         working-directory: corpus-tools
@@ -136,6 +162,15 @@ jobs:
     steps:
       - uses: actions/checkout@v4
 
+      - name: Clone upstream OpenIGTLink (pinned oracle)
+        run: |
+          git clone --no-tags --depth 1 \
+              https://github.com/openigtlink/OpenIGTLink.git \
+              corpus-tools/reference-libs/openigtlink-upstream
+          cd corpus-tools/reference-libs/openigtlink-upstream
+          git fetch --depth 1 origin 94244fed7051e00cbcd4c341a7d7656be8ac404a
+          git checkout 94244fed7051e00cbcd4c341a7d7656be8ac404a
+
       - name: Install Clang 15 + libFuzzer
         run: |
           sudo apt-get update
@@ -150,7 +185,7 @@ jobs:
 
       - name: Sync corpus-tools
         working-directory: corpus-tools
-        run: uv sync
+        run: uv sync --all-extras
 
       - name: Sync core-py (typed Python oracle)
         working-directory: core-py
@@ -219,9 +254,24 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        node: ['20', '22']
+        # Node 20 dropped: `node --test 'glob/**/*.test.js'` only
+        # supports glob patterns from Node 22+. Node 20 hits EOL in
+        # April 2026 regardless. If we want broader Node version
+        # coverage, swap the test command to use a runner that
+        # handles globs (vitest, mocha) or expand via find(1) in
+        # the npm script.
+        node: ['22']
     steps:
       - uses: actions/checkout@v4
+
+      - name: Clone upstream OpenIGTLink (pinned oracle)
+        run: |
+          git clone --no-tags --depth 1 \
+              https://github.com/openigtlink/OpenIGTLink.git \
+              corpus-tools/reference-libs/openigtlink-upstream
+          cd corpus-tools/reference-libs/openigtlink-upstream
+          git fetch --depth 1 origin 94244fed7051e00cbcd4c341a7d7656be8ac404a
+          git checkout 94244fed7051e00cbcd4c341a7d7656be8ac404a
 
       - uses: actions/setup-node@v4
         with:
@@ -235,7 +285,7 @@ jobs:
 
       - name: Sync corpus-tools
         working-directory: corpus-tools
-        run: uv sync
+        run: uv sync --all-extras
 
       - name: Install TS deps
         working-directory: core-ts
