@@ -140,6 +140,28 @@ class Client:
 
         return cls(reader=reader, writer=writer, options=opt)
 
+    @classmethod
+    def connect_sync(
+        cls,
+        host: str,
+        port: int,
+        options: ClientOptions | None = None,
+    ) -> "oigtl.net.sync_client.SyncClient":  # noqa: F821
+        """Synchronous counterpart to :meth:`connect`.
+
+        Returns a :class:`~oigtl.net.sync_client.SyncClient` — the
+        blocking façade whose methods (``send``, ``receive``, ...)
+        don't need ``await``. Useful for research scripts that aren't
+        structured around asyncio.
+
+        Imported lazily so the async-only hot path doesn't pay for
+        the background-loop machinery.
+        """
+        # Local import breaks the cycle: sync_client imports Client,
+        # so Client can't import SyncClient at module load time.
+        from oigtl.net.sync_client import SyncClient
+        return SyncClient.connect(host, port, options)
+
     @property
     def options(self) -> ClientOptions:
         """Current options (read-only snapshot)."""

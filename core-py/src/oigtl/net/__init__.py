@@ -21,6 +21,7 @@ from __future__ import annotations
 from oigtl.net import interfaces
 from oigtl.net._options import ClientOptions, Envelope, as_timedelta
 from oigtl.net.client import Client
+from oigtl.net.sync_client import SyncClient
 from oigtl.net.errors import (
     BufferOverflowError,
     ConnectionClosedError,
@@ -51,6 +52,7 @@ __all__ = [
     "interfaces",
     # Client
     "Client",
+    "SyncClient",
     "ClientOptions",
     "Envelope",
     "as_timedelta",
