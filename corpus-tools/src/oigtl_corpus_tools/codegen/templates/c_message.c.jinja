@@ -47,7 +47,7 @@ int {{ plan.fn_prefix }}_pack(const {{ plan.struct_name }} *msg,
 int {{ plan.fn_prefix }}_unpack(const uint8_t *buf, size_t len,
                                 {{ plan.struct_name }} *out) {
     if (buf == NULL || out == NULL) return OIGTL_ERR_INVALID_ARG;
-{% if plan.is_fixed_body %}
+{% if plan.is_fixed_body and plan.body_size > 0 %}
     if (len < (size_t){{ plan.body_size }}) return OIGTL_ERR_SHORT_BUFFER;
 {% endif %}
 {% if plan.body_size_set %}

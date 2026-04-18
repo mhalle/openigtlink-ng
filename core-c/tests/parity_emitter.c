@@ -45,7 +45,9 @@ static int emit_status(void) {
     oigtl_status_t msg;
     msg.code = 7;
     msg.subcode = (int64_t)-42;
-    strcpy(msg.error_name, "HW_FAULT");
+    /* memcpy + NUL instead of strcpy (MSVC C4996 under /W4 /WX). */
+    static const char err_name[] = "HW_FAULT";
+    memcpy(msg.error_name, err_name, sizeof err_name);
     const char *m = "coolant pressure low";
     msg.status_message = m;
     msg.status_message_len = strlen(m);

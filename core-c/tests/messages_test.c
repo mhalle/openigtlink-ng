@@ -65,7 +65,10 @@ static void test_status_roundtrip(void) {
     oigtl_status_t src;
     src.code = 7;
     src.subcode = (int64_t)-42;
-    strcpy(src.error_name, "HW_FAULT");
+    /* memcpy + explicit NUL instead of strcpy — MSVC's C4996
+     * treats strcpy as "unsafe" under /W4 /WX. */
+    static const char err_name[] = "HW_FAULT";
+    memcpy(src.error_name, err_name, sizeof err_name);
     const char *msg = "coolant pressure low";
     src.status_message = msg;
     src.status_message_len = strlen(msg);

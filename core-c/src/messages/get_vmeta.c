@@ -33,7 +33,6 @@ int oigtl_get_vmeta_pack(const oigtl_get_vmeta_t *msg,
 int oigtl_get_vmeta_unpack(const uint8_t *buf, size_t len,
                                 oigtl_get_vmeta_t *out) {
     if (buf == NULL || out == NULL) return OIGTL_ERR_INVALID_ARG;
-    if (len < (size_t)0) return OIGTL_ERR_SHORT_BUFFER;
 
     size_t off = 0;
     (void)off;

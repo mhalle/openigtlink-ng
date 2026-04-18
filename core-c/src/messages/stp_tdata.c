@@ -33,7 +33,6 @@ int oigtl_stp_tdata_pack(const oigtl_stp_tdata_t *msg,
 int oigtl_stp_tdata_unpack(const uint8_t *buf, size_t len,
                                 oigtl_stp_tdata_t *out) {
     if (buf == NULL || out == NULL) return OIGTL_ERR_INVALID_ARG;
-    if (len < (size_t)0) return OIGTL_ERR_SHORT_BUFFER;
 
     size_t off = 0;
     (void)off;
