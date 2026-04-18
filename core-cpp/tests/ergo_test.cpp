@@ -382,20 +382,36 @@ void test_server_allow_peer_range_refuses_outside() {
 
 namespace rtest {
 
-// Force the client to observe a drop. Tries a short receive; on
-// a disconnected connection this throws ConnectionClosedError
-// which the client catches internally (with auto_reconnect) or
-// propagates (without). Either way, state transitions to
-// "disconnected" before we return. Assumes the Client was
-// constructed with a bounded receive_timeout so this call
-// itself returns promptly.
+// Force the client to observe a drop. On POSIX a FIN surfaces
+// immediately; on Windows the TCP stack can sit on it for a
+// few hundred ms. Retry short receives until ConnectionClosedError
+// fires (that's the drop being detected) or until the budget
+// expires. Budget is generous — 5s — because no test that calls
+// this can continue until the client's State has seen the drop.
 void force_drop_detection(oigtl::Client& c) {
-    try {
-        (void)c.receive_any();
-    } catch (const oigtl::transport::TransportError&) {
-        // Expected — drop has been detected.
-    } catch (...) {
-        // Unexpected exception shape; still advanced the state.
+    const auto deadline =
+        std::chrono::steady_clock::now() + std::chrono::seconds(5);
+    while (std::chrono::steady_clock::now() < deadline) {
+        try {
+            (void)c.receive_any();
+            // If receive returns a message, we're still live;
+            // loop again — this really shouldn't happen in the
+            // drop-detection tests but it's fine if it does.
+        } catch (const oigtl::transport::ConnectionClosedError&) {
+            return;    // drop observed
+        } catch (const oigtl::transport::OperationCancelledError&) {
+            return;    // client shutting down
+        } catch (const oigtl::transport::TimeoutError&) {
+            // Connection still looks alive to the kernel. Sleep
+            // briefly and retry — Windows may need longer to
+            // surface the peer FIN. With a ~200ms receive_timeout
+            // in our options, this loop costs ~25 retries over
+            // the 5s budget.
+            std::this_thread::sleep_for(
+                std::chrono::milliseconds(20));
+        } catch (...) {
+            return;
+        }
     }
 }
 
@@ -530,18 +546,20 @@ void test_reconnect_max_attempts_exhaustion() {
     server.close();
     rtest::force_drop_detection(c);
 
-    // Wait for 2 failed reconnect attempts (reconnect_max_backoff
-    // = 50 ms, so 2 attempts total is ~150 ms; budget 2 s for
-    // scheduling jitter).
+    // Wait for 2 failed reconnect attempts. Budget is generous
+    // (5 s) because Windows CI runners are occasionally slow to
+    // schedule the reconnect worker thread; the actual expected
+    // duration is < 200 ms.
     const bool got_failures = rtest::wait_for(
-        std::chrono::seconds(2),
+        std::chrono::seconds(5),
         [&] { return failures.load() >= 2; });
     REQUIRE(got_failures);
 
-    // After exhaustion, send should throw terminally.
+    // After exhaustion, send should throw terminally. Likewise
+    // generous budget.
     oigtl::messages::Status s; s.code = 1;
     bool got_terminal = rtest::wait_for(
-        std::chrono::seconds(1),
+        std::chrono::seconds(3),
         [&] {
             try { c.send(s); return false; }
             catch (const oigtl::transport::ConnectionClosedError&) {
