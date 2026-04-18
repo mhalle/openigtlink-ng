@@ -27,6 +27,15 @@ source = { registry = "https://pypi.org/simple" }
 sdist = { url = "https://files.pythonhosted.org/packages/6b/b0/e595ce2a2527e169c3bcd6c33d2473c1918e0b7f6826a043ca1245dd4e5b/crcmod-1.7.tar.gz", hash = "sha256:dc7051a0db5f2bd48665a990d3ec1cc305a466a77358ca4492826f41f283601e", size = 89670, upload-time = "2010-06-27T14:35:29.538Z" }
 
 [[package]]
+name = "ifaddr"
+version = "0.2.0"
+source = { registry = "https://pypi.org/simple" }
+sdist = { url = "https://files.pythonhosted.org/packages/e8/ac/fb4c578f4a3256561548cd825646680edcadb9440f3f68add95ade1eb791/ifaddr-0.2.0.tar.gz", hash = "sha256:cc0cbfcaabf765d44595825fb96a99bb12c79716b73b44330ea38ee2b0c4aed4", size = 10485, upload-time = "2022-06-15T21:40:27.561Z" }
+wheels = [
+    { url = "https://files.pythonhosted.org/packages/9c/1f/19ebc343cc71a7ffa78f17018535adc5cbdd87afb31d7c34874680148b32/ifaddr-0.2.0-py3-none-any.whl", hash = "sha256:085e0305cfe6f16ab12d72e2024030f5d52674afad6911bb1eee207177b8a748", size = 12314, upload-time = "2022-06-15T21:40:25.756Z" },
+]
+
+[[package]]
 name = "iniconfig"
 version = "2.3.0"
 source = { registry = "https://pypi.org/simple" }
@@ -212,8 +221,12 @@ dependencies = [
 
 [package.optional-dependencies]
 dev = [
+    { name = "ifaddr" },
     { name = "numpy" },
     { name = "pytest" },
+]
+net = [
+    { name = "ifaddr" },
 ]
 numpy = [
     { name = "numpy" },
@@ -221,6 +234,7 @@ numpy = [
 
 [package.dev-dependencies]
 dev = [
+    { name = "ifaddr" },
     { name = "numpy" },
     { name = "pytest" },
 ]
@@ -228,16 +242,19 @@ dev = [
 [package.metadata]
 requires-dist = [
     { name = "crcmod", specifier = ">=1.7" },
+    { name = "ifaddr", marker = "extra == 'dev'", specifier = ">=0.2.0" },
+    { name = "ifaddr", marker = "extra == 'net'", specifier = ">=0.2.0" },
     { name = "numpy", marker = "extra == 'dev'", specifier = ">=1.24" },
     { name = "numpy", marker = "extra == 'numpy'", specifier = ">=1.24" },
     { name = "oigtl-corpus-tools", editable = "../corpus-tools" },
     { name = "pydantic", specifier = ">=2.5" },
     { name = "pytest", marker = "extra == 'dev'", specifier = ">=8" },
 ]
-provides-extras = ["numpy", "dev"]
+provides-extras = ["numpy", "net", "dev"]
 
 [package.metadata.requires-dev]
 dev = [
+    { name = "ifaddr", specifier = ">=0.2.0" },
     { name = "numpy", specifier = ">=1.24" },
     { name = "pytest", specifier = ">=8" },
 ]
