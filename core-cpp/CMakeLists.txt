@@ -493,6 +493,14 @@ add_executable(tracker_pair
 )
 target_link_libraries(tracker_pair PRIVATE oigtl)
 
+# Compat-mode hello-world — demonstrates the igtl:: API as a
+# consumer would use it. Links only against igtl_compat. Mirrors
+# what compat/MIGRATION.md walks through in prose.
+add_executable(compat_hello
+    examples/compat_hello.cpp
+)
+target_link_libraries(compat_hello PRIVATE igtl_compat)
+
 # Transport micro-benchmark — TRANSFORM throughput through our API.
 add_executable(oigtl_bench_transport_ours
     benches/bench_transport_ours.cpp
