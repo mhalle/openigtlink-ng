@@ -1,0 +1,68 @@
+# Line-ending + binary classification rules.
+#
+# Why this file exists: git-for-Windows defaults to
+# autocrlf=true, which rewrites LF → CRLF on checkout and
+# CRLF → LF on commit. That's fine for prose, but catastrophic
+# for:
+#   * Committed binary fixtures (corpus/.bin, *.wire, *.golden)
+#     → autocrlf mangles any 0x0a byte that isn't preceded by
+#       0x0d. Tests that hash these files would fail.
+#   * Upstream test-data headers under
+#     corpus-tools/reference-libs/openigtlink-upstream/Testing/
+#     igtlutil/*.h — these contain embedded binary arrays as
+#     `.h` files (!) and must round-trip byte-identical.
+#   * Wire-format JSON goldens — autocrlf would corrupt
+#     multi-byte sequences via injected CRs.
+#
+# Strategy: default `text=auto` so regular text files normalise
+# to LF in the repo, Windows checkouts get native CRLF. Then
+# force specific extensions into binary mode so they NEVER get
+# touched, and force a few extensions to text mode with LF-only
+# so scripts and tests don't break on CRLF.
+
+* text=auto eol=lf
+
+# Text — explicit LF in working tree too (scripts + tests care).
+*.sh        text eol=lf
+*.py        text eol=lf
+*.cpp       text eol=lf
+*.cxx       text eol=lf
+*.c         text eol=lf
+*.cmake     text eol=lf
+CMakeLists.txt text eol=lf
+*.md        text eol=lf
+*.yml       text eol=lf
+*.yaml      text eol=lf
+*.toml      text eol=lf
+*.json      text eol=lf
+
+# Binary — never touch.
+*.bin       binary
+*.wire      binary
+*.golden    binary
+*.png       binary
+*.jpg       binary
+*.jpeg      binary
+*.pdf       binary
+*.so        binary
+*.dylib     binary
+*.dll       binary
+*.a         binary
+*.lib       binary
+*.o         binary
+*.obj       binary
+
+# Upstream test-data headers under corpus-tools/reference-libs/
+# openigtlink-upstream/Testing/igtlutil/ are C headers with
+# embedded byte arrays; treat all .h/.hpp in that path as binary.
+# Other .h/.hpp in the repo use LF anyway, so the top-level
+# eol=lf default covers them.
+corpus-tools/reference-libs/**/*.h   binary
+corpus-tools/reference-libs/**/*.hpp binary
+
+# The upstream reference sources outside Testing/igtlutil are
+# ordinary C++ source; restore text handling so diffs are
+# readable.
+corpus-tools/reference-libs/openigtlink-upstream/Source/**/*.h   text eol=lf
+corpus-tools/reference-libs/openigtlink-upstream/Source/**/*.cxx text eol=lf
+corpus-tools/reference-libs/openigtlink-upstream/Source/**/*.cpp text eol=lf
