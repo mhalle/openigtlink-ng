@@ -2,38 +2,36 @@
 
 Mirrors the *capability* of ``oigtl::Client`` in
 ``core-cpp/include/oigtl/client.hpp`` — typed send/receive, a
-dispatch loop for callback-style code, and an async-context-manager
-entry. Resilience features (auto-reconnect, offline buffer, TCP
-keepalive) are additive in Phase 4; this module is the happy-path
-foundation.
+dispatch loop for callback-style code, async-context-manager entry,
+and opt-in resilience (auto-reconnect, offline buffer, TCP
+keepalive, lifecycle callbacks).
 
-Researcher-first API:
+Researcher-first happy path::
 
     async with await Client.connect("tracker.lab", 18944) as c:
         await c.send(Transform(matrix=[...]))
         env = await c.receive(Status)
         print(env.body.status_message)
 
-Dispatch loop:
+Resilient configuration for flaky networks::
 
-    c = await Client.connect("tracker.lab", 18944)
+    opt = ClientOptions(
+        auto_reconnect=True,
+        tcp_keepalive=True,
+        offline_buffer_capacity=100,
+        offline_overflow_policy=OfflineOverflow.DROP_OLDEST,
+    )
+    c = await Client.connect("tracker.lab", 18944, opt)
 
-    @c.on(Transform)
-    async def _(env):
-        renderer.update_pose(env.body.matrix)
-
-    @c.on(Status)
-    async def _(env):
-        if env.body.code != 1:
-            log.error(env.body.status_message)
-
-    await c.run()           # blocks until peer closes or c.close()
+    c.on_disconnected(lambda exc: metrics.increment("disconnects"))
+    c.on_connected(lambda: metrics.increment("reconnects"))
 """
 
 from __future__ import annotations
 
 import asyncio
 import contextlib
+import random
 from datetime import timedelta
 from typing import (
     Any,
@@ -47,13 +45,18 @@ from pydantic import BaseModel
 
 from oigtl.messages import REGISTRY as _MESSAGE_REGISTRY
 from oigtl.net._options import ClientOptions, Envelope, as_timedelta
+from oigtl.net._resilience import (
+    OfflineBuffer,
+    compute_backoff,
+    configure_keepalive,
+)
 from oigtl.net.errors import (
     ConnectionClosedError,
     FramingError,
     TimeoutError as NetTimeoutError,
 )
 from oigtl.runtime.exceptions import CrcMismatchError, ProtocolError
-from oigtl.runtime.header import HEADER_SIZE, Header, pack_header, unpack_header
+from oigtl.runtime.header import HEADER_SIZE, pack_header, unpack_header
 from oigtl_corpus_tools.codec.crc64 import crc64
 
 __all__ = ["Client"]
@@ -61,19 +64,30 @@ __all__ = ["Client"]
 M = TypeVar("M", bound=BaseModel)
 Handler = Callable[[Envelope[Any]], Awaitable[None]]
 
+ConnectedCallback = Callable[[], Awaitable[None] | None]
+DisconnectedCallback = Callable[
+    [BaseException | None], Awaitable[None] | None,
+]
+ReconnectFailedCallback = Callable[
+    [int, timedelta], Awaitable[None] | None,
+]
+
 
 class Client:
-    """Async OpenIGTLink client.
+    """Async OpenIGTLink client with opt-in resilience.
 
-    Construct via :meth:`connect` (a classmethod that awaits the
-    TCP dial). Close via :meth:`close` or the ``async with``
-    context manager. Every I/O method is a coroutine; there's no
-    sync surface here (the sync wrapper lands in Phase 3).
+    Construct via :meth:`connect` (classmethod, awaits TCP dial).
+    Close via :meth:`close` or the ``async with`` context manager.
+    Every I/O method is a coroutine; the blocking surface lives in
+    :class:`~oigtl.net.SyncClient`.
 
-    All state lives on the instance; the class is not shareable
-    across event loops. Sending and receiving concurrently from
-    different tasks is safe — a single writer lock serialises
-    sends, and reads are naturally serialised by the stream.
+    Concurrency: ``send()`` / ``receive()`` are safe from multiple
+    tasks — a send lock serialises writes, and reads are naturally
+    serialised by the stream. When :attr:`ClientOptions.auto_reconnect`
+    is True, a background reconnect task watches the connection
+    and re-dials on drops; during the outage, ``send()`` may buffer
+    (per :attr:`~ClientOptions.offline_overflow_policy`) and
+    ``receive()`` blocks until the new connection is up.
     """
 
     # --------------------------------------------------------------
@@ -83,14 +97,14 @@ class Client:
     def __init__(
         self,
         *,
+        host: str,
+        port: int,
         reader: asyncio.StreamReader,
         writer: asyncio.StreamWriter,
         options: ClientOptions,
     ) -> None:
-        # Intentionally private — callers use Client.connect(). The
-        # alternative "construct then connect" split exists in C++
-        # for symmetry with adopt(); in Python we use a classmethod
-        # because that's the idiomatic "async constructor".
+        self._host = host
+        self._port = port
         self._reader = reader
         self._writer = writer
         self._options = options
@@ -99,10 +113,45 @@ class Client:
         self._closed = asyncio.Event()
         self._run_stop = asyncio.Event()
 
-        # type_id → handler. Populated by @c.on(MessageType).
+        # Resilience state.
+        self._connected = asyncio.Event()
+        self._connected.set()
+        self._terminal = False
+        self._terminal_reason: BaseException | None = None
+        self._reconnect_task: asyncio.Task | None = None
+        self._reconnect_attempt = 0
+        self._monitor_task: asyncio.Task | None = None
+        # Buffer of received envelopes that the watchdog reads
+        # speculatively. Populated by the monitor so drops are
+        # detected promptly even without an active receive() call;
+        # drained by _receive_one() when the caller asks for a
+        # message. Only used under auto_reconnect.
+        self._incoming: asyncio.Queue[Envelope[BaseModel]] | None = None
+        self._offline_buffer = (
+            OfflineBuffer(options) if options.auto_reconnect else None
+        )
+        self._rng = random.Random()
+
+        # Dispatch handlers (type_id → coroutine).
         self._handlers: dict[str, Handler] = {}
         self._unknown_handler: Handler | None = None
         self._error_handler: Callable[[BaseException], Awaitable[None]] | None = None
+
+        # Lifecycle callbacks.
+        self._on_connected: ConnectedCallback | None = None
+        self._on_disconnected: DisconnectedCallback | None = None
+        self._on_reconnect_failed: ReconnectFailedCallback | None = None
+
+        if options.auto_reconnect:
+            self._incoming = asyncio.Queue()
+
+        # Apply keepalive now that we have a socket.
+        self._apply_keepalive()
+
+        # Under auto_reconnect, spawn a watchdog reader so drops are
+        # detected even when no caller is actively receiving.
+        if options.auto_reconnect:
+            self._start_monitor()
 
     @classmethod
     async def connect(
@@ -111,23 +160,30 @@ class Client:
         port: int,
         options: ClientOptions | None = None,
     ) -> "Client":
-        """Open a TCP connection and return a ready :class:`Client`.
-
-        Honours ``options.connect_timeout``. Raises
-        :class:`~oigtl.net.errors.TimeoutError` on budget exhaustion,
-        :class:`~oigtl.net.errors.ConnectionClosedError` on other
-        connect failures. Never returns a half-open handle.
-        """
+        """Open a TCP connection and return a ready :class:`Client`."""
         opt = options or ClientOptions()
+        reader, writer = await cls._dial(host, port, opt)
+        return cls(
+            host=host, port=port,
+            reader=reader, writer=writer,
+            options=opt,
+        )
+
+    @classmethod
+    async def _dial(
+        cls,
+        host: str,
+        port: int,
+        opt: ClientOptions,
+    ) -> tuple[asyncio.StreamReader, asyncio.StreamWriter]:
+        """Open a fresh TCP connection. Caller decides what to do on failure."""
         try:
             coro = asyncio.open_connection(host, port)
             if opt.connect_timeout is None:
-                reader, writer = await coro
-            else:
-                reader, writer = await asyncio.wait_for(
-                    coro,
-                    timeout=opt.connect_timeout.total_seconds(),
-                )
+                return await coro
+            return await asyncio.wait_for(
+                coro, timeout=opt.connect_timeout.total_seconds(),
+            )
         except asyncio.TimeoutError as e:
             raise NetTimeoutError(
                 f"connect to {host}:{port} timed out after "
@@ -137,8 +193,6 @@ class Client:
             raise ConnectionClosedError(
                 f"connect to {host}:{port} failed: {e}"
             ) from e
-
-        return cls(reader=reader, writer=writer, options=opt)
 
     @classmethod
     def connect_sync(
@@ -150,52 +204,91 @@ class Client:
         """Synchronous counterpart to :meth:`connect`.
 
         Returns a :class:`~oigtl.net.sync_client.SyncClient` — the
-        blocking façade whose methods (``send``, ``receive``, ...)
-        don't need ``await``. Useful for research scripts that aren't
-        structured around asyncio.
-
-        Imported lazily so the async-only hot path doesn't pay for
-        the background-loop machinery.
+        blocking façade whose methods don't need ``await``.
         """
-        # Local import breaks the cycle: sync_client imports Client,
-        # so Client can't import SyncClient at module load time.
         from oigtl.net.sync_client import SyncClient
         return SyncClient.connect(host, port, options)
 
+    # --------------------------------------------------------------
+    # Introspection
+    # --------------------------------------------------------------
+
     @property
     def options(self) -> ClientOptions:
-        """Current options (read-only snapshot)."""
         return self._options
 
     @property
     def peer(self) -> tuple[str, int] | None:
-        """``(host, port)`` of the remote end, or None if not connected."""
         info = self._writer.get_extra_info("peername")
         if info is None:
             return None
-        # IPv6 peers give (host, port, flowinfo, scopeid); we project
-        # the researcher-relevant pair.
         return info[0], info[1]
+
+    @property
+    def is_connected(self) -> bool:
+        """True iff a working transport is currently live.
+
+        False during reconnect outages even when :attr:`close` hasn't
+        been called.
+        """
+        return self._connected.is_set() and not self._closed.is_set()
+
+    def _apply_keepalive(self) -> None:
+        """Set SO_KEEPALIVE and friends on the current socket."""
+        if not self._options.tcp_keepalive:
+            return
+        sock = self._writer.get_extra_info("socket")
+        if sock is None:
+            return
+        try:
+            configure_keepalive(
+                sock,
+                idle=self._options.tcp_keepalive_idle,
+                interval=self._options.tcp_keepalive_interval,
+                count=self._options.tcp_keepalive_count,
+            )
+        except OSError:
+            # Unsupported on this platform/socket — keepalive is a
+            # best-effort hint, not a correctness requirement.
+            pass
+
+    # --------------------------------------------------------------
+    # Close / context manager
+    # --------------------------------------------------------------
 
     async def close(self) -> None:
         """Close the underlying TCP connection.
 
-        Safe to call repeatedly. Wakes any in-flight ``run()`` loop
-        at the next dispatch tick and unblocks a pending
-        ``receive()`` with :class:`ConnectionClosedError`.
+        Safe to call repeatedly. Also cancels any in-flight reconnect
+        task and wakes a running :meth:`run` loop.
         """
         if self._closed.is_set():
             return
         self._closed.set()
         self._run_stop.set()
+        self._connected.clear()
+
+        if self._monitor_task is not None:
+            self._monitor_task.cancel()
+            with contextlib.suppress(asyncio.CancelledError, Exception):
+                await self._monitor_task
+            self._monitor_task = None
+
+        if self._reconnect_task is not None:
+            self._reconnect_task.cancel()
+            with contextlib.suppress(asyncio.CancelledError, Exception):
+                await self._reconnect_task
+
         try:
             self._writer.close()
             with contextlib.suppress(Exception):
                 await self._writer.wait_closed()
         except Exception:
-            # wait_closed can raise on a pre-broken socket; we're
-            # tearing down anyway.
             pass
+
+        # Drop any buffered messages; a closed client doesn't send.
+        if self._offline_buffer is not None:
+            self._offline_buffer.clear()
 
     async def __aenter__(self) -> "Client":
         return self
@@ -216,17 +309,22 @@ class Client:
     ) -> None:
         """Frame and transmit *message*.
 
-        *message* must be one of the generated types in
-        :mod:`oigtl.messages`; it carries its own ``TYPE_ID``.
-        ``device_name`` defaults to ``options.default_device``.
-        ``timestamp`` is the OpenIGTLink 64-bit wire timestamp —
-        callers who want "now" should produce it via
-        :func:`oigtl_corpus_tools.codec.timestamp.now_igtl` or
-        equivalent; this module stays policy-free on clocks.
+        Behaviour under resilience:
 
-        Raises :class:`ConnectionClosedError` if the peer has gone
-        away.
+        - Connected: framed and sent normally.
+        - Disconnected + ``auto_reconnect=True``: framed bytes go
+          into the offline buffer per the configured overflow policy.
+          Drained on reconnect before any live sends.
+        - Disconnected + ``auto_reconnect=False``: raises
+          :class:`ConnectionClosedError`.
+        - Terminal (reconnect attempts exhausted): raises
+          :class:`ConnectionClosedError`.
         """
+        if self._terminal or self._closed.is_set():
+            raise ConnectionClosedError(
+                "client is closed or reconnect attempts exhausted"
+            )
+
         type_id = getattr(type(message), "TYPE_ID", None)
         if not isinstance(type_id, str):
             raise TypeError(
@@ -242,25 +340,211 @@ class Client:
             timestamp=timestamp,
             body=body,
         )
+        wire = header + body
 
-        async with self._send_lock:
-            if self._closed.is_set():
-                raise ConnectionClosedError("client is closed")
-            try:
-                self._writer.write(header + body)
-                await self._writer.drain()
-            except (ConnectionError, BrokenPipeError, OSError) as e:
-                await self._mark_broken()
-                raise ConnectionClosedError(f"send failed: {e}") from e
+        await self._send_wire(wire)
 
-    async def _mark_broken(self) -> None:
-        """Internal: flag the connection as gone without awaiting close.
+    async def _send_wire(self, wire: bytes) -> None:
+        """Send already-framed bytes, honouring resilience policy.
 
-        Used when send/recv hit an error mid-operation. Phase 4
-        extends this to trigger the reconnect worker.
+        Factored out so the offline-buffer drain path can reuse it
+        without re-packing the message.
         """
-        self._closed.set()
-        self._run_stop.set()
+        # Fast path: connection is live. Try to send under the lock.
+        if self.is_connected:
+            async with self._send_lock:
+                if self.is_connected:
+                    try:
+                        self._writer.write(wire)
+                        await self._writer.drain()
+                        return
+                    except (ConnectionError, BrokenPipeError, OSError) as e:
+                        # Send failed — fall through to the buffered
+                        # path if resilience is on. Mark the
+                        # connection lost first.
+                        await self._handle_drop(cause=e)
+
+        # Disconnected path.
+        if self._offline_buffer is None:
+            # auto_reconnect off — the caller asked not to buffer.
+            raise ConnectionClosedError(
+                "client is disconnected and auto_reconnect is off"
+            )
+
+        # Enqueue and let the reconnect worker drain.
+        await self._offline_buffer.push(wire)
+
+    async def _handle_drop(self, *, cause: BaseException | None) -> None:
+        """Transition to the disconnected state and schedule reconnect.
+
+        Idempotent: re-entering while already disconnected is a no-op.
+        """
+        if not self._connected.is_set():
+            return
+        self._connected.clear()
+
+        # Fire on_disconnected. Supports both sync and async callbacks.
+        if self._on_disconnected is not None:
+            result = self._on_disconnected(cause)
+            if asyncio.iscoroutine(result):
+                await result
+
+        if (self._options.auto_reconnect
+                and not self._closed.is_set()
+                and self._reconnect_task is None):
+            self._reconnect_task = asyncio.create_task(
+                self._reconnect_loop(),
+                name=f"oigtl-reconnect-{self._host}:{self._port}",
+            )
+
+    async def _reconnect_loop(self) -> None:
+        """Background task: redial with exponential backoff.
+
+        Exits on success (reinstalls reader/writer, fires
+        on_connected, drains buffer), on terminal (max_attempts
+        exhausted, marks client terminal), or on cancellation (Client
+        being closed).
+        """
+        self._reconnect_attempt = 0
+        opt = self._options
+        try:
+            while not self._closed.is_set():
+                self._reconnect_attempt += 1
+
+                # Wait for backoff (except first attempt which
+                # proceeds after the initial drop immediately via
+                # reconnect_initial_backoff itself).
+                delay = compute_backoff(
+                    self._reconnect_attempt, opt, rng=self._rng,
+                )
+                await asyncio.sleep(delay.total_seconds())
+
+                if self._closed.is_set():
+                    return
+
+                try:
+                    reader, writer = await self._dial(
+                        self._host, self._port, opt,
+                    )
+                except (ConnectionClosedError, NetTimeoutError) as e:
+                    # Failed attempt — fire callback, check limit.
+                    if self._on_reconnect_failed is not None:
+                        result = self._on_reconnect_failed(
+                            self._reconnect_attempt, delay,
+                        )
+                        if asyncio.iscoroutine(result):
+                            await result
+
+                    if (opt.reconnect_max_attempts > 0
+                            and self._reconnect_attempt
+                            >= opt.reconnect_max_attempts):
+                        self._terminal = True
+                        self._terminal_reason = e
+                        if self._offline_buffer is not None:
+                            self._offline_buffer.clear()
+                            # Wake any blocked BLOCK-policy senders.
+                            await self._offline_buffer.notify_space()
+                        return
+                    continue
+
+                # Success — cancel the old monitor (bound to the
+                # defunct reader), install the new stream, drain,
+                # announce, restart the monitor.
+                if self._monitor_task is not None:
+                    self._monitor_task.cancel()
+                    with contextlib.suppress(Exception):
+                        await self._monitor_task
+                    self._monitor_task = None
+
+                async with self._send_lock:
+                    self._reader = reader
+                    self._writer = writer
+                    self._apply_keepalive()
+
+                # Drain buffered messages before releasing live sends.
+                if self._offline_buffer is not None:
+                    try:
+                        await self._offline_buffer.drain(
+                            self._drain_one,
+                        )
+                    except (ConnectionError, BrokenPipeError, OSError):
+                        # Drain broke the connection. Loop back around
+                        # and retry.
+                        self._connected.clear()
+                        continue
+
+                self._reconnect_attempt = 0
+                self._connected.set()
+                # Restart the monitor on the new reader.
+                self._start_monitor()
+
+                if self._on_connected is not None:
+                    result = self._on_connected()
+                    if asyncio.iscoroutine(result):
+                        await result
+                return
+        finally:
+            self._reconnect_task = None
+
+    async def _drain_one(self, wire: bytes) -> None:
+        """Write one buffered wire message during reconnect drain."""
+        async with self._send_lock:
+            self._writer.write(wire)
+            await self._writer.drain()
+
+    # --------------------------------------------------------------
+    # Monitor — proactive drop detection under auto_reconnect.
+    # --------------------------------------------------------------
+
+    def _start_monitor(self) -> None:
+        """Spawn a background reader that detects drops even when no
+        caller is actively awaiting receive(). Populates ``_incoming``
+        so the next receive() returns a pre-read envelope instead of
+        racing the monitor for the same bytes."""
+        if self._monitor_task is not None and not self._monitor_task.done():
+            return
+        self._monitor_task = asyncio.create_task(
+            self._monitor_loop(),
+            name=f"oigtl-monitor-{self._host}:{self._port}",
+        )
+
+    async def _monitor_loop(self) -> None:
+        """Read messages into the shared queue; react to EOF by
+        triggering the reconnect flow.
+
+        Exits when the client is closed. On drop, handles it and
+        waits for the reconnect event before resuming reads on the
+        new stream.
+        """
+        assert self._incoming is not None
+        while not self._closed.is_set():
+            # Wait for a live connection before reading.
+            if not self._connected.is_set():
+                try:
+                    await asyncio.wait_for(
+                        self._connected.wait(), timeout=None,
+                    )
+                except asyncio.CancelledError:
+                    return
+                continue
+
+            try:
+                env = await self._receive_one_from_stream()
+            except ConnectionClosedError as e:
+                await self._handle_drop(cause=e)
+                continue
+            except BaseException:
+                # CRC, framing, decode errors — let the queued caller
+                # see them by funnelling the exception through the
+                # queue as a special sentinel. Simplest: just propagate
+                # by marking drop; the C++ side has the same rule that
+                # bad bytes close the connection.
+                await self._handle_drop(cause=None)
+                continue
+            try:
+                await self._incoming.put(env)
+            except asyncio.CancelledError:
+                return
 
     # --------------------------------------------------------------
     # Receive
@@ -271,19 +555,9 @@ class Client:
         *,
         timeout: timedelta | float | int | None = None,
     ) -> Envelope[BaseModel]:
-        """Receive the next message of any registered type.
-
-        Returns an :class:`Envelope` whose ``body`` is a typed
-        instance when the wire ``type_id`` is registered, or a bare
-        ``dict`` when it isn't — callers that only speak specific
-        types should prefer :meth:`receive(T)`.
-
-        Raises :class:`ConnectionClosedError` on peer-FIN,
-        :class:`~oigtl.net.errors.TimeoutError` if the budget is
-        exceeded.
-        """
+        """Receive the next message of any registered type."""
         budget = as_timedelta(timeout) or self._options.receive_timeout
-        coro = self._receive_one()
+        coro = self._receive_with_reconnect()
         if budget is None:
             return await coro
         try:
@@ -301,17 +575,7 @@ class Client:
         *,
         timeout: timedelta | float | int | None = None,
     ) -> Envelope[M]:
-        """Receive until a message of *message_type* arrives.
-
-        Intermediate messages that match a registered ``@on()``
-        handler are dispatched to it; those that don't are dropped.
-        Callers that want the full stream should use
-        :meth:`messages` or :meth:`receive_any`.
-
-        Raises :class:`ConnectionClosedError` on peer-FIN,
-        :class:`~oigtl.net.errors.TimeoutError` if the budget is
-        exceeded before a matching message arrives.
-        """
+        """Receive until a message of *message_type* arrives."""
         expected_type_id = getattr(message_type, "TYPE_ID", None)
         if not isinstance(expected_type_id, str):
             raise TypeError(
@@ -320,8 +584,6 @@ class Client:
             )
 
         budget = as_timedelta(timeout) or self._options.receive_timeout
-        # Compute a single overall deadline so dispatched-and-ignored
-        # messages don't reset the budget.
         loop = asyncio.get_running_loop()
         deadline = (
             loop.time() + budget.total_seconds()
@@ -338,7 +600,8 @@ class Client:
                     )
                 try:
                     env = await asyncio.wait_for(
-                        self._receive_one(), timeout=remaining,
+                        self._receive_with_reconnect(),
+                        timeout=remaining,
                     )
                 except asyncio.TimeoutError as e:
                     raise NetTimeoutError(
@@ -346,54 +609,80 @@ class Client:
                         f"after {budget}"
                     ) from e
             else:
-                env = await self._receive_one()
+                env = await self._receive_with_reconnect()
 
             if env.header.type_id == expected_type_id:
-                # The body is the type the caller asked for.
                 return env     # type: ignore[return-value]
-
-            # Not our target — dispatch if registered, else drop.
             await self._dispatch(env)
 
     async def messages(self) -> AsyncIterator[Envelope[BaseModel]]:
-        """Async iterator yielding every received message, in order.
-
-        Exits cleanly on peer-FIN or ``close()``. Errors propagate;
-        callers that want them swallowed should wrap in a try
-        inside the loop.
-        """
+        """Async iterator yielding every received message, in order."""
         try:
             while not self._closed.is_set():
-                yield await self._receive_one()
+                yield await self._receive_with_reconnect()
         except ConnectionClosedError:
             return
 
-    async def _receive_one(self) -> Envelope[BaseModel]:
-        """Read exactly one framed message off the stream."""
-        if self._closed.is_set():
-            raise ConnectionClosedError("client is closed")
+    async def _receive_with_reconnect(self) -> Envelope[BaseModel]:
+        """Wrap ``_receive_one`` with outage-aware retry.
 
+        If we're mid-reconnect and not terminal, wait for the new
+        connection before reading. If we're terminal, raise.
+        """
+        while True:
+            if self._terminal:
+                raise ConnectionClosedError(
+                    "reconnect attempts exhausted"
+                ) from self._terminal_reason
+            if self._closed.is_set():
+                raise ConnectionClosedError("client is closed")
+
+            if not self._connected.is_set():
+                # Wait for reconnect. If auto_reconnect is off, this
+                # event will never be re-set — the caller's
+                # outer timeout is the exit.
+                await self._connected.wait()
+                continue
+
+            try:
+                return await self._receive_one()
+            except ConnectionClosedError as e:
+                if not self._options.auto_reconnect:
+                    raise
+                await self._handle_drop(cause=e)
+                # Loop: wait for _connected.
+
+    async def _receive_one(self) -> Envelope[BaseModel]:
+        """Return the next message.
+
+        Under auto_reconnect a background monitor has already read
+        messages into the queue; we just pop the next one and let
+        the monitor keep handling drops. Without auto_reconnect we
+        read directly from the stream.
+        """
+        if self._incoming is not None:
+            return await self._incoming.get()
+        return await self._receive_one_from_stream()
+
+    async def _receive_one_from_stream(self) -> Envelope[BaseModel]:
+        """Read exactly one framed message directly off the stream."""
         try:
             header_bytes = await self._reader.readexactly(HEADER_SIZE)
         except asyncio.IncompleteReadError as e:
-            await self._mark_broken()
             raise ConnectionClosedError(
                 f"peer closed after {len(e.partial)} of {HEADER_SIZE} "
                 f"header bytes"
             ) from e
         except (ConnectionError, OSError) as e:
-            await self._mark_broken()
             raise ConnectionClosedError(f"recv failed: {e}") from e
 
         try:
             header = unpack_header(header_bytes)
         except ValueError as e:
-            await self._mark_broken()
             raise ProtocolError(str(e)) from e
 
         if (self._options.max_message_size
                 and header.body_size > self._options.max_message_size):
-            await self._mark_broken()
             raise FramingError(
                 f"body_size {header.body_size} exceeds "
                 f"max_message_size {self._options.max_message_size}"
@@ -402,7 +691,6 @@ class Client:
         try:
             body = await self._reader.readexactly(header.body_size)
         except asyncio.IncompleteReadError as e:
-            await self._mark_broken()
             raise ConnectionClosedError(
                 f"peer closed mid-body: got {len(e.partial)} of "
                 f"{header.body_size}"
@@ -410,18 +698,13 @@ class Client:
 
         computed = crc64(body)
         if computed != header.crc:
-            # CRC mismatch doesn't always mean the stream is toast,
-            # but it does mean *this* message is garbage. Raise; the
-            # caller decides whether to keep reading.
             raise CrcMismatchError(
-                f"header crc=0x{header.crc:016x} body crc=0x{computed:016x}"
+                f"header crc=0x{header.crc:016x} "
+                f"body crc=0x{computed:016x}"
             )
 
-        # Decode to a typed instance if we know the type_id; otherwise
-        # return the raw body dict-ish view (the header is always
-        # typed either way).
         cls = _MESSAGE_REGISTRY.get(header.type_id)
-        decoded: BaseModel | dict[str, bytes]
+        decoded: BaseModel
         if cls is not None:
             try:
                 decoded = cls.unpack(body)
@@ -430,32 +713,19 @@ class Client:
                     f"failed to decode {header.type_id}: {e}"
                 ) from e
         else:
-            # Unknown type_id — hand the raw bytes through so the
-            # on_unknown handler can log or forward.
             decoded = _RawBody(type_id=header.type_id, body=body)
 
         return Envelope(header=header, body=decoded)
 
     # --------------------------------------------------------------
-    # Dispatch (decorator + run loop)
+    # Dispatch
     # --------------------------------------------------------------
 
     def on(
         self,
         message_type: type[M],
     ) -> Callable[[Handler], Handler]:
-        """Register *handler* for messages of *message_type*.
-
-        Usable as a decorator::
-
-            @c.on(Transform)
-            async def _(env):
-                renderer.update_pose(env.body.matrix)
-
-        Returning the handler so ``@c.on(T)`` composes with other
-        decorators. Only one handler per type_id — re-registering
-        replaces the previous entry.
-        """
+        """Register a handler for *message_type*; usable as decorator."""
         type_id = getattr(message_type, "TYPE_ID", None)
         if not isinstance(type_id, str):
             raise TypeError(
@@ -470,11 +740,6 @@ class Client:
         return register
 
     def on_unknown(self, handler: Handler) -> Handler:
-        """Register a fallback for messages with no typed handler.
-
-        Receives an :class:`Envelope` whose ``body`` is a
-        :class:`_RawBody` with ``type_id`` and ``body`` bytes.
-        """
         self._unknown_handler = handler
         return handler
 
@@ -482,25 +747,49 @@ class Client:
         self,
         handler: Callable[[BaseException], Awaitable[None]],
     ) -> Callable[[BaseException], Awaitable[None]]:
-        """Register an error callback for :meth:`run`.
-
-        Fires on any exception raised during a receive or handler
-        invocation. If unset, exceptions propagate out of ``run()``.
-        """
         self._error_handler = handler
+        return handler
+
+    # ---- Lifecycle callbacks (resilience) ------------------------
+
+    def on_connected(
+        self, handler: ConnectedCallback,
+    ) -> ConnectedCallback:
+        """Called after every successful connect (initial + reconnect).
+
+        Handler can be sync or async. Use it to metrics-count, re-
+        subscribe to topics, or reset a staleness watchdog.
+        """
+        self._on_connected = handler
+        return handler
+
+    def on_disconnected(
+        self, handler: DisconnectedCallback,
+    ) -> DisconnectedCallback:
+        """Called on drop. Receives the underlying exception or None."""
+        self._on_disconnected = handler
+        return handler
+
+    def on_reconnect_failed(
+        self, handler: ReconnectFailedCallback,
+    ) -> ReconnectFailedCallback:
+        """Called after each failed reconnect attempt.
+
+        Handler receives ``(attempt_number, next_delay)``. Useful for
+        exposing "we're at attempt 5" to an operator UI.
+        """
+        self._on_reconnect_failed = handler
         return handler
 
     async def run(self) -> None:
         """Dispatch loop — read messages and route to handlers.
 
-        Returns when :meth:`close` is called or when the peer
-        closes the stream. Exceptions during receive or within a
-        handler go to :meth:`on_error` if registered, else they
-        propagate.
+        Returns on :meth:`close` or peer FIN (when auto_reconnect is
+        off, or when reconnects exhaust).
         """
         while not self._run_stop.is_set():
             try:
-                env = await self._receive_one()
+                env = await self._receive_with_reconnect()
             except ConnectionClosedError:
                 return
             except BaseException as e:
@@ -518,21 +807,15 @@ class Client:
                     raise
 
     async def _dispatch(self, env: Envelope[Any]) -> None:
-        """Internal: route one envelope to the registered handler."""
         handler = self._handlers.get(env.header.type_id)
         if handler is not None:
             await handler(env)
         elif self._unknown_handler is not None:
             await self._unknown_handler(env)
-        # Else silently drop — caller opted out of this type_id.
 
 
 class _RawBody(BaseModel):
-    """Sentinel body type for wire messages whose type_id is unknown.
-
-    Exposed through :meth:`Client.on_unknown` so loggers / forwarders
-    can still see the bytes without the dispatcher having to decode.
-    """
+    """Sentinel body for wire messages whose type_id is unknown."""
 
     type_id: str
     body: bytes

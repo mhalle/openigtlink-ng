@@ -11,6 +11,7 @@ and both should work.
 from __future__ import annotations
 
 from datetime import timedelta
+from enum import Enum
 from typing import Annotated, Generic, TypeVar
 
 from pydantic import BaseModel, BeforeValidator, ConfigDict, Field
@@ -20,8 +21,28 @@ from oigtl.runtime.header import Header
 __all__ = [
     "ClientOptions",
     "Envelope",
+    "OfflineOverflow",
     "as_timedelta",
 ]
+
+
+class OfflineOverflow(str, Enum):
+    """Policy for ``Client.send()`` when the offline buffer is full.
+
+    Mirrors ``ClientOptions::OfflineOverflow`` in the C++ header.
+
+    - ``DROP_OLDEST``: succeed by discarding the queued head — right
+      for telemetry (pose, sensor readings) where old data is stale.
+    - ``DROP_NEWEST`` (default): raise
+      :class:`~oigtl.net.errors.BufferOverflowError` — right for
+      commands / transactions where the problem should surface.
+    - ``BLOCK``: wait up to ``send_timeout`` for space — right for
+      strictly-ordered flows with bounded throughput.
+    """
+
+    DROP_OLDEST = "drop_oldest"
+    DROP_NEWEST = "drop_newest"
+    BLOCK = "block"
 
 
 def _coerce_to_timedelta(value: object) -> timedelta | None:
@@ -98,6 +119,11 @@ class ClientOptions(BaseModel):
     when the caller doesn't pass a per-call timeout. ``None`` =
     block forever."""
 
+    send_timeout: OptionalDuration = None
+    """Budget for a blocked ``send()`` when the offline buffer is full
+    and :attr:`offline_overflow_policy` is ``BLOCK``. ``None`` = wait
+    forever. Has no effect on other policies."""
+
     # ---- Framer policy -------------------------------------------
     max_message_size: int = Field(
         default=0,
@@ -109,6 +135,83 @@ class ClientOptions(BaseModel):
         ),
         ge=0,
     )
+
+    # ---- Resilience: auto-reconnect ------------------------------
+    auto_reconnect: bool = Field(
+        default=False,
+        description=(
+            "When True, a connection drop after the initial connect "
+            "succeeds spawns a background task that re-dials with "
+            "exponential backoff. send()/receive() during the outage "
+            "block (or buffer, per policy) instead of raising."
+        ),
+    )
+
+    reconnect_initial_backoff: Duration = timedelta(milliseconds=200)
+    """First-retry wait. Doubles each attempt up to
+    :attr:`reconnect_max_backoff`."""
+
+    reconnect_max_backoff: Duration = timedelta(seconds=30)
+    """Upper bound on the per-attempt delay."""
+
+    reconnect_backoff_jitter: float = Field(
+        default=0.25,
+        ge=0.0, le=1.0,
+        description=(
+            "Multiplicative jitter applied to each backoff, in the "
+            "range ±jitter. 0.25 = ±25%. Spreads reconnect storms "
+            "when many clients lose their peer simultaneously."
+        ),
+    )
+
+    reconnect_max_attempts: int = Field(
+        default=0, ge=0,
+        description=(
+            "0 = retry forever (default). Non-zero: after this many "
+            "consecutive failed attempts, the Client is marked "
+            "terminal and subsequent calls raise "
+            "ConnectionClosedError."
+        ),
+    )
+
+    # ---- Resilience: TCP keepalive -------------------------------
+    tcp_keepalive: bool = Field(
+        default=False,
+        description=(
+            "Enable SO_KEEPALIVE with tuned intervals so a half-dead "
+            "peer (remote crash, cable yanked, NAT idle-out) is "
+            "detected in ~60 s instead of hours. Pure OS-level; no "
+            "application-layer ping."
+        ),
+    )
+
+    tcp_keepalive_idle: Duration = timedelta(seconds=30)
+    """Seconds of idle before the first keepalive probe is sent."""
+
+    tcp_keepalive_interval: Duration = timedelta(seconds=10)
+    """Seconds between keepalive probes once started."""
+
+    tcp_keepalive_count: int = Field(
+        default=3, ge=1,
+        description=(
+            "Number of missed probes before the OS declares the peer "
+            "dead."
+        ),
+    )
+
+    # ---- Resilience: offline buffer ------------------------------
+    offline_buffer_capacity: int = Field(
+        default=0, ge=0,
+        description=(
+            "Max messages held while the connection is down. Drained "
+            "in FIFO order on reconnect before any new sends. 0 = no "
+            "buffering (send during outage raises immediately)."
+        ),
+    )
+
+    offline_overflow_policy: OfflineOverflow = OfflineOverflow.DROP_NEWEST
+    """How ``send()`` behaves when the buffer is full. See
+    :class:`OfflineOverflow`."""
 
 
 # ---- Envelope ----------------------------------------------------
