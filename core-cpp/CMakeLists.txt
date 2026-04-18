@@ -9,7 +9,12 @@
 # Phase-2+ work will replace src/messages/*.cpp with codegen output.
 
 cmake_minimum_required(VERSION 3.16)
-project(oigtl VERSION 0.1.0 LANGUAGES CXX)
+# Post-release development: advertise the NEXT version on main so
+# nothing compiled from a trunk checkout accidentally claims to be
+# v0.1.0 (which is a released, immutable set of bits). CMake's
+# VERSION field requires numeric components only — no `-dev`
+# pre-release suffix is possible here, so we bump the MINOR.
+project(oigtl VERSION 0.2.0 LANGUAGES CXX)
 
 # Phase 9 — packaging options. Control knobs:
 #   OIGTL_INSTALL       build the install/export rules (default ON)
