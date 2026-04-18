@@ -19,6 +19,7 @@
 #include <string.h>
 
 #include "oigtl_c/byte_order.h"
+#include "oigtl_c/messages/point.h"
 #include "oigtl_c/messages/position.h"
 #include "oigtl_c/messages/sensor.h"
 #include "oigtl_c/messages/status.h"
@@ -106,6 +107,42 @@ static int emit_string(void) {
     return write_stdout(buf, (size_t)n);
 }
 
+static int emit_point(void) {
+    /* Two fabricated POINT elements; byte-level parity against the
+     * spec-derived Python emitter is the test. */
+    oigtl_point_element_t elems[2];
+    memset(elems, 0, sizeof elems);
+
+    static const char n1[] = "tip";
+    memcpy(elems[0].name, n1, sizeof n1);
+    static const char g1[] = "Fiducial";
+    memcpy(elems[0].group_name, g1, sizeof g1);
+    elems[0].rgba[0] = 0x10; elems[0].rgba[1] = 0x20;
+    elems[0].rgba[2] = 0x30; elems[0].rgba[3] = 0xFF;
+    elems[0].position[0] = 1.5f; elems[0].position[1] = 2.5f;
+    elems[0].position[2] = 3.5f;
+    elems[0].radius = 0.5f;
+    static const char o1[] = "IMAGE_0";
+    memcpy(elems[0].owner, o1, sizeof o1);
+
+    static const char n2[] = "entry";
+    memcpy(elems[1].name, n2, sizeof n2);
+    static const char g2[] = "Landmark";
+    memcpy(elems[1].group_name, g2, sizeof g2);
+    elems[1].rgba[0] = 0x20; elems[1].rgba[1] = 0x40;
+    elems[1].rgba[2] = 0x60; elems[1].rgba[3] = 0xFF;
+    elems[1].position[0] = 3.0f; elems[1].position[1] = 5.0f;
+    elems[1].position[2] = 7.0f;
+    elems[1].radius = 1.5f;
+    static const char o2[] = "IMAGE_0";
+    memcpy(elems[1].owner, o2, sizeof o2);
+
+    uint8_t buf[2 * OIGTL_POINT_ELEMENT_SIZE];
+    int n = oigtl_point_pack(NULL, elems, 2, buf, sizeof buf);
+    if (n < 0) return 2;
+    return write_stdout(buf, (size_t)n);
+}
+
 static int emit_sensor(void) {
     oigtl_sensor_t msg;
     msg.larray = 3;
@@ -142,6 +179,7 @@ int main(int argc, char **argv) {
     else if (strcmp(c, "position_only")  == 0) return emit_position_only();
     else if (strcmp(c, "sensor")         == 0) return emit_sensor();
     else if (strcmp(c, "string")         == 0) return emit_string();
+    else if (strcmp(c, "point")          == 0) return emit_point();
     fprintf(stderr, "unknown case: %s\n", c);
     return 2;
 }

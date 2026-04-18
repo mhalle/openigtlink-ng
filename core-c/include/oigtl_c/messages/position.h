@@ -16,10 +16,6 @@
 extern "C" {
 #endif
 
-/* Variable body size — depends on string / array lengths at
- * runtime. Use oigtl_position_packed_size(&msg) to query. */
-#define OIGTL_POSITION_BODY_SIZE_MIN  ((size_t)12)
-#define OIGTL_POSITION_BODY_SIZE_MAX  ((size_t)28)
 
 typedef struct oigtl_position {
     float position[3];
@@ -42,8 +38,8 @@ int oigtl_position_pack(const oigtl_position_t *msg,
 /* Unpack `len` bytes at `buf` into `out`. Returns 0 on success,
  * or a negative OIGTL_ERR_* code. Variable-length fields in *out
  * are VIEWS into *buf — valid only while *buf is valid. Copy via
- * oigtl_copy_string() / oigtl_copy_*_be() before the wire buffer
- * goes away if you need to persist them. */
+ * oigtl_copy_string() before the wire buffer goes away if you
+ * need to persist them. */
 int oigtl_position_unpack(const uint8_t *buf, size_t len,
                                 oigtl_position_t *out);
 

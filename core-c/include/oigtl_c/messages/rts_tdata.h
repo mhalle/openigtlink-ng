@@ -38,8 +38,8 @@ int oigtl_rts_tdata_pack(const oigtl_rts_tdata_t *msg,
 /* Unpack `len` bytes at `buf` into `out`. Returns 0 on success,
  * or a negative OIGTL_ERR_* code. Variable-length fields in *out
  * are VIEWS into *buf — valid only while *buf is valid. Copy via
- * oigtl_copy_string() / oigtl_copy_*_be() before the wire buffer
- * goes away if you need to persist them. */
+ * oigtl_copy_string() before the wire buffer goes away if you
+ * need to persist them. */
 int oigtl_rts_tdata_unpack(const uint8_t *buf, size_t len,
                                 oigtl_rts_tdata_t *out);
 

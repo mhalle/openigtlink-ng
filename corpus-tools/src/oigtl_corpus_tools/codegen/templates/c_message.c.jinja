@@ -11,6 +11,161 @@
 #include "oigtl_c/byte_order.h"
 #include "oigtl_c/errors.h"
 
+{% if plan.struct_array %}
+/* ------------------------------------------------------------------ */
+/* Element pack/unpack                                                  */
+/* ------------------------------------------------------------------ */
+
+int {{ plan.struct_array.element.type_prefix }}_pack(
+    const {{ plan.struct_array.element.struct_name }} *elem,
+    uint8_t *buf, size_t cap) {
+    if (elem == NULL || buf == NULL) return OIGTL_ERR_INVALID_ARG;
+    if (cap < {{ plan.struct_array.element.size_macro }})
+        return OIGTL_ERR_SHORT_BUFFER;
+
+    size_t eoff = 0;
+{% for m in plan.struct_array.element.members %}
+{% for line in m.pack_lines %}
+    {{ line }}
+{% endfor %}
+{% endfor %}
+    (void)eoff;
+    return (int){{ plan.struct_array.element.size_macro }};
+}
+
+int {{ plan.struct_array.element.type_prefix }}_unpack(
+    const uint8_t *buf, size_t len,
+    {{ plan.struct_array.element.struct_name }} *out) {
+    if (buf == NULL || out == NULL) return OIGTL_ERR_INVALID_ARG;
+    if (len < {{ plan.struct_array.element.size_macro }})
+        return OIGTL_ERR_SHORT_BUFFER;
+
+    size_t eoff = 0;
+{% for m in plan.struct_array.element.members %}
+{% for line in m.unpack_lines %}
+    {{ line }}
+{% endfor %}
+{% endfor %}
+    (void)eoff;
+    (void)buf;
+    (void)len;
+    return OIGTL_OK;
+}
+
+/* ------------------------------------------------------------------ */
+/* Message-level helpers                                                */
+/* ------------------------------------------------------------------ */
+
+/* Head-scalar bytes: primitives / fixed fields preceding the array. */
+{% if plan.fields %}
+static int _{{ plan.fn_prefix }}_head_pack(
+    const {{ plan.struct_name }} *msg, uint8_t *buf, size_t cap,
+    size_t *off_out) {
+    if (msg == NULL) return OIGTL_ERR_INVALID_ARG;
+    size_t off = 0;
+{% for f in plan.fields %}
+    /* {{ f.name }} */
+{% for line in f.pack_lines %}
+    {{ line }}
+{% endfor %}
+{% endfor %}
+    if (off > cap) return OIGTL_ERR_SHORT_BUFFER;
+    *off_out = off;
+    (void)cap;
+    return OIGTL_OK;
+}
+
+static int _{{ plan.fn_prefix }}_head_unpack(
+    const uint8_t *buf, size_t len, {{ plan.struct_name }} *out,
+    size_t *off_out) {
+    if (out == NULL) return OIGTL_ERR_INVALID_ARG;
+    size_t off = 0;
+{% for f in plan.fields %}
+    /* {{ f.name }} */
+{% for line in f.unpack_lines %}
+    {{ line }}
+{% endfor %}
+{% endfor %}
+    *off_out = off;
+    (void)buf;
+    (void)len;
+    return OIGTL_OK;
+}
+{% else %}
+/* No head fields; head helpers are no-ops. */
+#define _{{ plan.fn_prefix }}_HEAD_SIZE 0
+{% endif %}
+
+int {{ plan.fn_prefix }}_count(const uint8_t *buf, size_t len,
+                               size_t *out_count) {
+    if (buf == NULL || out_count == NULL) return OIGTL_ERR_INVALID_ARG;
+{% if plan.fields %}
+    /* We need to walk the head to know where the array starts. */
+    {{ plan.struct_name }} tmp;
+    size_t off = 0;
+    int rc = _{{ plan.fn_prefix }}_head_unpack(buf, len, &tmp, &off);
+    if (rc != OIGTL_OK) return rc;
+{% else %}
+    size_t off = 0;
+    (void)buf;
+{% endif %}
+    if (off > len) return OIGTL_ERR_SHORT_BUFFER;
+    const size_t array_bytes = len - off;
+    if (array_bytes % {{ plan.struct_array.element.size_macro }} != 0)
+        return OIGTL_ERR_MALFORMED;
+    *out_count = array_bytes / {{ plan.struct_array.element.size_macro }};
+    return OIGTL_OK;
+}
+
+int {{ plan.fn_prefix }}_get(const uint8_t *buf, size_t len,
+                             size_t idx,
+                             {{ plan.struct_array.element.struct_name }} *out) {
+    if (buf == NULL || out == NULL) return OIGTL_ERR_INVALID_ARG;
+    size_t count;
+    int rc = {{ plan.fn_prefix }}_count(buf, len, &count);
+    if (rc != OIGTL_OK) return rc;
+    if (idx >= count) return OIGTL_ERR_INVALID_ARG;
+{% if plan.fields %}
+    {{ plan.struct_name }} tmp;
+    size_t head_off = 0;
+    rc = _{{ plan.fn_prefix }}_head_unpack(buf, len, &tmp, &head_off);
+    if (rc != OIGTL_OK) return rc;
+{% else %}
+    size_t head_off = 0;
+{% endif %}
+    const size_t elem_off =
+        head_off + idx * {{ plan.struct_array.element.size_macro }};
+    return {{ plan.struct_array.element.type_prefix }}_unpack(
+        buf + elem_off, len - elem_off, out);
+}
+
+int {{ plan.fn_prefix }}_pack(const {{ plan.struct_name }} *msg,
+                              const {{ plan.struct_array.element.struct_name }} *elems,
+                              size_t count,
+                              uint8_t *buf, size_t cap) {
+    if (buf == NULL) return OIGTL_ERR_INVALID_ARG;
+    if (count > 0 && elems == NULL) return OIGTL_ERR_INVALID_ARG;
+{% if plan.fields %}
+    if (msg == NULL) return OIGTL_ERR_INVALID_ARG;
+    size_t off = 0;
+    int rc = _{{ plan.fn_prefix }}_head_pack(msg, buf, cap, &off);
+    if (rc != OIGTL_OK) return rc;
+{% else %}
+    (void)msg;
+    size_t off = 0;
+{% endif %}
+    const size_t need = off
+        + count * {{ plan.struct_array.element.size_macro }};
+    if (cap < need) return OIGTL_ERR_SHORT_BUFFER;
+    for (size_t i = 0; i < count; ++i) {
+        int rc2 = {{ plan.struct_array.element.type_prefix }}_pack(
+            &elems[i], buf + off, cap - off);
+        if (rc2 < 0) return rc2;
+        off += (size_t)rc2;
+    }
+    return (int)off;
+}
+{% else %}
 int {{ plan.fn_prefix }}_packed_size(const {{ plan.struct_name }} *msg) {
     if (msg == NULL) return OIGTL_ERR_INVALID_ARG;
 {% if plan.is_fixed_body %}
@@ -75,3 +230,4 @@ int {{ plan.fn_prefix }}_unpack(const uint8_t *buf, size_t len,
     (void)len;
     return OIGTL_OK;
 }
+{% endif %}

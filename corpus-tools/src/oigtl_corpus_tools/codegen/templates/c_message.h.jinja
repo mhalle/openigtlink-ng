@@ -16,32 +16,87 @@
 extern "C" {
 #endif
 
+{% if plan.struct_array %}
+/* Array-of-structs body: see the element struct + helpers below
+ * rather than the message-level {{ plan.struct_name }}. */
+#define {{ plan.struct_array.element.size_macro }} ((size_t){{ plan.struct_array.element.elem_size }})
+
+typedef struct {{ plan.struct_array.element.type_prefix }} {
+{% for m in plan.struct_array.element.members %}
+    {{ m.declaration }}
+{% endfor %}
+} {{ plan.struct_array.element.struct_name }};
+
+/* Pack one element. Returns bytes written ({{ plan.struct_array.element.size_macro }})
+ * or a negative OIGTL_ERR_* code. */
+int {{ plan.struct_array.element.type_prefix }}_pack(
+    const {{ plan.struct_array.element.struct_name }} *elem,
+    uint8_t *buf, size_t cap);
+
+/* Unpack one element. Requires cap >= {{ plan.struct_array.element.size_macro }}. */
+int {{ plan.struct_array.element.type_prefix }}_unpack(
+    const uint8_t *buf, size_t len,
+    {{ plan.struct_array.element.struct_name }} *out);
+
+{% endif %}
 {% if plan.is_fixed_body %}
 /* Fixed body size — every wire-valid {{ plan.type_id }} has this
  * many body bytes. Useful for stack-sizing a pack buffer. */
 #define {{ plan.body_size_macro }} ((size_t){{ plan.body_size }})
-{% else %}
-/* Variable body size — depends on string / array lengths at
- * runtime. Use {{ plan.fn_prefix }}_packed_size(&msg) to query. */
-{% if plan.body_size_set %}
-#define {{ plan.body_size_macro }}_MIN  ((size_t){{ plan.body_size_set[0] }})
-#define {{ plan.body_size_macro }}_MAX  ((size_t){{ plan.body_size_set[-1] }})
-{% endif %}
 {% endif %}
 
+{% if plan.struct_array %}
+/* Message-level view. The struct-array field is NOT materialized
+ * in this struct — use the count/get helpers below to iterate
+ * elements out of the wire buffer.
+ *
+ * Head fields (if any) are available directly. If the message has
+ * only the array field, this struct is empty. */
+{% endif %}
 typedef struct {{ plan.struct_name[:-2] }} {
 {% if plan.fields %}
 {% for f in plan.fields %}
     {{ f.declaration }}
 {% endfor %}
-{% else %}
+{% elif not plan.struct_array %}
     /* Body-less message (header-only on the wire).
      * C99 forbids empty structs; this placeholder keeps the ABI
      * tidy without affecting pack/unpack. */
     char _placeholder;
+{% else %}
+    /* No head scalars — struct-array is the entire body. This
+     * placeholder satisfies C99's prohibition on empty structs
+     * without affecting pack/unpack; the real data lives in the
+     * nested struct-array elements accessible via the count/get
+     * helpers below. */
+    char _placeholder;
 {% endif %}
 } {{ plan.struct_name }};
 
+{% if plan.struct_array %}
+/* Count elements in a wire body. Returns 0 on success with
+ * *out_count populated; negative OIGTL_ERR_* on failure (short
+ * buffer, misaligned remainder, etc.). */
+int {{ plan.fn_prefix }}_count(const uint8_t *buf, size_t len,
+                               size_t *out_count);
+
+/* Random access: copy the idx-th element into *out. Returns 0
+ * on success, negative OIGTL_ERR_* otherwise. */
+int {{ plan.fn_prefix }}_get(const uint8_t *buf, size_t len,
+                             size_t idx,
+                             {{ plan.struct_array.element.struct_name }} *out);
+
+/* Pack an array of elements into a wire body.
+{% if plan.fields %} * `msg` carries the head-scalar fields; `elems`/`count` define
+ * the trailing element array.
+{% else %} * `msg` is unused for head-less messages — pass NULL.
+{% endif %} * Returns bytes written or a negative OIGTL_ERR_* code. */
+int {{ plan.fn_prefix }}_pack(const {{ plan.struct_name }} *msg,
+                              const {{ plan.struct_array.element.struct_name }} *elems,
+                              size_t count,
+                              uint8_t *buf, size_t cap);
+
+{% else %}
 /* Compute the body size needed to pack `msg`. Returns the byte
  * count on success, or a negative OIGTL_ERR_* code on invalid
  * input. For fixed-body messages this is a constant. */
@@ -56,10 +111,11 @@ int {{ plan.fn_prefix }}_pack(const {{ plan.struct_name }} *msg,
 /* Unpack `len` bytes at `buf` into `out`. Returns 0 on success,
  * or a negative OIGTL_ERR_* code. Variable-length fields in *out
  * are VIEWS into *buf — valid only while *buf is valid. Copy via
- * oigtl_copy_string() / oigtl_copy_*_be() before the wire buffer
- * goes away if you need to persist them. */
+ * oigtl_copy_string() before the wire buffer goes away if you
+ * need to persist them. */
 int {{ plan.fn_prefix }}_unpack(const uint8_t *buf, size_t len,
                                 {{ plan.struct_name }} *out);
+{% endif %}
 
 #ifdef __cplusplus
 }

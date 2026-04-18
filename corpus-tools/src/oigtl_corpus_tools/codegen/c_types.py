@@ -127,6 +127,46 @@ class FieldPlan:
 
 
 @dataclass
+class ElementMember:
+    """One sub-field inside a nested struct-element struct."""
+    declaration: str
+    pack_lines: list[str] = field(default_factory=list)
+    unpack_lines: list[str] = field(default_factory=list)
+
+
+@dataclass
+class ElementStructDef:
+    """Emitted when a message has an `array` field whose elements
+    are themselves structs. One nested struct appears in the public
+    header, plus element-level pack/unpack function definitions in
+    the .c file. Message-level `_count` / `_get` / `_pack` helpers
+    loop over these.
+
+    All sub-fields must be fixed-width — the struct-array code path
+    does not support nested variable-length fields. `elem_size` is
+    the compile-time constant sum of sub-field sizes.
+    """
+    struct_name: str                # e.g. "oigtl_point_element_t"
+    type_prefix: str                # e.g. "oigtl_point_element"
+    size_macro: str                 # e.g. "OIGTL_POINT_ELEMENT_SIZE"
+    elem_size: int
+    members: list[ElementMember]
+
+
+@dataclass
+class StructArrayPlan:
+    """Metadata for the single top-level array-of-struct field in a
+    message. Parallel to `fields` but kept distinct because the
+    templates emit a different code shape for this case.
+    """
+    field_name: str                 # e.g. "points"
+    element: ElementStructDef
+    count_source: str               # "remaining" or a sibling field
+    # Sibling fields (primitives preceding the struct array) are
+    # emitted as regular FieldPlans ahead of this one.
+
+
+@dataclass
 class MessagePlan:
     """Everything one Jinja render of a message needs."""
 
@@ -141,6 +181,10 @@ class MessagePlan:
     body_size_set: Optional[list[int]]   # e.g. [12, 24, 28] for POSITION
     fields: list[FieldPlan]
     description: str                     # schema "description" field
+    # When non-None, this message has a trailing array-of-structs
+    # field. `fields` holds the primitives preceding it (if any);
+    # `struct_array` describes the array itself.
+    struct_array: Optional[StructArrayPlan] = None
 
 
 # ---------------------------------------------------------------------------
@@ -437,6 +481,148 @@ def _plan_trailing_string(name: str, null_terminated: bool) -> FieldPlan:
 
 
 # ---------------------------------------------------------------------------
+# Struct-element planners
+#
+# Sub-fields are packed/unpacked inside a caller-supplied element
+# struct. The code operates on `elem->name` rather than `msg->name`
+# or `out->name`, and it uses a local cursor `eoff` (element offset)
+# rather than the outer `off`. No SHORT_BUFFER checks — the caller
+# has already verified the full element width fits in the buffer.
+# ---------------------------------------------------------------------------
+
+
+def _plan_sub_primitive(name: str, ptype: str) -> tuple[ElementMember, int]:
+    ct = c_primitive_type(ptype)
+    size = c_primitive_size(ptype)
+    suf = c_primitive_suffix(ptype)
+    m = ElementMember(declaration=f"{ct} {name};")
+    m.pack_lines += [
+        f"oigtl_write_be_{suf}(buf + eoff, elem->{name});",
+        f"eoff += {size};",
+    ]
+    m.unpack_lines += [
+        f"out->{name} = oigtl_read_be_{suf}(buf + eoff);",
+        f"eoff += {size};",
+    ]
+    return m, size
+
+
+def _plan_sub_array_fixed(name: str, etype: str, count: int) -> tuple[ElementMember, int]:
+    ct = c_primitive_type(etype)
+    esize = c_primitive_size(etype)
+    suf = c_primitive_suffix(etype)
+    total = esize * count
+    m = ElementMember(declaration=f"{ct} {name}[{count}];")
+    m.pack_lines += [
+        f"for (size_t i = 0; i < {count}; ++i) {{",
+        f"    oigtl_write_be_{suf}(buf + eoff + i * {esize}, "
+        f"elem->{name}[i]);",
+        "}",
+        f"eoff += {total};",
+    ]
+    m.unpack_lines += [
+        f"for (size_t i = 0; i < {count}; ++i) {{",
+        f"    out->{name}[i] = oigtl_read_be_{suf}(buf + eoff + i * {esize});",
+        "}",
+        f"eoff += {total};",
+    ]
+    return m, total
+
+
+def _plan_sub_fixed_string(name: str, size: int,
+                           null_padded: bool) -> tuple[ElementMember, int]:
+    m = ElementMember(declaration=f"char {name}[{size + 1}];")
+    if null_padded:
+        m.pack_lines += [
+            "{",
+            f"    size_t n = strlen(elem->{name});",
+            f"    if (n > {size}) return OIGTL_ERR_FIELD_RANGE;",
+            f"    memcpy(buf + eoff, elem->{name}, n);",
+            f"    if (n < {size}) memset(buf + eoff + n, 0, {size} - n);",
+            f"    eoff += {size};",
+            "}",
+        ]
+        m.unpack_lines += [
+            "{",
+            f"    int n = oigtl_null_padded_length(buf + eoff, {size});",
+            "    if (n < 0) return n;",
+            f"    memcpy(out->{name}, buf + eoff, (size_t)n);",
+            f"    out->{name}[n] = '\\0';",
+            f"    eoff += {size};",
+            "}",
+        ]
+    else:
+        m.pack_lines += [
+            "{",
+            f"    size_t n = strlen(elem->{name});",
+            f"    if (n != {size}) return OIGTL_ERR_FIELD_RANGE;",
+            f"    memcpy(buf + eoff, elem->{name}, {size});",
+            f"    eoff += {size};",
+            "}",
+        ]
+        m.unpack_lines += [
+            f"memcpy(out->{name}, buf + eoff, {size});",
+            f"out->{name}[{size}] = '\\0';",
+            f"eoff += {size};",
+        ]
+    return m, size
+
+
+def _plan_sub_field(f: dict[str, Any]) -> tuple[ElementMember, int]:
+    """Plan one sub-field of a struct element. Returns the member +
+    its fixed wire width."""
+    ftype = f["type"]
+    name = f["name"]
+    if ftype in _PRIMITIVE_C:
+        return _plan_sub_primitive(name, ftype)
+    if ftype == "array":
+        etype = f["element_type"]
+        if isinstance(etype, dict):
+            raise NotImplementedError(
+                f"nested struct element cannot contain another struct "
+                f"(sub-field {name!r})"
+            )
+        count = f.get("count")
+        if isinstance(count, int):
+            return _plan_sub_array_fixed(name, etype, count)
+        raise NotImplementedError(
+            f"sub-field {name!r}: only fixed-count arrays are supported"
+        )
+    if ftype == "fixed_string":
+        return _plan_sub_fixed_string(
+            name, int(f["size_bytes"]),
+            bool(f.get("null_padded", True)))
+    raise NotImplementedError(
+        f"sub-field {name!r}: unsupported type {ftype!r}")
+
+
+def _build_element_struct(field_name: str, elem_schema: dict[str, Any],
+                          type_id: str) -> ElementStructDef:
+    """Build the ElementStructDef for a struct-element array field.
+
+    Generates the nested struct type name + size macro from the field
+    name and parent type_id — e.g. POINT.points → oigtl_point_element_t,
+    OIGTL_POINT_ELEMENT_SIZE. All sub-fields must be fixed-width or
+    we raise NotImplementedError.
+    """
+    members: list[ElementMember] = []
+    size = 0
+    for sub in elem_schema.get("fields", []):
+        m, w = _plan_sub_field(sub)
+        members.append(m)
+        size += w
+
+    prefix = f"oigtl_{type_id.lower()}_element"
+    return ElementStructDef(
+        struct_name=f"{prefix}_t",
+        type_prefix=prefix,
+        size_macro=f"OIGTL_{type_id.upper()}_ELEMENT_SIZE",
+        elem_size=size,
+        members=members,
+    )
+
+
+# ---------------------------------------------------------------------------
 # Dispatch: schema field dict → FieldPlan
 # ---------------------------------------------------------------------------
 
@@ -450,13 +636,16 @@ def _plan_field(f: dict[str, Any]) -> FieldPlan:
 
     if ftype == "array":
         etype = f["element_type"]
-        # element_type may be a string (primitive name) or a dict
-        # (nested struct / fixed_string element). Round 1 supports
-        # only primitive string names.
+        # Struct-element arrays are handled at the plan_message
+        # level as the StructArrayPlan; they never reach _plan_field.
+        # Only primitive-element arrays arrive here.
         if isinstance(etype, dict):
             raise NotImplementedError(
-                f"array of struct/nested element_type not yet "
-                f"supported (field {name!r})"
+                f"array of fixed_string elements (as used by "
+                f"CAPABILITY / STT_BIND / GET_BIND) is supported "
+                f"via the struct-array path when the nested type "
+                f"is 'struct'; direct fixed_string element arrays "
+                f"not yet supported (field {name!r})"
             )
         if etype not in _PRIMITIVE_C:
             raise NotImplementedError(
@@ -509,28 +698,102 @@ def _plan_field(f: dict[str, Any]) -> FieldPlan:
 # ---------------------------------------------------------------------------
 
 
+def _is_struct_array_field(f: dict[str, Any]) -> bool:
+    return (
+        f.get("type") == "array"
+        and isinstance(f.get("element_type"), dict)
+        and f["element_type"].get("type") == "struct"
+    )
+
+
 def plan_message(schema: dict[str, Any]) -> MessagePlan:
     type_id = schema["type_id"]
     fields_in = schema.get("fields", [])
-    plans = [_plan_field(f) for f in fields_in]
 
-    if all(p.static_size is not None for p in plans):
-        body_size: Optional[int] = sum(p.static_size for p in plans)  # type: ignore[misc]
-        body_size_expr = str(body_size)
-        is_fixed_body = True
-
-        declared = schema.get("body_size")
-        if isinstance(declared, int) and declared != body_size:
-            raise ValueError(
-                f"schema {type_id}: declared body_size={declared} but "
-                f"field plans sum to {body_size} bytes"
+    # A single trailing struct-array field is supported. Preceding
+    # scalar/primitive/fixed fields are planned normally. The shape
+    # "scalar header + N * struct_element" is what POINT / TDATA /
+    # IMGMETA / etc. use in practice.
+    head_fields = []
+    struct_array: Optional[StructArrayPlan] = None
+    for f in fields_in:
+        if _is_struct_array_field(f):
+            if struct_array is not None:
+                raise NotImplementedError(
+                    f"{type_id}: more than one struct-array field not "
+                    "yet supported (POLYDATA-style multi-section)"
+                )
+            elem_def = _build_element_struct(
+                f["name"], f["element_type"], type_id)
+            count = f.get("count")
+            count_from = f.get("count_from")
+            if isinstance(count, str):
+                source = count
+            elif count_from == "remaining":
+                source = "remaining"
+            elif isinstance(count_from, str):
+                source = count_from
+            else:
+                raise NotImplementedError(
+                    f"{type_id}.{f['name']}: struct array needs "
+                    "count (string sibling) or count_from"
+                )
+            struct_array = StructArrayPlan(
+                field_name=f["name"],
+                element=elem_def,
+                count_source=source,
             )
-    else:
-        body_size = None
-        body_size_expr = (
-            " + ".join(f"({p.size_expr})" for p in plans) if plans else "0"
+        else:
+            head_fields.append(f)
+
+    plans = [_plan_field(f) for f in head_fields]
+
+    # Body-size computation: head fields + (count * elem_size) if
+    # a struct array is present. For count_from=remaining we can't
+    # express a closed-form static size — the body is variable.
+    if struct_array is not None:
+        head_static = (
+            sum(p.static_size for p in plans)  # type: ignore[misc]
+            if all(p.static_size is not None for p in plans) else None
         )
+        if head_static is not None and struct_array.count_source != "remaining":
+            # count sourced from a sibling field — known at runtime only.
+            body_size_expr = (
+                f"{head_static} + (size_t)msg->{struct_array.count_source}"
+                f" * {struct_array.element.elem_size}"
+            )
+        elif head_static is not None:
+            # remaining-count: pack size depends on caller-supplied
+            # element count (reused below in the template as
+            # `{head_static} + count * ELEM_SIZE`).
+            body_size_expr = (
+                f"{head_static} + count * {struct_array.element.elem_size}"
+            )
+        else:
+            raise NotImplementedError(
+                f"{type_id}: head fields include variable-width; not "
+                "supported alongside struct array")
+        body_size = None
         is_fixed_body = False
+    else:
+        if all(p.static_size is not None for p in plans):
+            body_size: Optional[int] = sum(
+                p.static_size for p in plans)  # type: ignore[misc]
+            body_size_expr = str(body_size)
+            is_fixed_body = True
+
+            declared = schema.get("body_size")
+            if isinstance(declared, int) and declared != body_size:
+                raise ValueError(
+                    f"schema {type_id}: declared body_size={declared} "
+                    f"but field plans sum to {body_size} bytes"
+                )
+        else:
+            body_size = None
+            body_size_expr = (
+                " + ".join(f"({p.size_expr})" for p in plans) if plans else "0"
+            )
+            is_fixed_body = False
 
     body_size_set = schema.get("body_size_set")
     if body_size_set is not None:
@@ -548,4 +811,5 @@ def plan_message(schema: dict[str, Any]) -> MessagePlan:
         body_size_set=body_size_set,
         fields=plans,
         description=schema.get("description", ""),
+        struct_array=struct_array,
     )

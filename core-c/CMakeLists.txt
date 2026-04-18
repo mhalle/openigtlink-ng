@@ -138,7 +138,8 @@ if(OIGTL_C_MESSAGE_SOURCES)
     target_include_directories(oigtl_c_parity_emitter PRIVATE include)
 
     set(OIGTL_C_PARITY_WORKDIR "${CMAKE_CURRENT_BINARY_DIR}/_parity")
-    foreach(_case transform status position_full position_only sensor string)
+    foreach(_case transform status position_full position_only sensor string
+                  point)
         add_test(NAME oigtl_c_parity_${_case}
             COMMAND ${CMAKE_COMMAND}
                 -DSHIM=$<TARGET_FILE:oigtl_c_parity_emitter>

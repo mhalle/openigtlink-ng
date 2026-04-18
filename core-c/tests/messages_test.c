@@ -16,6 +16,7 @@
 #include <stdio.h>
 #include <string.h>
 
+#include "oigtl_c/messages/point.h"
 #include "oigtl_c/messages/position.h"
 #include "oigtl_c/messages/sensor.h"
 #include "oigtl_c/messages/status.h"
@@ -251,6 +252,67 @@ static void test_sensor_roundtrip(void) {
             == OIGTL_ERR_SHORT_BUFFER);
 }
 
+/* ------------------------------------------------------------------ */
+static void test_point_roundtrip(void) {
+    fprintf(stderr, "test_point_roundtrip\n");
+
+    /* Three fabricated points — exercises fixed_string, fixed-count
+     * uint8 array, fixed-count float array, primitive, all within
+     * one element. */
+    oigtl_point_element_t src[3] = {0};
+    static const char names[3][20] = {"tip", "entry", "target"};
+    static const char groups[3][12] = {"Fiducial", "Landmark", "Target"};
+    for (int i = 0; i < 3; ++i) {
+        memcpy(src[i].name, names[i], strlen(names[i]));
+        memcpy(src[i].group_name, groups[i], strlen(groups[i]));
+        src[i].rgba[0] = (uint8_t)(0x10 * (i + 1));
+        src[i].rgba[1] = (uint8_t)(0x20 * (i + 1));
+        src[i].rgba[2] = (uint8_t)(0x30 * (i + 1));
+        src[i].rgba[3] = 0xFF;
+        src[i].position[0] = (float)i * 1.5f;
+        src[i].position[1] = (float)i * 2.5f;
+        src[i].position[2] = (float)i * 3.5f;
+        src[i].radius = 0.5f + (float)i;
+        memcpy(src[i].owner, "IMAGE_0", strlen("IMAGE_0"));
+    }
+
+    /* Pack 3 elements (no head scalars for POINT) → 3 * 136 = 408. */
+    uint8_t buf[3 * OIGTL_POINT_ELEMENT_SIZE];
+    int n = oigtl_point_pack(NULL, src, 3, buf, sizeof buf);
+    REQUIRE(n == (int)sizeof buf);
+
+    /* Count + get round-trip. */
+    size_t count = 0;
+    REQUIRE(oigtl_point_count(buf, sizeof buf, &count) == OIGTL_OK);
+    REQUIRE(count == 3);
+
+    for (size_t i = 0; i < count; ++i) {
+        oigtl_point_element_t dst;
+        int rc = oigtl_point_get(buf, sizeof buf, i, &dst);
+        REQUIRE(rc == OIGTL_OK);
+        REQUIRE(strcmp(dst.name, src[i].name) == 0);
+        REQUIRE(strcmp(dst.group_name, src[i].group_name) == 0);
+        REQUIRE(memcmp(dst.rgba, src[i].rgba, 4) == 0);
+        for (int k = 0; k < 3; ++k)
+            REQUIRE(dst.position[k] == src[i].position[k]);
+        REQUIRE(dst.radius == src[i].radius);
+        REQUIRE(strcmp(dst.owner, src[i].owner) == 0);
+    }
+
+    /* Misaligned body (not a multiple of 136) must be rejected. */
+    REQUIRE(oigtl_point_count(buf, sizeof buf - 1, &count)
+            == OIGTL_ERR_MALFORMED);
+
+    /* Out-of-range index is rejected. */
+    oigtl_point_element_t dst;
+    REQUIRE(oigtl_point_get(buf, sizeof buf, 99, &dst)
+            == OIGTL_ERR_INVALID_ARG);
+
+    /* Empty body (0 elements) is valid. */
+    REQUIRE(oigtl_point_count(buf, 0, &count) == OIGTL_OK);
+    REQUIRE(count == 0);
+}
+
 int main(void) {
     test_transform_roundtrip();
     test_status_roundtrip();
@@ -258,6 +320,7 @@ int main(void) {
     test_position_roundtrip_full();
     test_position_roundtrip_position_only();
     test_sensor_roundtrip();
+    test_point_roundtrip();
 
     if (g_fail == 0) {
         fprintf(stderr, "oigtl_c_messages: all passed\n");

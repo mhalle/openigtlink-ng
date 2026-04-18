@@ -74,6 +74,36 @@ def emit_string() -> bytes:
     return bytes(body)
 
 
+def emit_point() -> bytes:
+    """Two POINT elements. Each element is 136 bytes:
+    name[64] + group_name[32] + rgba[4] + position[12] + radius[4]
+    + owner[20].
+    """
+    def elem(name: bytes, group: bytes, rgba: tuple[int, int, int, int],
+             position: tuple[float, float, float], radius: float,
+             owner: bytes) -> bytes:
+        out = bytearray()
+        out += name + b"\x00" * (64 - len(name))
+        out += group + b"\x00" * (32 - len(group))
+        out += bytes(rgba)
+        for p in position:
+            out += struct.pack(">f", p)
+        out += struct.pack(">f", radius)
+        out += owner + b"\x00" * (20 - len(owner))
+        return bytes(out)
+
+    # Note: trailing NUL of the C-string is part of the wire payload
+    # because C's memcpy(dst, "tip", sizeof "tip") writes 4 bytes.
+    body = bytearray()
+    body += elem(
+        b"tip\x00", b"Fiducial\x00", (0x10, 0x20, 0x30, 0xFF),
+        (1.5, 2.5, 3.5), 0.5, b"IMAGE_0\x00")
+    body += elem(
+        b"entry\x00", b"Landmark\x00", (0x20, 0x40, 0x60, 0xFF),
+        (3.0, 5.0, 7.0), 1.5, b"IMAGE_0\x00")
+    return bytes(body)
+
+
 def emit_sensor() -> bytes:
     """uint8 larray + uint8 status + uint64 unit + N*float64 data."""
     body = bytearray()
@@ -92,6 +122,7 @@ EMITTERS = {
     "position_only": emit_position_only,
     "sensor":        emit_sensor,
     "string":        emit_string,
+    "point":         emit_point,
 }
 
 
