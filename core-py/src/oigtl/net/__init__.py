@@ -28,6 +28,7 @@ from oigtl.net._options import (
 from oigtl.net.client import Client
 from oigtl.net.server import Peer, PeerAddress, Server, ServerOptions
 from oigtl.net.sync_client import SyncClient
+from oigtl.net.sync_server import SyncServer
 from oigtl.net.errors import (
     BufferOverflowError,
     ConnectionClosedError,
@@ -65,6 +66,7 @@ __all__ = [
     "as_timedelta",
     # Server
     "Server",
+    "SyncServer",
     "ServerOptions",
     "Peer",
     "PeerAddress",

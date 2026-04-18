@@ -226,6 +226,22 @@ class Server:
         self._peers: set[Peer] = set()
 
     @classmethod
+    def listen_sync(
+        cls,
+        port: int,
+        options: ServerOptions | None = None,
+        *,
+        host: str = "0.0.0.0",
+    ) -> "oigtl.net.sync_server.SyncServer":   # noqa: F821
+        """Synchronous counterpart to :meth:`listen`.
+
+        Returns a :class:`~oigtl.net.sync_server.SyncServer` — same
+        capability, blocking surface, no ``await`` required.
+        """
+        from oigtl.net.sync_server import SyncServer
+        return SyncServer.listen(port, options, host=host)
+
+    @classmethod
     async def listen(
         cls,
         port: int,
