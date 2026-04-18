@@ -125,7 +125,10 @@ std::string find_repo_root(const std::string& start) {
     for (int depth = 0; depth < 8; ++depth) {
         std::ifstream probe(p + "/spec/corpus/negative/index.json");
         if (probe) return p;
-        auto slash = p.find_last_of('/');
+        // Accept both POSIX '/' and Windows '\\' path separators.
+        // ctest on Windows may invoke us with a backslash-native
+        // build-dir path.
+        auto slash = p.find_last_of("/\\");
         if (slash == std::string::npos) break;
         p = p.substr(0, slash);
     }
