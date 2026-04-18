@@ -571,6 +571,17 @@ add_executable(tracker_pair
 )
 target_link_libraries(tracker_pair PRIVATE oigtl)
 
+# resilient_client — demonstrates auto_reconnect + offline_buffer
+# + TCP keepalive end-to-end. Doubles as a ctest case: the binary
+# self-checks at the end and returns non-zero if counts don't
+# match expectations.
+add_executable(resilient_client
+    examples/resilient_client.cpp
+)
+target_link_libraries(resilient_client PRIVATE oigtl)
+add_test(NAME resilient_client_demo COMMAND resilient_client)
+set_tests_properties(resilient_client_demo PROPERTIES TIMEOUT 15)
+
 # Compat-mode hello-world — demonstrates the igtl:: API as a
 # consumer would use it. Links only against igtl_compat. Mirrors
 # what compat/MIGRATION.md walks through in prose.

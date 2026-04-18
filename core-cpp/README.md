@@ -48,6 +48,8 @@ core-cpp/
 
 ## Usage
 
+### Codec only
+
 ```cpp
 #include "oigtl/messages/register_all.hpp"
 #include "oigtl/runtime/oracle.hpp"
@@ -65,6 +67,32 @@ if (!result.ok) {
     /* result.error describes why */
 }
 ```
+
+### TCP Client + Server — the ergonomic API
+
+```cpp
+#include "oigtl/client.hpp"
+#include "oigtl/server.hpp"
+#include "oigtl/messages/transform.hpp"
+
+// Client: connect, send, receive.
+auto client = oigtl::Client::connect("tracker.lab", 18944);
+client.send(oigtl::messages::Transform{ .matrix = { ... } });
+auto reply = client.receive<oigtl::messages::Status>();
+
+// Server: listen, dispatch by type, run.
+oigtl::Server::listen(18944)
+    .on<oigtl::messages::Transform>([&](auto& env) {
+        process_pose(env.body.matrix);
+    })
+    .restrict_to_local_subnet()     // opt-in network policy
+    .set_max_simultaneous_clients(4)
+    .run();
+```
+
+For resilient client configurations (auto-reconnect, offline
+buffer, TCP keepalive), see **[CLIENT_GUIDE.md](CLIENT_GUIDE.md)**
+and the runnable **[examples/resilient_client.cpp](examples/resilient_client.cpp)**.
 
 ## Build + test
 
