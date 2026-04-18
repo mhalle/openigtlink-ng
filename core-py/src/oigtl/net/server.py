@@ -25,6 +25,7 @@ import asyncio
 import contextlib
 import ipaddress
 from dataclasses import dataclass
+from datetime import timedelta
 from typing import (
     Any,
     AsyncIterator,
@@ -36,8 +37,10 @@ from typing import (
 from pydantic import BaseModel
 
 from oigtl.messages import REGISTRY as _MESSAGE_REGISTRY
+from oigtl.net import interfaces
 from oigtl.net._options import Envelope
 from oigtl.net.errors import ConnectionClosedError, FramingError
+from oigtl.net.policy import IpRange, PeerPolicy
 from oigtl.runtime.exceptions import CrcMismatchError, ProtocolError
 from oigtl.runtime.header import HEADER_SIZE, pack_header, unpack_header
 from oigtl_corpus_tools.codec.crc64 import crc64
@@ -156,13 +159,28 @@ class Peer:
 class ServerOptions:
     """Knobs for :class:`Server`.
 
-    Phase 5 uses only the basics; Phase 6 adds restriction fields.
+    The restriction fields (``policy``, ``max_clients``,
+    ``idle_timeout_seconds``) can also be set fluently via
+    builder methods on :class:`Server` — the builders are the
+    researcher-facing surface; this struct exists so the same
+    config is serialisable.
     """
 
     default_device: str = "python-server"
     max_message_size: int = 0
     """If non-zero, reject inbound messages with body_size above this
     cap. Pre-parse DoS defence."""
+
+    policy: PeerPolicy | None = None
+    """Accept-time peer-address filter. ``None`` = admit any peer."""
+
+    max_clients: int = 0
+    """Maximum simultaneous connections. 0 = unlimited. Connections
+    arriving over the cap are rejected immediately."""
+
+    idle_timeout_seconds: float = 0.0
+    """A peer with no received bytes for this many seconds is
+    disconnected. 0 = no timeout."""
 
 
 # ----------------------------------------------------------------------
@@ -324,6 +342,113 @@ class Server:
         return handler
 
     # --------------------------------------------------------------
+    # Restrictions (fluent builders)
+    # --------------------------------------------------------------
+
+    def allow(
+        self,
+        peers: (
+            IpRange
+            | str
+            | ipaddress.IPv4Network
+            | ipaddress.IPv6Network
+            | ipaddress.IPv4Address
+            | ipaddress.IPv6Address
+            | list
+            | tuple
+        ),
+    ) -> "Server":
+        """Narrow the set of peers allowed to connect.
+
+        Accepts a single item or a list. Items can be:
+
+        - An :class:`IpRange` (parsed via :func:`oigtl.net.parse`).
+        - A stdlib :class:`~ipaddress.IPv4Network` /
+          :class:`~ipaddress.IPv6Network` (covers ``interfaces.subnets()``).
+        - A stdlib :class:`~ipaddress.IPv4Address` /
+          :class:`~ipaddress.IPv6Address` (single-host range).
+        - A string — passes through :func:`oigtl.net.parse`, which
+          accepts single IPs, CIDR, and dash-ranges.
+
+        Multiple calls compose (additive union). Returns ``self`` so
+        builders chain::
+
+            server = (await Server.listen(18944)) \\
+                .allow(interfaces.subnets()) \\
+                .allow("10.42.0.0/24")
+        """
+        if self._options.policy is None:
+            self._options.policy = PeerPolicy()
+
+        for item in _flatten(peers):
+            rng = _coerce_to_iprange(item)
+            if rng is None:
+                raise ValueError(
+                    f"cannot interpret {item!r} as an IP range"
+                )
+            self._options.policy.allowed_peers.append(rng)
+        return self
+
+    def restrict_to_local_subnet(self) -> "Server":
+        """Accept only peers on the same LAN(s) as this host.
+
+        One-line equivalent of ``server.allow(interfaces.subnets())``
+        with link-local filtering. Common in research labs where
+        the tracker should only accept connections from the bench
+        machine or other lab peers.
+        """
+        return self.allow(interfaces.subnets())
+
+    def restrict_to_this_machine_only(self) -> "Server":
+        """Accept only connections from this host's own addresses.
+
+        Includes loopback (``127.0.0.1``, ``::1``). Equivalent to
+        firewalling everything except localhost — useful for tests
+        and for IPC-style use of the transport on a shared box.
+        """
+        return self.allow(interfaces.subnets(include_loopback=True))
+
+    def set_max_clients(self, n: int) -> "Server":
+        """Cap simultaneous connections. 0 = unlimited (default)."""
+        if n < 0:
+            raise ValueError("max_clients must be >= 0")
+        self._options.max_clients = n
+        return self
+
+    def disconnect_if_silent_for(
+        self, timeout: timedelta | float | int,
+    ) -> "Server":
+        """Close a peer that hasn't sent any bytes in *timeout*.
+
+        Accepts :class:`~datetime.timedelta`, seconds as float, or
+        milliseconds as int — mirrors the ``ClientOptions`` convention.
+        ``0`` disables (default).
+        """
+        if isinstance(timeout, timedelta):
+            secs = timeout.total_seconds()
+        elif isinstance(timeout, int) and not isinstance(timeout, bool):
+            # Int = milliseconds (matches ClientOptions convention).
+            secs = timeout / 1000.0
+        elif isinstance(timeout, float):
+            secs = float(timeout)
+        else:
+            raise TypeError(
+                f"disconnect_if_silent_for expects timedelta/int ms/"
+                f"float seconds, got {type(timeout).__name__}"
+            )
+        if secs < 0:
+            raise ValueError("timeout must be >= 0")
+        self._options.idle_timeout_seconds = secs
+        return self
+
+    def set_max_message_size_bytes(self, n: int) -> "Server":
+        """Reject inbound messages with body_size greater than *n*."""
+        if n < 0:
+            raise ValueError("max_message_size must be >= 0")
+        self._options.max_message_size = n
+        return self
+
+    # --------------------------------------------------------------
     # Accept loop
     # --------------------------------------------------------------
 
@@ -374,10 +499,19 @@ class Server:
         task.add_done_callback(self._peer_tasks.discard)
 
     async def _admit(self, peer: Peer) -> bool:
-        """Restriction hook — Phase 5 admits everyone.
+        """Consult the configured restrictions; return True to admit."""
+        # max_clients — reject when over cap.
+        if (self._options.max_clients
+                and len(self._peers) >= self._options.max_clients):
+            return False
 
-        Overridden in Phase 6 to consult :class:`PeerPolicy` etc.
-        """
+        # Peer-address filter.
+        if self._options.policy is not None:
+            if not self._options.policy.is_peer_allowed(
+                peer.address.address,
+            ):
+                return False
+
         return True
 
     async def _peer_loop(self, peer: Peer) -> None:
@@ -419,9 +553,26 @@ class Server:
                     await result
 
     async def _receive_from(self, peer: Peer) -> Envelope[BaseModel]:
-        """Read one framed message from *peer*'s stream."""
+        """Read one framed message from *peer*'s stream.
+
+        Honours :attr:`ServerOptions.idle_timeout_seconds` — a peer
+        that's silent past the budget is disconnected by raising
+        :class:`ConnectionClosedError`, which the peer loop handles
+        as a normal close.
+        """
+        idle = self._options.idle_timeout_seconds
+        read_coro = peer._reader.readexactly(HEADER_SIZE)
         try:
-            header_bytes = await peer._reader.readexactly(HEADER_SIZE)
+            if idle > 0:
+                header_bytes = await asyncio.wait_for(
+                    read_coro, timeout=idle,
+                )
+            else:
+                header_bytes = await read_coro
+        except asyncio.TimeoutError as e:
+            raise ConnectionClosedError(
+                f"peer idle > {idle}s; disconnecting"
+            ) from e
         except asyncio.IncompleteReadError as e:
             raise ConnectionClosedError(
                 f"peer closed after {len(e.partial)}/{HEADER_SIZE} "
@@ -519,3 +670,43 @@ class _RawBody(BaseModel):
 
     type_id: str
     body: bytes
+
+
+# ----------------------------------------------------------------------
+# Restriction helpers.
+# ----------------------------------------------------------------------
+
+
+def _flatten(item) -> list:
+    """Accept a scalar or iterable (list/tuple) and yield individual items."""
+    if isinstance(item, (list, tuple)):
+        out: list = []
+        for sub in item:
+            out.extend(_flatten(sub))
+        return out
+    return [item]
+
+
+def _coerce_to_iprange(item) -> IpRange | None:
+    """Convert one allow()-accepted value to an :class:`IpRange`.
+
+    Returns None if the value isn't recognisable. The public
+    :meth:`Server.allow` turns that into a ``ValueError``.
+    """
+    # Already an IpRange.
+    if isinstance(item, IpRange):
+        return item
+    # Network — use first/last of the network block.
+    if isinstance(item, (ipaddress.IPv4Network, ipaddress.IPv6Network)):
+        return IpRange(
+            first=item.network_address,
+            last=item.broadcast_address,
+        )
+    # Single address — range of one.
+    if isinstance(item, (ipaddress.IPv4Address, ipaddress.IPv6Address)):
+        return IpRange(first=item, last=item)
+    # String — delegate to the parse helper.
+    if isinstance(item, str):
+        from oigtl.net.policy import parse
+        return parse(item)
+    return None
