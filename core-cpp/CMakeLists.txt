@@ -399,12 +399,32 @@ if(BUILD_FUZZERS)
         -fno-omit-frame-pointer
         -g)
 
+    # Homebrew LLVM ships libFuzzer runtime linked against its own
+    # libc++ — we must match or the link fails with missing
+    # std::__1 symbols. Detect a non-system clang and rewire.
+    set(OIGTL_FUZZ_LINK_FLAGS ${OIGTL_FUZZ_FLAGS})
+    if(CMAKE_CXX_COMPILER MATCHES "/opt/homebrew/opt/llvm|/usr/local/opt/llvm")
+        get_filename_component(_llvm_bin "${CMAKE_CXX_COMPILER}" DIRECTORY)
+        get_filename_component(_llvm_root "${_llvm_bin}" DIRECTORY)
+        list(APPEND OIGTL_FUZZ_LINK_FLAGS
+            -L${_llvm_root}/lib/c++
+            -Wl,-rpath,${_llvm_root}/lib/c++)
+    endif()
+
     foreach(target fuzz_header fuzz_oracle)
         add_executable(${target} fuzz/${target}.cc)
         target_link_libraries(${target} PRIVATE oigtl)
         target_compile_options(${target} PRIVATE ${OIGTL_FUZZ_FLAGS})
-        target_link_options(${target} PRIVATE ${OIGTL_FUZZ_FLAGS})
+        target_link_options(${target} PRIVATE ${OIGTL_FUZZ_LINK_FLAGS})
     endforeach()
+
+    # fuzz_compat drives the compat-shim's hand-written UnpackContent()
+    # parsers. Separate from fuzz_oracle because the shim has its own
+    # parsing code that does NOT share with oigtl_messages.
+    add_executable(fuzz_compat fuzz/fuzz_compat.cc)
+    target_link_libraries(fuzz_compat PRIVATE igtl_compat oigtl_runtime)
+    target_compile_options(fuzz_compat PRIVATE ${OIGTL_FUZZ_FLAGS})
+    target_link_options(fuzz_compat PRIVATE ${OIGTL_FUZZ_LINK_FLAGS})
 
     # Convenience: a target that copies the on-disk negative
     # corpus + upstream fixtures into a seed-corpus directory the

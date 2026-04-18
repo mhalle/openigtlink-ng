@@ -144,11 +144,25 @@ int BindMessageBase::pack_impl(bool with_bodies) {
     return 1;
 }
 
+// Hardening notes: every count / size field here is attacker
+// controlled. Historical bugs: (a) body_size was read as uint64
+// then passed to vector::assign, triggering length_error; (b)
+// `cur + sz > end` using raw pointer arithmetic wraps when sz is
+// near SIZE_MAX. Mitigation: all bounds checks use the form
+// `sz > static_cast<size_t>(end - cur)`, and ncmsg is capped at
+// uint16 max anyway (it's the header's count field).
+// Found by fuzz_compat.
 int BindMessageBase::unpack_impl(bool with_bodies) {
     if (m_Content.size() < 2) return 0;
-    const auto* in = m_Content.data();
+    const auto* in  = m_Content.data();
+    const auto* end = in + m_Content.size();
     const std::size_t ncmsg = bo::read_be_u16(in);
-    if (m_Content.size() < 2 + ncmsg * kHeaderEntrySize + 2) return 0;
+
+    // Fixed table: 2-byte count + ncmsg*20 entry bytes + 2-byte
+    // name-table-size. ncmsg <= 65535 so no overflow.
+    const std::size_t table_bytes = 2 + ncmsg * kHeaderEntrySize + 2;
+    if (m_Content.size() < table_bytes) return 0;
+
     m_ChildMessages.clear();
     m_ChildMessages.resize(ncmsg);
     const auto* entries = in + 2;
@@ -162,28 +176,33 @@ int BindMessageBase::unpack_impl(bool with_bodies) {
     const auto* cur = entries + ncmsg * kHeaderEntrySize;
     const std::size_t nt_size = bo::read_be_u16(cur);
     cur += 2;
-    if (cur + nt_size > in + m_Content.size()) return 0;
+    if (nt_size > static_cast<std::size_t>(end - cur)) return 0;
 
-    // Split name table into ncmsg names.
-    const auto* nt = cur;
+    // Split name table into ncmsg names. `nt` walks within the
+    // [cur, cur+nt_size) window.
+    const auto* nt       = cur;
+    const auto* nt_end   = cur + nt_size;
     for (std::size_t i = 0; i < ncmsg; ++i) {
-        std::size_t n = 0;
-        while (static_cast<std::size_t>((nt + n) - cur) < nt_size &&
-               nt[n] != '\0') {
-            ++n;
-        }
+        const auto* p = nt;
+        while (p < nt_end && *p != '\0') ++p;
         m_ChildMessages[i].name =
-            std::string(reinterpret_cast<const char*>(nt), n);
-        nt += n + 1;
+            std::string(reinterpret_cast<const char*>(nt),
+                        static_cast<std::size_t>(p - nt));
+        nt = (p < nt_end) ? p + 1 : nt_end;
     }
     cur += nt_size;
 
     if (with_bodies) {
         for (std::size_t i = 0; i < ncmsg; ++i) {
             const std::size_t sz = body_sizes[i];
-            if (cur + sz > in + m_Content.size()) return 0;
+            // Body size must fit in remaining bytes. Use
+            // remaining-form check — never pointer+size.
+            if (sz > static_cast<std::size_t>(end - cur)) return 0;
             m_ChildMessages[i].body.assign(cur, cur + sz);
-            cur += round_up_even(sz);
+            cur += sz;
+            // Wire padding rounds each body up to an even length,
+            // so step over at most one trailing zero if present.
+            if ((sz & 1) && cur < end) ++cur;
         }
     }
     return 1;

@@ -265,16 +265,22 @@ int PolyDataMessage::PackContent() {
 }
 
 namespace {
+// Bounds-checked cell-array unpack. Hardening note: both `ncells`
+// and each per-cell `sz` are attacker-controlled — a pre-hardening
+// read would allocate a (ncells * sz * 4)-byte vector from a
+// few bytes of wire input. All arithmetic here promotes to
+// std::size_t and compares against the remaining-bytes window;
+// no (uint32 * uint32) products, no pointer arithmetic that can
+// wrap. Found by fuzz_compat (OOM on ncells=2^30).
 bool unpack_cells(const std::uint8_t*& in, const std::uint8_t* end,
-                  igtlUint32 ncells, igtlUint32 size_bytes,
+                  igtlUint32 ncells, igtlUint32 /*size_bytes*/,
                   PolyDataCellArray::Pointer& out) {
-    if (in + size_bytes > end) return false;
-    const std::uint8_t* const start = in;
     auto ca = PolyDataCellArray::New();
     for (igtlUint32 i = 0; i < ncells; ++i) {
-        if (in + 4 > end) return false;
+        if (static_cast<std::size_t>(end - in) < 4) return false;
         const igtlUint32 sz = bo::read_be_u32(in); in += 4;
-        if (in + sz * 4 > end) return false;
+        const std::size_t bytes = static_cast<std::size_t>(sz) * 4u;
+        if (bytes > static_cast<std::size_t>(end - in)) return false;
         PolyDataCellArray::Cell c(sz);
         for (igtlUint32 k = 0; k < sz; ++k) {
             c[k] = bo::read_be_u32(in); in += 4;
@@ -282,9 +288,6 @@ bool unpack_cells(const std::uint8_t*& in, const std::uint8_t* end,
         ca->AddCell(c);
     }
     out = ca;
-    // in pointer is consistent with the ncells-walk above; size_bytes
-    // is redundant but preserved for future forward-compat.
-    (void)start; (void)size_bytes;
     return true;
 }
 }  // namespace
@@ -308,7 +311,9 @@ int PolyDataMessage::UnpackContent() {
     const auto* cur = in + 40;
 
     if (npoints > 0) {
-        if (cur + 12 * npoints > end) return 0;
+        // size_t promotion: 12 * npoints can overflow uint32.
+        const std::size_t need = static_cast<std::size_t>(npoints) * 12u;
+        if (need > static_cast<std::size_t>(end - cur)) return 0;
         m_Points = PolyDataPointArray::New();
         for (igtlUint32 i = 0; i < npoints; ++i) {
             m_Points->AddPoint(
@@ -324,18 +329,25 @@ int PolyDataMessage::UnpackContent() {
     if (!unpack_cells(cur, end, nstrips,   sz_strips,   m_TriangleStrips)) return 0;
 
     for (igtlUint32 i = 0; i < nattrs; ++i) {
-        if (cur + 8 > end) return 0;
+        if (static_cast<std::size_t>(end - cur) < 8) return 0;
         auto a = PolyDataAttribute::New();
         a->m_Type        = *cur++;
         a->m_NComponents = *cur++;
         a->m_N           = bo::read_be_u32(cur); cur += 4;
         const std::uint16_t nl = bo::read_be_u16(cur); cur += 2;
-        if (cur + nl > end) return 0;
+        // Name bytes + alignment padding.
+        const std::size_t name_pad =
+            static_cast<std::size_t>(nl) + ((nl & 1) ? 1u : 0u);
+        if (name_pad > static_cast<std::size_t>(end - cur)) return 0;
         a->m_Name.assign(reinterpret_cast<const char*>(cur), nl);
-        cur += nl;
-        if (nl & 1) ++cur;  // pad
-        const std::size_t dcount = a->m_NComponents * a->m_N;
-        if (cur + 4 * dcount > end) return 0;
+        cur += name_pad;
+        // Data bounds: NComponents * N must not overflow. Compute
+        // in size_t.
+        const std::size_t dcount =
+            static_cast<std::size_t>(a->m_NComponents) *
+            static_cast<std::size_t>(a->m_N);
+        const std::size_t dbytes = dcount * 4u;
+        if (dbytes > static_cast<std::size_t>(end - cur)) return 0;
         a->m_Data.resize(dcount);
         for (std::size_t k = 0; k < dcount; ++k) {
             a->m_Data[k] = bo::read_be_f32(cur); cur += 4;
