@@ -294,6 +294,82 @@ void test_dispatch_loop() {
 
 }  // namespace
 
+void test_server_restrict_loopback_accepts() {
+    std::fprintf(stderr, "test_server_restrict_loopback_accepts\n");
+    // A peer on 127.0.0.1 must be accepted by
+    // restrict_to_this_machine_only() (loopback is in the
+    // allow-list by definition).
+    auto server = oigtl::Server::listen(0);
+    server.restrict_to_this_machine_only();
+    const auto port = server.local_port();
+
+    std::atomic<bool> got_peer{false};
+    std::thread acc_th([&] {
+        try {
+            auto peer = server.accept();
+            got_peer.store(true);
+        } catch (...) { /* ok — restrict-then-kill races */ }
+    });
+
+    // Give the acceptor a moment to register.
+    std::this_thread::sleep_for(std::chrono::milliseconds(50));
+    auto client = oigtl::Client::connect("127.0.0.1", port);
+    // Wait a bounded time for the accept to complete.
+    for (int i = 0; i < 40 && !got_peer.load(); ++i) {
+        std::this_thread::sleep_for(std::chrono::milliseconds(25));
+    }
+    REQUIRE(got_peer.load());
+
+    server.stop();
+    if (acc_th.joinable()) acc_th.join();
+}
+
+void test_server_allow_peer_range_refuses_outside() {
+    std::fprintf(stderr,
+                 "test_server_allow_peer_range_refuses_outside\n");
+    // Allow-list a range that excludes 127.0.0.1. A loopback
+    // client should be refused — accept_loop closes the socket
+    // without delivering the peer to the server.
+    auto server = oigtl::Server::listen(0);
+    server.allow_peer_range("10.0.0.1", "10.0.0.5");
+    const auto port = server.local_port();
+
+    std::atomic<bool> got_peer{false};
+    std::thread acc_th([&] {
+        try {
+            auto peer = server.accept();
+            got_peer.store(true);
+        } catch (...) { /* expected: accept bails or reschedules */ }
+    });
+
+    std::this_thread::sleep_for(std::chrono::milliseconds(50));
+    bool connect_threw = false;
+    try {
+        auto client = oigtl::Client::connect("127.0.0.1", port);
+        // Even if TCP handshake succeeds, any attempt at read/send
+        // should fail because the acceptor closes the connection
+        // immediately on policy rejection. Prod the channel to
+        // force a failure we can observe.
+        std::this_thread::sleep_for(
+            std::chrono::milliseconds(100));
+        oigtl::messages::Status s;
+        s.code = 1;
+        client.send(s);
+        std::this_thread::sleep_for(
+            std::chrono::milliseconds(50));
+    } catch (...) {
+        connect_threw = true;
+    }
+    // The peer must NOT have been delivered to the server, even
+    // if the handshake came far enough for the client's connect
+    // to return.
+    REQUIRE(!got_peer.load());
+    (void)connect_threw;  // connect itself may or may not throw.
+
+    server.stop();
+    if (acc_th.joinable()) acc_th.join();
+}
+
 int main() {
     test_timestamp_roundtrip();
     test_metadata_helpers();
@@ -303,6 +379,8 @@ int main() {
     test_client_send_receive();
     test_request_response();
     test_dispatch_loop();
+    test_server_restrict_loopback_accepts();
+    test_server_allow_peer_range_refuses_outside();
 
     if (g_fail_count == 0) {
         std::fprintf(stderr, "ergo_test: all passed\n");

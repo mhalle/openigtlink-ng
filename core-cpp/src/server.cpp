@@ -3,9 +3,13 @@
 #include "oigtl/server.hpp"
 
 #include <algorithm>
+#include <cstdio>
+#include <utility>
 
+#include "oigtl/transport/detail/net_compat.hpp"
 #include "oigtl/transport/errors.hpp"
 #include "oigtl/transport/future.hpp"
+#include "oigtl/transport/policy.hpp"
 #include "oigtl/transport/tcp.hpp"
 
 namespace oigtl {
@@ -52,7 +56,11 @@ Server::~Server() {
 
 Server Server::listen(std::uint16_t port, ServerOptions opt) {
     Server s;
-    s.acceptor_ = transport::tcp::listen(port, opt.bind_address);
+    // Hand the policy to the acceptor at listen time. Any further
+    // builder calls (restrict_to_this_machine_only(), etc.) will
+    // push updates to the live acceptor via set_policy().
+    s.acceptor_ = transport::tcp::listen(port, opt.bind_address,
+                                         opt.policy);
     s.opt_ = std::move(opt);
     return s;
 }
@@ -186,5 +194,124 @@ std::uint16_t Server::local_port() const {
 }
 
 void Server::close() { stop(); }
+
+// ---------------------------------------------------------------
+// Policy builders. Each mutates opt_.policy and, if the acceptor
+// is already live, pushes the update. That means builder calls
+// work both before `listen()` (via pre-populating options) and
+// after, matching the compat shim's ergonomics.
+// ---------------------------------------------------------------
+
+namespace {
+
+// Helper: push the current policy to the live acceptor if one
+// exists. Pulled into a lambda inside each builder would be
+// clearer, but we want this to stay uninlined so the acceptor
+// pointer isn't re-read in every builder.
+void push_to_live(transport::Acceptor* acc,
+                  const transport::PeerPolicy& p) {
+    if (acc) acc->set_policy(p);
+}
+
+// Fill out an allow-list for every active non-link-local
+// interface on this host. If `only_iface` is non-empty, restrict
+// to that one interface; loopback is always added separately
+// unless the caller deliberately picked a non-loopback interface
+// (matching the compat shim's behaviour).
+void apply_local_subnet(transport::PeerPolicy& pol,
+                        const std::string& only_iface) {
+    auto ifaces = transport::enumerate_interfaces();
+    bool had_loopback = false;
+    for (const auto& ia : ifaces) {
+        if (!only_iface.empty() && ia.name != only_iface) continue;
+        if (ia.is_link_local) continue;
+        pol.allowed_peers.push_back(ia.subnet);
+        if (ia.is_loopback) had_loopback = true;
+    }
+    if (!had_loopback) {
+        if (auto r = transport::parse("127.0.0.0/8")) {
+            pol.allowed_peers.push_back(*r);
+        }
+    }
+}
+
+}  // namespace
+
+Server& Server::restrict_to_this_machine_only() {
+    if (auto r = transport::parse("127.0.0.0/8")) {
+        opt_.policy.allowed_peers.push_back(*r);
+    }
+    if (auto r = transport::parse("::1")) {
+        opt_.policy.allowed_peers.push_back(*r);
+    }
+    push_to_live(acceptor_.get(), opt_.policy);
+    return *this;
+}
+
+Server& Server::restrict_to_local_subnet() {
+    apply_local_subnet(opt_.policy, /*only_iface=*/"");
+    push_to_live(acceptor_.get(), opt_.policy);
+    return *this;
+}
+
+Server& Server::restrict_to_local_subnet(const std::string& iface_name) {
+    apply_local_subnet(opt_.policy, iface_name);
+    push_to_live(acceptor_.get(), opt_.policy);
+    return *this;
+}
+
+Server& Server::allow_peer(const std::string& ip_or_host) {
+    // Literal IP / CIDR / range first — same parse chain as
+    // the compat shim.
+    if (auto r = transport::parse(ip_or_host)) {
+        opt_.policy.allowed_peers.push_back(*r);
+        push_to_live(acceptor_.get(), opt_.policy);
+        return *this;
+    }
+    // Hostname resolution fallthrough. Resolved entries become
+    // single-host ranges.
+    auto resolved = transport::detail::resolve_hostname(ip_or_host);
+    for (const auto& r : resolved) {
+        if (auto range = transport::parse_ip(
+                transport::detail::format_ip(r.family, r.bytes))) {
+            opt_.policy.allowed_peers.push_back(*range);
+        }
+    }
+    push_to_live(acceptor_.get(), opt_.policy);
+    return *this;
+}
+
+Server& Server::allow_peer_range(const std::string& first_ip,
+                                 const std::string& last_ip) {
+    if (auto r = transport::parse_range(first_ip, last_ip)) {
+        opt_.policy.allowed_peers.push_back(*r);
+        push_to_live(acceptor_.get(), opt_.policy);
+    }
+    return *this;
+}
+
+Server& Server::set_max_simultaneous_clients(std::size_t n) {
+    opt_.policy.max_concurrent_connections = n;
+    push_to_live(acceptor_.get(), opt_.policy);
+    return *this;
+}
+
+Server& Server::disconnect_if_silent_for(std::chrono::seconds t) {
+    opt_.policy.idle_timeout = t;
+    push_to_live(acceptor_.get(), opt_.policy);
+    return *this;
+}
+
+Server& Server::set_max_message_size_bytes(std::size_t n) {
+    opt_.policy.max_message_size = n;
+    push_to_live(acceptor_.get(), opt_.policy);
+    return *this;
+}
+
+Server& Server::set_policy(transport::PeerPolicy p) {
+    opt_.policy = std::move(p);
+    push_to_live(acceptor_.get(), opt_.policy);
+    return *this;
+}
 
 }  // namespace oigtl

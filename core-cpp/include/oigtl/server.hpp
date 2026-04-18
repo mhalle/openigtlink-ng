@@ -38,6 +38,7 @@
 #include "oigtl/envelope.hpp"
 #include "oigtl/pack.hpp"
 #include "oigtl/transport/connection.hpp"
+#include "oigtl/transport/policy.hpp"
 
 namespace oigtl {
 
@@ -51,6 +52,14 @@ struct ServerOptions {
     // In dispatch-loop mode, accepting more than this many
     // concurrent peers blocks the accept loop until one drops.
     std::size_t max_connections = 32;
+
+    // Who may connect + per-peer resource caps. Default is "no
+    // restriction, accept any peer, unlimited concurrency" —
+    // matching the behaviour before this field existed. For
+    // researcher-friendly presets see the builder methods on
+    // `Server` (restrict_to_this_machine_only(), allow_peer(),
+    // etc.) which mutate the active policy in-place.
+    transport::PeerPolicy policy;
 };
 
 class Server {
@@ -111,6 +120,69 @@ class Server {
     // per-peer connection; their dispatch threads then exit and
     // are joined in this Server's destructor.
     void stop();
+
+    // =============================================================
+    // Who-may-connect builders. Safe to call before or after
+    // `listen()`; changes to the policy apply to the next
+    // accept() and do NOT drop existing peers.
+    //
+    // These are the researcher-friendly names; if you need to
+    // manipulate the PeerPolicy struct directly (bulk changes,
+    // custom IpRange ranges, etc.) use `set_policy()` instead.
+    //
+    // All builders return *this for chaining:
+    //     Server::listen(18944)
+    //         .restrict_to_local_subnet()
+    //         .set_max_simultaneous_clients(4)
+    //         .on<Transform>(...)
+    //         .run();
+    // =============================================================
+
+    /// Loopback only — accept connections only from this machine.
+    /// Good for dev work and never-on-network scenarios.
+    Server& restrict_to_this_machine_only();
+
+    /// Peers on the same IP subnet as one of this host's active
+    /// interfaces. `iface_name` optional — limits to a single
+    /// named interface (e.g. "eth0" on Linux, "Ethernet 2" on
+    /// Windows); empty means "any active non-link-local interface".
+    /// Loopback is included when no interface filter is given, so
+    /// local tools keep working.
+    Server& restrict_to_local_subnet();
+    Server& restrict_to_local_subnet(const std::string& iface_name);
+
+    /// Add a single peer IP, CIDR block, or hostname to the
+    /// allow-list. Returns *this — check `policy().allowed_peers`
+    /// after the call if you need to confirm a hostname resolved.
+    Server& allow_peer(const std::string& ip_or_host);
+
+    /// Add an inclusive IP range to the allow-list. Both endpoints
+    /// must be the same family (IPv4 or IPv6).
+    Server& allow_peer_range(const std::string& first_ip,
+                             const std::string& last_ip);
+
+    /// Cap how many peers may be connected at once. 0 = unlimited.
+    /// Enforced at accept time: an over-cap peer is accepted then
+    /// immediately closed.
+    Server& set_max_simultaneous_clients(std::size_t n);
+
+    /// Close a peer if no bytes have arrived for this long. 0 =
+    /// no timeout. Useful for cleaning up dead TCP half-connections
+    /// (device unplugged / cable yanked).
+    Server& disconnect_if_silent_for(std::chrono::seconds t);
+
+    /// Reject any incoming message larger than this many bytes
+    /// before allocating the body. 0 = no cap. Protects against
+    /// pathological peers sending bogus huge body_size headers.
+    Server& set_max_message_size_bytes(std::size_t n);
+
+    /// Replace the entire policy in one call. Prefer the named
+    /// builders above for common cases.
+    Server& set_policy(transport::PeerPolicy p);
+
+    /// Snapshot of the current policy. Useful for tests and
+    /// logging.
+    const transport::PeerPolicy& policy() const { return opt_.policy; }
 
     std::uint16_t local_port() const;
     void close();
