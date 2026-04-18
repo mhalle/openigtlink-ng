@@ -13,8 +13,7 @@
 //
 // Build:
 //   Standalone:
-//     c++ -std=c++17 compat_hello.cpp \
-//         $(pkg-config --cflags --libs oigtl) -o compat_hello
+//     c++ -std=c++17 compat_hello.cpp $(pkg-config --cflags --libs oigtl) -o compat_hello
 //
 //   In-tree (no install needed):
 //     cmake --build build --target compat_hello

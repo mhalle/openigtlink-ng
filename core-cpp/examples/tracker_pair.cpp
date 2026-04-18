@@ -38,9 +38,9 @@ constexpr int kPosesToEmit = 100;   // 100 @ 50 Hz = 2 s
 // Tracker (server side)
 // ---------------------------------------------------------------
 void run_tracker() {
-    auto server = oigtl::Server::listen(kPort, {
-        .bind_address = "127.0.0.1",
-    });
+    oigtl::ServerOptions sopts;
+    sopts.bind_address = "127.0.0.1";
+    auto server = oigtl::Server::listen(kPort, sopts);
 
     std::printf("[tracker] listening on %u\n", server.local_port());
 
@@ -124,12 +124,12 @@ void run_tracker() {
 // Workstation (client side)
 // ---------------------------------------------------------------
 void run_workstation() {
-    auto client = oigtl::Client::connect("127.0.0.1", kPort, {
-        .connect_timeout = std::chrono::seconds(3),
-        .connect_retries = 5,
-        .retry_backoff   = std::chrono::milliseconds(100),
-        .default_device  = "Workstation_A",
-    });
+    oigtl::ClientOptions copts;
+    copts.connect_timeout = std::chrono::seconds(3);
+    copts.connect_retries = 5;
+    copts.retry_backoff   = std::chrono::milliseconds(100);
+    copts.default_device  = "Workstation_A";
+    auto client = oigtl::Client::connect("127.0.0.1", kPort, copts);
     std::printf("[workstation] connected to tracker\n");
 
     std::atomic<int> poses_received{0};

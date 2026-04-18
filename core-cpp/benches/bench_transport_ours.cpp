@@ -24,7 +24,9 @@ namespace om = oigtl::messages;
 int main(int argc, char** argv) {
     const int N = (argc > 1) ? std::atoi(argv[1]) : 50000;
 
-    auto server = oigtl::Server::listen(0, {.bind_address = "127.0.0.1"});
+    oigtl::ServerOptions sopts;
+    sopts.bind_address = "127.0.0.1";
+    auto server = oigtl::Server::listen(0, sopts);
     const auto port = server.local_port();
 
     std::atomic<int> received{0};
