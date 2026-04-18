@@ -23,7 +23,7 @@ from oigtl_corpus_tools.codegen.cpp_emit import (
     render_message,
     render_register_all,
 )
-from oigtl_corpus_tools.codegen import python_emit, ts_emit
+from oigtl_corpus_tools.codegen import c_emit, python_emit, ts_emit
 from oigtl_corpus_tools.paths import (
     RepoRootNotFound,
     find_repo_root,
@@ -46,6 +46,7 @@ def register(parser: argparse.ArgumentParser) -> None:
     _register_cpp_compat(subparsers)
     _register_python(subparsers)
     _register_ts(subparsers)
+    _register_c(subparsers)
 
 
 def _register_cpp(subparsers: argparse._SubParsersAction) -> None:
@@ -452,6 +453,122 @@ def _cmd_ts(args: argparse.Namespace) -> int:
     if index is not None:
         (out_dir / "index.ts").write_text(index.text)
         print("  wrote index.ts")
+    for tid, reason in skipped:
+        print(f"  SKIP {tid}: {reason}", file=sys.stderr)
+    print(f"\n{len(rendered)} rendered, {len(skipped)} skipped.")
+    return 0
+
+
+# ---------------------------------------------------------------------------
+# C target
+# ---------------------------------------------------------------------------
+
+
+def _register_c(subparsers: argparse._SubParsersAction) -> None:
+    c = subparsers.add_parser(
+        "c",
+        help="Emit the minimal C codec from spec/schemas/*.json.",
+        description=(
+            "Render one .h/.c pair per message schema into core-c/. "
+            "The output is C99, zero-heap, view-based for variable "
+            "fields; see core-c/README.md for the allocation "
+            "contract and the (deliberately short) list of "
+            "supported field shapes. Unsupported schemas (struct-"
+            "element arrays, length-prefixed strings, etc.) are "
+            "skipped with a warning."
+        ),
+    )
+    c.add_argument(
+        "--include-dir",
+        type=Path,
+        default=Path("core-c/include/oigtl_c/messages"),
+        help="Directory for generated .h files "
+             "(default: core-c/include/oigtl_c/messages).",
+    )
+    c.add_argument(
+        "--src-dir",
+        type=Path,
+        default=Path("core-c/src/messages"),
+        help="Directory for generated .c files "
+             "(default: core-c/src/messages).",
+    )
+    c.add_argument(
+        "--type-id",
+        action="append",
+        default=None,
+        help="Restrict to specific type_ids. May be given multiple "
+             "times. Default: all schemas.",
+    )
+    c.add_argument(
+        "--check",
+        action="store_true",
+        help="Verify on-disk output matches what would be generated. "
+             "Does not write. Non-zero exit on drift.",
+    )
+    c.set_defaults(handler=_cmd_c)
+
+
+def _cmd_c(args: argparse.Namespace) -> int:
+    try:
+        repo_root = find_repo_root()
+    except RepoRootNotFound as exc:
+        print(f"error: {exc}", file=sys.stderr)
+        return 2
+
+    include_dir = args.include_dir if args.include_dir.is_absolute() \
+        else repo_root / args.include_dir
+    src_dir = args.src_dir if args.src_dir.is_absolute() \
+        else repo_root / args.src_dir
+    requested = set(args.type_id) if args.type_id else None
+    schemas = _load_schemas(repo_root, requested)
+    if not schemas:
+        print("no schemas to render", file=sys.stderr)
+        return 1
+
+    rendered: list[c_emit.RenderedMessage] = []
+    skipped: list[tuple[str, str]] = []
+    for type_id, schema in schemas:
+        try:
+            rendered.append(c_emit.render_message(schema))
+        except NotImplementedError as exc:
+            skipped.append((type_id, str(exc)))
+
+    if args.check:
+        drift = 0
+        for r in rendered:
+            for path, expected in (
+                (include_dir / f"{r.basename}.h", r.h_text),
+                (src_dir / f"{r.basename}.c", r.c_text),
+            ):
+                if not path.is_file():
+                    print(f"FAIL  missing {path}", file=sys.stderr)
+                    drift += 1
+                elif path.read_text() != expected:
+                    print(f"FAIL  drift {path}", file=sys.stderr)
+                    drift += 1
+                else:
+                    print(f"  OK  {path}")
+        if skipped:
+            print(f"\n{len(skipped)} skipped (unsupported field shape)",
+                  file=sys.stderr)
+        if drift:
+            print(f"\n{drift} file(s) drifted. Run "
+                  "'uv run oigtl-corpus codegen c' to regenerate.",
+                  file=sys.stderr)
+            return 1
+        print(f"\nAll {len(rendered) * 2} generated file(s) up to date.")
+        return 0
+
+    # Write outputs. Unlike the C++/Python paths we do NOT pre-delete
+    # stale files — if a schema is removed, its .h/.c stays around
+    # until manually cleaned. This is intentional for a first round
+    # where round-tripping is more important than strict parity.
+    include_dir.mkdir(parents=True, exist_ok=True)
+    src_dir.mkdir(parents=True, exist_ok=True)
+    for r in rendered:
+        (include_dir / f"{r.basename}.h").write_text(r.h_text)
+        (src_dir / f"{r.basename}.c").write_text(r.c_text)
+        print(f"  wrote {r.type_id} → {r.basename}.h/.c")
     for tid, reason in skipped:
         print(f"  SKIP {tid}: {reason}", file=sys.stderr)
     print(f"\n{len(rendered)} rendered, {len(skipped)} skipped.")

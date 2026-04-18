@@ -42,23 +42,23 @@ add_library(oigtl_c_runtime STATIC
 target_include_directories(oigtl_c_runtime PUBLIC
     $<BUILD_INTERFACE:${CMAKE_CURRENT_SOURCE_DIR}/include>)
 
-# Placeholder — generated message TUs are added to oigtl_c_messages
-# once the codegen has produced them. The target always exists so
-# tests can link against a known name.
+# Generated per-message translation units. CONFIGURE_DEPENDS makes
+# CMake re-glob on each build so a `codegen c` run picks up new
+# files without manual reconfigure. If the glob is empty (e.g. fresh
+# clone before first codegen), we add a placeholder TU so the
+# STATIC library still has at least one input.
+file(GLOB OIGTL_C_MESSAGE_SOURCES CONFIGURE_DEPENDS
+     "${CMAKE_CURRENT_SOURCE_DIR}/src/messages/*.c")
 add_library(oigtl_c_messages STATIC)
 target_link_libraries(oigtl_c_messages PUBLIC oigtl_c_runtime)
-# CMake requires at least one source on a STATIC library; the codegen
-# will push files here. Until then, give it an empty TU so configure
-# succeeds on a fresh checkout.
-if(NOT TARGET oigtl_c_messages_sources_populated)
+if(OIGTL_C_MESSAGE_SOURCES)
+    target_sources(oigtl_c_messages PRIVATE ${OIGTL_C_MESSAGE_SOURCES})
+else()
     set(_oigtl_c_placeholder "${CMAKE_CURRENT_BINARY_DIR}/_oigtl_c_placeholder.c")
-    # An exported (non-static) symbol satisfies the linker's "archive
-    # must have at least one object" rule without tripping -Werror's
-    # unused-function diagnostic. The dummy variable gets stripped
-    # at link time on any real consumer.
     file(WRITE "${_oigtl_c_placeholder}"
-        "/* Auto-generated placeholder. Removed when the first real\n"
-        " * message TU lands via the codegen. */\n"
+        "/* Placeholder — no generated message TUs yet.\n"
+        " * Run: uv run oigtl-corpus codegen c\n"
+        " */\n"
         "const int oigtl_c_messages_placeholder = 0;\n")
     target_sources(oigtl_c_messages PRIVATE "${_oigtl_c_placeholder}")
 endif()
@@ -74,3 +74,35 @@ enable_testing()
 add_executable(oigtl_c_runtime_test tests/runtime_test.c)
 target_link_libraries(oigtl_c_runtime_test PRIVATE oigtl_c_runtime)
 add_test(NAME oigtl_c_runtime COMMAND oigtl_c_runtime_test)
+
+# Round-trip tests per supported message shape. Only enabled when
+# the codegen has actually produced output — otherwise there are no
+# message headers to include.
+if(OIGTL_C_MESSAGE_SOURCES)
+    add_executable(oigtl_c_messages_test tests/messages_test.c)
+    target_link_libraries(oigtl_c_messages_test PRIVATE oigtl_c_messages)
+    target_include_directories(oigtl_c_messages_test PRIVATE include)
+    add_test(NAME oigtl_c_messages COMMAND oigtl_c_messages_test)
+
+    # Cross-port parity. The C emitter produces canonical wire bytes
+    # for a set of named cases; a Python emitter produces the same
+    # cases using `struct.pack` reading only the spec. If the two
+    # disagree, either the spec is ambiguous or one implementation
+    # is wrong — either way the CI fails loudly.
+    find_package(Python3 COMPONENTS Interpreter REQUIRED)
+    add_executable(oigtl_c_parity_emitter tests/parity_emitter.c)
+    target_link_libraries(oigtl_c_parity_emitter PRIVATE oigtl_c_messages)
+    target_include_directories(oigtl_c_parity_emitter PRIVATE include)
+
+    set(OIGTL_C_PARITY_WORKDIR "${CMAKE_CURRENT_BINARY_DIR}/_parity")
+    foreach(_case transform status position_full position_only sensor)
+        add_test(NAME oigtl_c_parity_${_case}
+            COMMAND ${CMAKE_COMMAND}
+                -DSHIM=$<TARGET_FILE:oigtl_c_parity_emitter>
+                -DUPSTREAM=${Python3_EXECUTABLE}
+                -DUPSTREAM_ARG0=${CMAKE_CURRENT_SOURCE_DIR}/tests/parity_emitter_py.py
+                -DCASE=${_case}
+                -DWORKDIR=${OIGTL_C_PARITY_WORKDIR}
+                -P "${CMAKE_CURRENT_SOURCE_DIR}/cmake/run_parity_compare.cmake")
+    endforeach()
+endif()

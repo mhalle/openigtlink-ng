@@ -1,0 +1,68 @@
+/* GENERATED from spec/schemas/{{ plan.basename }}.json — do not edit.
+ *
+ * Regenerate with: uv run oigtl-corpus codegen c
+ *
+ * {{ plan.type_id }} — {{ plan.description|replace('\n', ' ') }}
+ */
+#ifndef OIGTL_C_MESSAGES_{{ plan.type_id|upper }}_H
+#define OIGTL_C_MESSAGES_{{ plan.type_id|upper }}_H
+
+#include <stddef.h>
+#include <stdint.h>
+
+#include "oigtl_c/errors.h"
+
+#ifdef __cplusplus
+extern "C" {
+#endif
+
+{% if plan.is_fixed_body %}
+/* Fixed body size — every wire-valid {{ plan.type_id }} has this
+ * many body bytes. Useful for stack-sizing a pack buffer. */
+#define {{ plan.body_size_macro }} ((size_t){{ plan.body_size }})
+{% else %}
+/* Variable body size — depends on string / array lengths at
+ * runtime. Use {{ plan.fn_prefix }}_packed_size(&msg) to query. */
+{% if plan.body_size_set %}
+#define {{ plan.body_size_macro }}_MIN  ((size_t){{ plan.body_size_set[0] }})
+#define {{ plan.body_size_macro }}_MAX  ((size_t){{ plan.body_size_set[-1] }})
+{% endif %}
+{% endif %}
+
+typedef struct {{ plan.struct_name[:-2] }} {
+{% if plan.fields %}
+{% for f in plan.fields %}
+    {{ f.declaration }}
+{% endfor %}
+{% else %}
+    /* Body-less message (header-only on the wire).
+     * C99 forbids empty structs; this placeholder keeps the ABI
+     * tidy without affecting pack/unpack. */
+    char _placeholder;
+{% endif %}
+} {{ plan.struct_name }};
+
+/* Compute the body size needed to pack `msg`. Returns the byte
+ * count on success, or a negative OIGTL_ERR_* code on invalid
+ * input. For fixed-body messages this is a constant. */
+int {{ plan.fn_prefix }}_packed_size(const {{ plan.struct_name }} *msg);
+
+/* Pack `msg` into `buf` (capacity `cap`). Returns bytes written
+ * on success, or a negative OIGTL_ERR_* code (SHORT_BUFFER /
+ * FIELD_RANGE / INVALID_ARG). */
+int {{ plan.fn_prefix }}_pack(const {{ plan.struct_name }} *msg,
+                              uint8_t *buf, size_t cap);
+
+/* Unpack `len` bytes at `buf` into `out`. Returns 0 on success,
+ * or a negative OIGTL_ERR_* code. Variable-length fields in *out
+ * are VIEWS into *buf — valid only while *buf is valid. Copy via
+ * oigtl_copy_string() / oigtl_copy_*_be() before the wire buffer
+ * goes away if you need to persist them. */
+int {{ plan.fn_prefix }}_unpack(const uint8_t *buf, size_t len,
+                                {{ plan.struct_name }} *out);
+
+#ifdef __cplusplus
+}
+#endif
+
+#endif /* OIGTL_C_MESSAGES_{{ plan.type_id|upper }}_H */

@@ -1,0 +1,77 @@
+/* GENERATED from spec/schemas/{{ plan.basename }}.json — do not edit.
+ *
+ * Regenerate with: uv run oigtl-corpus codegen c
+ */
+
+#include "oigtl_c/messages/{{ plan.basename }}.h"
+
+#include <string.h>
+
+#include "oigtl_c/ascii.h"
+#include "oigtl_c/byte_order.h"
+#include "oigtl_c/errors.h"
+
+int {{ plan.fn_prefix }}_packed_size(const {{ plan.struct_name }} *msg) {
+    if (msg == NULL) return OIGTL_ERR_INVALID_ARG;
+{% if plan.is_fixed_body %}
+    (void)msg;
+    return (int){{ plan.body_size }};
+{% else %}
+    size_t total = {{ plan.body_size_expr }};
+    /* Clamp to INT_MAX to avoid wraparound in the return; realistic
+     * bodies are well under 2 GiB. */
+    if (total > (size_t)2147483647) return OIGTL_ERR_FIELD_RANGE;
+    return (int)total;
+{% endif %}
+}
+
+int {{ plan.fn_prefix }}_pack(const {{ plan.struct_name }} *msg,
+                              uint8_t *buf, size_t cap) {
+    if (msg == NULL || buf == NULL) return OIGTL_ERR_INVALID_ARG;
+    const int need_i = {{ plan.fn_prefix }}_packed_size(msg);
+    if (need_i < 0) return need_i;
+    const size_t need = (size_t)need_i;
+    if (cap < need) return OIGTL_ERR_SHORT_BUFFER;
+
+    size_t off = 0;
+{% for f in plan.fields %}
+    /* {{ f.name }} */
+{% for line in f.pack_lines %}
+    {{ line }}
+{% endfor %}
+{% endfor %}
+    (void)off;    /* suppress unused-variable warning for empty bodies */
+    return (int)need;
+}
+
+int {{ plan.fn_prefix }}_unpack(const uint8_t *buf, size_t len,
+                                {{ plan.struct_name }} *out) {
+    if (buf == NULL || out == NULL) return OIGTL_ERR_INVALID_ARG;
+{% if plan.is_fixed_body %}
+    if (len < (size_t){{ plan.body_size }}) return OIGTL_ERR_SHORT_BUFFER;
+{% endif %}
+{% if plan.body_size_set %}
+    {
+        static const size_t k_allowed[] = {
+{% for s in plan.body_size_set %}            (size_t){{ s }},
+{% endfor %}        };
+        int ok = 0;
+        for (size_t i = 0; i < sizeof k_allowed / sizeof k_allowed[0]; ++i) {
+            if (len == k_allowed[i]) { ok = 1; break; }
+        }
+        if (!ok) return OIGTL_ERR_MALFORMED;
+    }
+{% endif %}
+
+    size_t off = 0;
+{% for f in plan.fields %}
+    /* {{ f.name }} */
+{% for line in f.unpack_lines %}
+    {{ line }}
+{% endfor %}
+{% endfor %}
+    (void)off;
+    (void)buf;
+    (void)len;
+    return OIGTL_OK;
+}
