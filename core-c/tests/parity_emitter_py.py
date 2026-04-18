@@ -64,6 +64,16 @@ def emit_position_only() -> bytes:
     return _pos_body([4.0, 5.0, 6.0], [])
 
 
+def emit_string() -> bytes:
+    """uint16 encoding + uint16 len + N bytes."""
+    body = bytearray()
+    body += struct.pack(">H", 3)              # encoding=3 (US-ASCII)
+    text = b"hello world"
+    body += struct.pack(">H", len(text))      # length prefix
+    body += text
+    return bytes(body)
+
+
 def emit_sensor() -> bytes:
     """uint8 larray + uint8 status + uint64 unit + N*float64 data."""
     body = bytearray()
@@ -81,6 +91,7 @@ EMITTERS = {
     "position_full": emit_position_full,
     "position_only": emit_position_only,
     "sensor":        emit_sensor,
+    "string":        emit_string,
 }
 
 

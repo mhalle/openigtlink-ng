@@ -305,6 +305,82 @@ def _plan_fixed_string_null_padded(name: str, size: int) -> FieldPlan:
     return p
 
 
+def _plan_fixed_string_raw(name: str, size: int) -> FieldPlan:
+    """Fixed-width string, NOT null-padded. Carries ``size`` bytes
+    of payload verbatim — used by VIDEO's 4-byte ``codec`` FourCC
+    field. Embedded as ``char[size + 1]`` in the struct; the extra
+    byte lets us always produce a valid C string even though the
+    wire doesn't terminate.
+    """
+    p = FieldPlan(
+        name=name,
+        declaration=f"char {name}[{size + 1}];",
+        static_size=size,
+        size_expr=str(size),
+    )
+    p.pack_lines += [
+        "{",
+        f"    size_t n = strlen(msg->{name});",
+        f"    if (n != {size}) return OIGTL_ERR_FIELD_RANGE;",
+        f"    memcpy(buf + off, msg->{name}, {size});",
+        f"    off += {size};",
+        "}",
+    ]
+    p.unpack_lines += [
+        f"if (off + {size} > len) return OIGTL_ERR_SHORT_BUFFER;",
+        f"memcpy(out->{name}, buf + off, {size});",
+        f"out->{name}[{size}] = '\\0';",
+        f"off += {size};",
+    ]
+    return p
+
+
+def _plan_length_prefixed_string(name: str, prefix_type: str) -> FieldPlan:
+    """uint16 length prefix + N bytes of payload.
+
+    View pattern: pack reads ``msg->{name}`` + ``msg->{name}_len``;
+    unpack sets those to a pointer into the wire buffer + the
+    parsed length. The 16-bit prefix caps the payload at 65535
+    bytes; we'll refuse anything longer at pack time.
+    """
+    if prefix_type != "uint16":
+        raise NotImplementedError(
+            f"length_prefixed_string with length_prefix_type="
+            f"{prefix_type!r} — only uint16 is supported"
+        )
+    p = FieldPlan(
+        name=name,
+        declaration=(
+            f"/* view: points into wire bytes — see README for lifetime */\n"
+            f"    const char *{name};\n"
+            f"    size_t      {name}_len;"
+        ),
+        static_size=None,
+        size_expr=f"2 + msg->{name}_len",
+    )
+    p.pack_lines += [
+        f"if (msg->{name}_len > 0xFFFFu) return OIGTL_ERR_FIELD_RANGE;",
+        f"oigtl_write_be_u16(buf + off, (uint16_t)msg->{name}_len);",
+        "off += 2;",
+        f"if (msg->{name}_len > 0) {{",
+        f"    memcpy(buf + off, msg->{name}, msg->{name}_len);",
+        f"    off += msg->{name}_len;",
+        "}",
+    ]
+    p.unpack_lines += [
+        "if (off + 2 > len) return OIGTL_ERR_SHORT_BUFFER;",
+        "{",
+        "    size_t n = (size_t)oigtl_read_be_u16(buf + off);",
+        "    off += 2;",
+        "    if (off + n > len) return OIGTL_ERR_SHORT_BUFFER;",
+        f"    out->{name} = (const char *)(buf + off);",
+        f"    out->{name}_len = n;",
+        "    off += n;",
+        "}",
+    ]
+    return p
+
+
 def _plan_trailing_string(name: str, null_terminated: bool) -> FieldPlan:
     """Free-text string that occupies the remainder of the body.
 
@@ -406,19 +482,18 @@ def _plan_field(f: dict[str, Any]) -> FieldPlan:
         )
 
     if ftype == "fixed_string":
-        if not f.get("null_padded", True):
-            raise NotImplementedError(
-                f"fixed_string {name!r}: null_padded=false not yet supported"
-            )
-        return _plan_fixed_string_null_padded(name, int(f["size_bytes"]))
+        size = int(f["size_bytes"])
+        if f.get("null_padded", True):
+            return _plan_fixed_string_null_padded(name, size)
+        return _plan_fixed_string_raw(name, size)
 
     if ftype == "trailing_string":
         return _plan_trailing_string(
             name, bool(f.get("null_terminated", False)))
 
     if ftype == "length_prefixed_string":
-        raise NotImplementedError(
-            "length_prefixed_string not yet supported in the C target")
+        return _plan_length_prefixed_string(
+            name, f.get("length_prefix_type", "uint16"))
 
     if ftype == "fixed_bytes":
         # Planned to support but not this round — schemas that use

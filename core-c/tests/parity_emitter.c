@@ -22,6 +22,7 @@
 #include "oigtl_c/messages/position.h"
 #include "oigtl_c/messages/sensor.h"
 #include "oigtl_c/messages/status.h"
+#include "oigtl_c/messages/string.h"
 #include "oigtl_c/messages/transform.h"
 
 /* Write `len` bytes from `buf` to stdout (binary mode). Returns 0
@@ -91,6 +92,20 @@ static int emit_position_only(void) {
     return write_stdout(buf, (size_t)n);
 }
 
+static int emit_string(void) {
+    /* encoding=3 (US-ASCII) + uint16 len prefix (11) + "hello world" */
+    oigtl_string_t msg;
+    msg.encoding = 3;
+    const char *text = "hello world";
+    msg.value = text;
+    msg.value_len = strlen(text);
+
+    uint8_t buf[128];
+    int n = oigtl_string_pack(&msg, buf, sizeof buf);
+    if (n < 0) return 2;
+    return write_stdout(buf, (size_t)n);
+}
+
 static int emit_sensor(void) {
     oigtl_sensor_t msg;
     msg.larray = 3;
@@ -126,6 +141,7 @@ int main(int argc, char **argv) {
     else if (strcmp(c, "position_full")  == 0) return emit_position_full();
     else if (strcmp(c, "position_only")  == 0) return emit_position_only();
     else if (strcmp(c, "sensor")         == 0) return emit_sensor();
+    else if (strcmp(c, "string")         == 0) return emit_string();
     fprintf(stderr, "unknown case: %s\n", c);
     return 2;
 }
