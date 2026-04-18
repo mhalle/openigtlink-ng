@@ -32,12 +32,9 @@
 #include <utility>
 #include <vector>
 
-#include <sys/socket.h>    // ::send, MSG_NOSIGNAL
-#include <poll.h>          // ::poll for EAGAIN recovery
-#include <cerrno>
-
 #include "io_runtime.hpp"
 #include "oigtl/transport/connection.hpp"
+#include "oigtl/transport/detail/net_compat.hpp"
 #include "oigtl/transport/errors.hpp"
 #include "oigtl/transport/framer.hpp"
 #include "oigtl/transport/future.hpp"
@@ -218,7 +215,7 @@ class TcpConnection final : public Connection {
             std::chrono::milliseconds timeout) override {
         std::lock_guard<std::mutex> lk(impl_->recv_sync_mu);
 
-        const int fd = impl_->socket.native_handle();
+        const detail::socket_t fd = impl_->socket.native_handle();
         const bool has_deadline = timeout.count() >= 0;
         const auto deadline =
             std::chrono::steady_clock::now() + timeout;
@@ -234,7 +231,6 @@ class TcpConnection final : public Connection {
         for (;;) {
             if (impl_->closed) throw ConnectionClosedError{};
 
-            // Compute poll timeout.
             int poll_ms = -1;
             if (has_deadline) {
                 auto remaining = deadline -
@@ -247,31 +243,20 @@ class TcpConnection final : public Connection {
                         milliseconds>(remaining).count());
             }
 
-            struct pollfd pfd{};
-            pfd.fd = fd;
-            pfd.events = POLLIN;
-            int pr = ::poll(&pfd, 1, poll_ms);
-            if (pr == 0) throw TimeoutError{};
-            if (pr < 0) {
-                if (errno == EINTR) continue;
-                throw ConnectionClosedError(
-                    std::string("poll: ") + std::strerror(errno));
+            if (!detail::poll_one(fd, detail::PollFor::Readable,
+                                  poll_ms)) {
+                throw TimeoutError{};
             }
 
-            ssize_t n = ::recv(fd, buf.data(), buf.size(), 0);
+            const auto n = detail::safe_recv(fd, buf.data(), buf.size());
             if (n == 0) {
                 impl_->closed = true;
                 throw ConnectionClosedError{};
             }
-            if (n < 0) {
-                if (errno == EINTR || errno == EAGAIN ||
-                    errno == EWOULDBLOCK) continue;
-                throw ConnectionClosedError(
-                    std::string("recv: ") + std::strerror(errno));
-            }
+            if (n < 0) continue;    // EAGAIN/EWOULDBLOCK — loop
             impl_->sync_inbox.insert(
                 impl_->sync_inbox.end(),
-                buf.begin(), buf.begin() + n);
+                buf.begin(), buf.begin() + static_cast<std::size_t>(n));
 
             if (auto inc = try_current()) return std::move(*inc);
         }
@@ -322,37 +307,11 @@ class TcpConnection final : public Connection {
             buf_len = framed_store.size();
         }
 
-        const int fd = impl_->socket.native_handle();
-#ifdef MSG_NOSIGNAL
-        const int flags = MSG_NOSIGNAL;  // Linux: don't SIGPIPE
-#else
-        const int flags = 0;             // macOS: set SO_NOSIGPIPE elsewhere
-#endif
-        std::size_t off = 0;
-        while (off < buf_len) {
-            ssize_t n = ::send(fd, buf + off,
-                               buf_len - off, flags);
-            if (n > 0) { off += static_cast<std::size_t>(n); continue; }
-            if (n < 0) {
-                if (errno == EINTR) continue;
-                if (errno == EAGAIN || errno == EWOULDBLOCK) {
-                    // asio keeps the fd non-blocking; wait for the
-                    // kernel send buffer to drain.
-                    struct pollfd pfd{};
-                    pfd.fd = fd;
-                    pfd.events = POLLOUT;
-                    int r = ::poll(&pfd, 1, -1);
-                    if (r < 0 && errno != EINTR) {
-                        throw ConnectionClosedError(
-                            std::string("poll: ") +
-                            std::strerror(errno));
-                    }
-                    continue;
-                }
-                throw ConnectionClosedError(
-                    std::string("send: ") + std::strerror(errno));
-            }
-        }
+        const detail::socket_t fd = impl_->socket.native_handle();
+        // Handles SIGPIPE suppression, EAGAIN poll-wait, and
+        // EINTR retry internally. One line replaces the hand-
+        // rolled blocking-send loop.
+        detail::safe_send_all(fd, buf, buf_len);
     }
 
     Future<void> send(const std::uint8_t* wire,
@@ -407,12 +366,9 @@ void populate_peer(ConnImpl& impl) {
     ec.clear();
 
     // macOS has no MSG_NOSIGNAL; set SO_NOSIGPIPE instead so a
-    // send() on a closed peer doesn't kill the process.
-#ifdef SO_NOSIGPIPE
-    int on = 1;
-    (void)::setsockopt(impl.socket.native_handle(), SOL_SOCKET,
-                       SO_NOSIGPIPE, &on, sizeof(on));
-#endif
+    // send() on a closed peer doesn't kill the process. No-op on
+    // Linux (MSG_NOSIGNAL per-send) and Windows (no SIGPIPE).
+    detail::suppress_sigpipe(impl.socket.native_handle());
 
     auto ep = impl.socket.remote_endpoint(ec);
     if (!ec) {
@@ -551,13 +507,11 @@ struct AccImpl : std::enable_shared_from_this<AccImpl> {
                 //    Honored by the sync-receive path; asio's async
                 //    read is timer-driven separately (future work).
                 if (pol.idle_timeout.count() > 0) {
-                    struct timeval tv{};
-                    tv.tv_sec  = static_cast<long>(
-                        pol.idle_timeout.count());
-                    tv.tv_usec = 0;
-                    (void)::setsockopt(
+                    detail::set_recv_timeout(
                         incoming_impl->socket.native_handle(),
-                        SOL_SOCKET, SO_RCVTIMEO, &tv, sizeof(tv));
+                        std::chrono::duration_cast<
+                            std::chrono::milliseconds>(
+                                pol.idle_timeout));
                 }
 
                 // Accounting: one-shot decrement registered on the

@@ -16,14 +16,8 @@
 #include <memory>
 #include <string>
 
-#ifndef _WIN32
-#include <arpa/inet.h>   // inet_ntop
-#include <netdb.h>       // getaddrinfo
-#include <netinet/in.h>
-#include <sys/socket.h>
-#endif
-
 #include "oigtl/transport/connection.hpp"
+#include "oigtl/transport/detail/net_compat.hpp"
 #include "oigtl/transport/policy.hpp"
 #include "oigtl/transport/tcp.hpp"
 
@@ -171,39 +165,21 @@ int ServerSocket::AllowPeer(const std::string& ip_or_host) {
         return 1;
     }
 
-#ifndef _WIN32
-    // Hostname: resolve via getaddrinfo and add each A / AAAA as
-    // a single-host range.
-    addrinfo hints{};
-    hints.ai_family   = AF_UNSPEC;
-    hints.ai_socktype = SOCK_STREAM;
-    addrinfo* res = nullptr;
-    if (::getaddrinfo(ip_or_host.c_str(), nullptr, &hints, &res) != 0) {
-        return 0;
-    }
+    // Hostname: resolve via the platform abstraction and add each
+    // A / AAAA as a single-host range.
+    namespace d = oigtl::transport::detail;
+    auto resolved = d::resolve_hostname(ip_or_host);
     int added = 0;
-    for (auto* p = res; p; p = p->ai_next) {
-        char buf[INET6_ADDRSTRLEN] = {0};
-        if (p->ai_family == AF_INET) {
-            auto* sin = reinterpret_cast<sockaddr_in*>(p->ai_addr);
-            inet_ntop(AF_INET, &sin->sin_addr, buf, sizeof(buf));
-        } else if (p->ai_family == AF_INET6) {
-            auto* sin6 = reinterpret_cast<sockaddr_in6*>(p->ai_addr);
-            inet_ntop(AF_INET6, &sin6->sin6_addr, buf, sizeof(buf));
-        } else {
-            continue;
-        }
-        if (auto r = t::parse_ip(buf)) {
-            pol.allowed_peers.push_back(*r);
+    for (const auto& r : resolved) {
+        if (auto range = t::parse_ip(d::format_ip(r.family, r.bytes))) {
+            pol.allowed_peers.push_back(*range);
             ++added;
         }
     }
-    ::freeaddrinfo(res);
     if (added > 0) {
         m_AcceptorPimpl->apply_live();
         return 1;
     }
-#endif
     return 0;
 }
 

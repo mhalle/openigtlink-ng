@@ -16,14 +16,7 @@
 #include <string>
 #include <string_view>
 
-#ifdef _WIN32
-// Windows support is a second-phase task — see TRANSPORT_PLAN.md.
-// This translation unit is POSIX-only for now; the Windows build
-// will substitute a Winsock-backed version.
-#error "oigtl::transport::policy is POSIX-only; Windows support is pending"
-#else
-#include <arpa/inet.h>    // inet_pton
-#endif
+#include "oigtl/transport/detail/net_compat.hpp"    // parse_ip_literal, format_ip
 
 namespace oigtl::transport {
 
@@ -50,25 +43,12 @@ std::string_view trim(std::string_view s) {
 
 bool parse_inet(std::string_view s, IpRange::Family& fam,
                 std::array<std::uint8_t, 16>& out) {
-    // Null-terminated copy for inet_pton.
-    std::string tmp(s);
-    out.fill(0);
-
-    // Try IPv4 first. inet_pton writes the 4 bytes into &out[0..4].
-    std::array<std::uint8_t, 4> v4{};
-    if (inet_pton(AF_INET, tmp.c_str(), v4.data()) == 1) {
-        fam = IpRange::Family::V4;
-        std::memcpy(out.data(), v4.data(), 4);
-        return true;
-    }
-    // Then IPv6.
-    std::array<std::uint8_t, 16> v6{};
-    if (inet_pton(AF_INET6, tmp.c_str(), v6.data()) == 1) {
-        fam = IpRange::Family::V6;
-        out = v6;
-        return true;
-    }
-    return false;
+    detail::Family df;
+    if (!detail::parse_ip_literal(s, df, out)) return false;
+    fam = (df == detail::Family::V4)
+              ? IpRange::Family::V4
+              : IpRange::Family::V6;
+    return true;
 }
 
 // Produce a netmask of the given prefix length as a 16-byte array.
@@ -85,13 +65,10 @@ void make_mask(std::size_t bits, std::array<std::uint8_t, 16>& out) {
 
 std::string render_ip(IpRange::Family fam,
                       const std::array<std::uint8_t, 16>& bytes) {
-    char buf[INET6_ADDRSTRLEN] = {0};
-    if (fam == IpRange::Family::V4) {
-        inet_ntop(AF_INET, bytes.data(), buf, sizeof(buf));
-    } else {
-        inet_ntop(AF_INET6, bytes.data(), buf, sizeof(buf));
-    }
-    return std::string(buf);
+    const auto df = (fam == IpRange::Family::V4)
+                        ? detail::Family::V4
+                        : detail::Family::V6;
+    return detail::format_ip(df, bytes);
 }
 
 }  // namespace
@@ -185,6 +162,13 @@ std::optional<IpRange> parse_range(std::string_view first_s,
     r.first = a;
     r.last  = b;
     return r;
+}
+
+// Public enumerate_interfaces() — thin facade over the detail
+// platform abstraction. Lives here so compat/src/ and
+// connection_tcp.cpp callers don't have to know about detail::.
+std::vector<InterfaceAddress> enumerate_interfaces() {
+    return detail::enumerate_interfaces();
 }
 
 std::optional<IpRange> parse(std::string_view spec) {

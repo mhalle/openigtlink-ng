@@ -94,7 +94,11 @@ add_library(oigtl_transport STATIC
     src/transport/io_runtime.cpp
     src/transport/connection_tcp.cpp
     src/transport/policy.cpp
-    src/transport/net_iface.cpp
+    # Platform abstraction: one backend per OS. CMake selects at
+    # configure time. Linux + macOS use the POSIX backend; Windows
+    # backend (net_compat_winsock.cpp) will be added in the Windows
+    # support phase (see WINDOWS_PLAN.md).
+    $<$<NOT:$<PLATFORM_ID:Windows>>:src/transport/net_compat_posix.cpp>
 )
 target_include_directories(oigtl_transport
     PUBLIC
