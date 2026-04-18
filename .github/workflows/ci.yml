@@ -272,13 +272,13 @@ jobs:
                 -DOIGTL_C_BUILD_FUZZERS=ON -DCMAKE_BUILD_TYPE=Debug
           cmake --build core-c/build-fuzz \
                 --target fuzz_transform fuzz_status \
-                         fuzz_position fuzz_sensor \
+                         fuzz_position fuzz_sensor fuzz_point \
                          fuzz_c_seed_corpus \
                 --parallel
 
       - name: libFuzzer — core-c targets (30 s each)
         run: |
-          for tgt in fuzz_transform fuzz_status fuzz_position fuzz_sensor; do
+          for tgt in fuzz_transform fuzz_status fuzz_position fuzz_sensor fuzz_point; do
             echo "--- $tgt ---"
             core-c/build-fuzz/$tgt \
                 core-c/build-fuzz/seeds/${tgt#fuzz_} \

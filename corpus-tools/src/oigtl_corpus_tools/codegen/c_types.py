@@ -598,16 +598,28 @@ def _plan_sub_field(f: dict[str, Any]) -> tuple[ElementMember, int]:
 
 def _build_element_struct(field_name: str, elem_schema: dict[str, Any],
                           type_id: str) -> ElementStructDef:
-    """Build the ElementStructDef for a struct-element array field.
+    """Build the ElementStructDef for an array element.
 
-    Generates the nested struct type name + size macro from the field
-    name and parent type_id — e.g. POINT.points → oigtl_point_element_t,
-    OIGTL_POINT_ELEMENT_SIZE. All sub-fields must be fixed-width or
-    we raise NotImplementedError.
+    ``elem_schema`` is either a nested-struct schema dict
+    (``{"type": "struct", "fields": [...]}``) or a single-field
+    schema dict (``{"type": "fixed_string", "size_bytes": 12, ...}``)
+    for the array-of-fixed_string case used by CAPABILITY /
+    GET_BIND / STT_BIND. Both are normalized to a field list before
+    planning sub-fields.
     """
+    etype = elem_schema.get("type")
+    if etype == "struct":
+        sub_fields = elem_schema.get("fields", [])
+    else:
+        # Synthesize a single-field struct. The element becomes
+        # oigtl_<type>_element_t { char value[N+1]; } for the
+        # fixed_string case. A consistent access pattern with the
+        # nested-struct case; only the inner field name differs.
+        sub_fields = [dict(elem_schema, name="value")]
+
     members: list[ElementMember] = []
     size = 0
-    for sub in elem_schema.get("fields", []):
+    for sub in sub_fields:
         m, w = _plan_sub_field(sub)
         members.append(m)
         size += w
@@ -699,11 +711,18 @@ def _plan_field(f: dict[str, Any]) -> FieldPlan:
 
 
 def _is_struct_array_field(f: dict[str, Any]) -> bool:
-    return (
-        f.get("type") == "array"
-        and isinstance(f.get("element_type"), dict)
-        and f["element_type"].get("type") == "struct"
-    )
+    """True for array-of-struct and array-of-fixed_string fields.
+
+    Both take the same code path (fixed-size element, generated
+    count/get/pack helpers). The fixed_string case is synthesized
+    as a single-field struct with field name `value`.
+    """
+    if f.get("type") != "array":
+        return False
+    etype = f.get("element_type")
+    if not isinstance(etype, dict):
+        return False
+    return etype.get("type") in ("struct", "fixed_string")
 
 
 def plan_message(schema: dict[str, Any]) -> MessagePlan:

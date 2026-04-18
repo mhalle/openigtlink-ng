@@ -160,6 +160,12 @@ SEEDS: dict[str, list[tuple[str, bytes]]] = {
         ("larray_3.bin",     sensor_larray_3()),
         ("larray_mismatch.bin", sensor_larray_mismatch()),
     ],
+    "point": [
+        ("zero_points.bin",  b""),
+        ("one_point.bin",    b"\x00" * 136),
+        ("two_points.bin",   b"\x00" * 272),
+        ("misaligned.bin",   b"\x00" * 137),
+    ],
 }
 
 

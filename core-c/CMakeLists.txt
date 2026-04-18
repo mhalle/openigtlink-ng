@@ -87,7 +87,8 @@ if(OIGTL_C_BUILD_FUZZERS)
         -fno-omit-frame-pointer
         -g)
 
-    foreach(_target fuzz_transform fuzz_status fuzz_position fuzz_sensor)
+    foreach(_target fuzz_transform fuzz_status fuzz_position fuzz_sensor
+                    fuzz_point)
         add_executable(${_target} fuzz/${_target}.c)
         target_link_libraries(${_target} PRIVATE oigtl_c_messages)
         target_compile_options(${_target} PRIVATE ${OIGTL_C_FUZZ_FLAGS})
