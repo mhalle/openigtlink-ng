@@ -24,17 +24,35 @@ PORT="${3:?missing port}"
 OUT=$(mktemp -t upstream_interop.XXXXXX)
 trap "rm -f $OUT" EXIT
 
-# Start the server; give it a moment to bind.
+# Start the server; give it time to bind. CI runners (especially
+# macOS) can take longer than a local dev box; poll for the port
+# instead of guessing with a fixed sleep.
 "$SERVER" "$PORT" > "$OUT" 2>&1 &
 SPID=$!
-sleep 0.3
+
+# Wait for the server to actually listen. Try several times —
+# macOS `nc -z` behaves differently from Linux's so we use a
+# bash TCP-open redirect, which is portable across both runners.
+for i in 1 2 3 4 5 6 7 8 9 10 11 12 13 14 15 16 17 18 19 20; do
+    if (echo > /dev/tcp/127.0.0.1/"$PORT") 2>/dev/null; then
+        break
+    fi
+    sleep 0.1
+    if [ "$i" = "20" ]; then
+        echo "FAIL: server never bound on port $PORT" >&2
+        echo "--- ReceiveServer output ---" >&2
+        cat "$OUT" >&2
+        kill -TERM $SPID 2>/dev/null || true
+        exit 1
+    fi
+done
 
 # Start the client at 50 fps; TrackerClient runs forever, so cap
-# with `timeout` to about a second's worth of traffic.
-timeout 1 "$CLIENT" 127.0.0.1 "$PORT" 50 > /dev/null 2>&1 || true
+# with `timeout` to about 2 s worth of traffic.
+timeout 2 "$CLIENT" 127.0.0.1 "$PORT" 50 > /dev/null 2>&1 || true
 
 # Tell the server to exit.
-sleep 0.2
+sleep 0.3
 kill -TERM $SPID 2>/dev/null || true
 wait $SPID 2>/dev/null || true
 

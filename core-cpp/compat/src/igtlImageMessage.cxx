@@ -15,6 +15,7 @@
 #include "igtl/igtlImageMessage.h"
 
 #include <algorithm>
+#include <cmath>
 #include <cstring>
 
 #include "oigtl/runtime/byte_order.hpp"
