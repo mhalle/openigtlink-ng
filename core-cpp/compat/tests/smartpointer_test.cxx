@@ -113,8 +113,12 @@ void test_is_null_semantics() {
 void test_concurrent_register_unregister() {
     std::fprintf(stderr, "test_concurrent_register_unregister\n");
     auto p = Probe::New();
-    const int N = 1000;
-    const int threads = 8;
+    // `constexpr` rather than `const int` so MSVC strict mode
+    // treats it as a compile-time constant and doesn't demand
+    // named capture inside the lambda below. Clang in turn would
+    // warn (-Wunused-lambda-capture) if we captured it explicitly.
+    constexpr int N = 1000;
+    constexpr int threads = 8;
 
     std::vector<std::thread> ts;
     ts.reserve(threads);

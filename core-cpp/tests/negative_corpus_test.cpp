@@ -14,11 +14,11 @@
 #include <algorithm>
 #include <cstdint>
 #include <cstdio>
+#include <filesystem>
 #include <fstream>
 #include <iterator>
 #include <sstream>
 #include <string>
-#include <unistd.h>
 #include <vector>
 
 #include "oigtl/messages/register_all.hpp"
@@ -139,15 +139,19 @@ std::string find_repo_root(const std::string& start) {
 
 int main() {
     // WORKING_DIRECTORY is set by CTest to the corpus-tools dir;
-    // walk up to find spec/.
-    char cwd[4096];
-    if (!getcwd(cwd, sizeof(cwd))) {
-        std::fprintf(stderr, "getcwd failed\n");
+    // walk up to find spec/. std::filesystem::current_path() is
+    // portable across POSIX and Windows (replacing getcwd from
+    // <unistd.h>).
+    std::error_code ec;
+    const auto cwd_path = std::filesystem::current_path(ec);
+    if (ec) {
+        std::fprintf(stderr, "current_path failed: %s\n", ec.message().c_str());
         return 2;
     }
+    const std::string cwd = cwd_path.generic_string();
     std::string root = find_repo_root(cwd);
     if (root.empty()) {
-        std::fprintf(stderr, "repo root not found from %s\n", cwd);
+        std::fprintf(stderr, "repo root not found from %s\n", cwd.c_str());
         return 2;
     }
     const std::string neg_dir = root + "/spec/corpus/negative";
