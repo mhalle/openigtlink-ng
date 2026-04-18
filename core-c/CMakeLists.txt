@@ -64,6 +64,49 @@ else()
 endif()
 
 # ----------------------------------------------------------------------
+# Fuzzers (opt-in, Clang-only).
+#
+# Configure with `-DOIGTL_C_BUILD_FUZZERS=ON` on a Clang toolchain
+# to enable libFuzzer + ASan + UBSan targets. See core-c/fuzz/ for
+# per-target entry points and seed corpus generator. Not wired into
+# the regular ctest matrix — runs via the existing fuzz-smoke CI
+# job under clang-15 / Linux.
+# ----------------------------------------------------------------------
+option(OIGTL_C_BUILD_FUZZERS
+    "Build libFuzzer fuzz targets under ASan+UBSan (requires Clang)."
+    OFF)
+
+if(OIGTL_C_BUILD_FUZZERS)
+    if(NOT CMAKE_C_COMPILER_ID MATCHES "Clang")
+        message(FATAL_ERROR
+            "OIGTL_C_BUILD_FUZZERS=ON requires Clang; got "
+            "${CMAKE_C_COMPILER_ID}.")
+    endif()
+    set(OIGTL_C_FUZZ_FLAGS
+        -fsanitize=fuzzer,address,undefined
+        -fno-omit-frame-pointer
+        -g)
+
+    foreach(_target fuzz_transform fuzz_status fuzz_position fuzz_sensor)
+        add_executable(${_target} fuzz/${_target}.c)
+        target_link_libraries(${_target} PRIVATE oigtl_c_messages)
+        target_compile_options(${_target} PRIVATE ${OIGTL_C_FUZZ_FLAGS})
+        target_link_options(${_target} PRIVATE ${OIGTL_C_FUZZ_FLAGS})
+    endforeach()
+
+    # Seed corpus — populated at build time by a stdlib Python
+    # script. Stdlib-only so the CI runner doesn't need uv to
+    # build fuzzers.
+    find_package(Python3 COMPONENTS Interpreter REQUIRED)
+    add_custom_target(fuzz_c_seed_corpus
+        COMMAND ${Python3_EXECUTABLE}
+            "${CMAKE_CURRENT_SOURCE_DIR}/fuzz/seeds/gen.py"
+            --out "${CMAKE_CURRENT_BINARY_DIR}/seeds"
+        COMMENT "Staging core-c fuzz seed corpus under build/seeds/"
+        VERBATIM)
+endif()
+
+# ----------------------------------------------------------------------
 # Tests
 # ----------------------------------------------------------------------
 enable_testing()

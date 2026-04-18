@@ -261,6 +261,31 @@ jobs:
               -max_total_time=60 -max_len=8192 \
               -artifact_prefix=./fuzz-artifact-oracle-
 
+      # core-c fuzz targets. Separate build dir because we want the
+      # C codec compiled under the same -fsanitize=fuzzer,address,
+      # undefined flags, which don't cleanly mix with the C++ tree.
+      - name: Configure + build core-c libFuzzer targets
+        env:
+          CC: clang-15
+        run: |
+          cmake -S core-c -B core-c/build-fuzz \
+                -DOIGTL_C_BUILD_FUZZERS=ON -DCMAKE_BUILD_TYPE=Debug
+          cmake --build core-c/build-fuzz \
+                --target fuzz_transform fuzz_status \
+                         fuzz_position fuzz_sensor \
+                         fuzz_c_seed_corpus \
+                --parallel
+
+      - name: libFuzzer — core-c targets (30 s each)
+        run: |
+          for tgt in fuzz_transform fuzz_status fuzz_position fuzz_sensor; do
+            echo "--- $tgt ---"
+            core-c/build-fuzz/$tgt \
+                core-c/build-fuzz/seeds/${tgt#fuzz_} \
+                -max_total_time=30 -max_len=4096 \
+                -artifact_prefix=./fuzz-artifact-c-${tgt}-
+          done
+
       - name: Differential oracle fuzz (50 000 iterations)
         working-directory: corpus-tools
         run: |
