@@ -48,8 +48,13 @@ for i in 1 2 3 4 5 6 7 8 9 10 11 12 13 14 15 16 17 18 19 20; do
 done
 
 # Start the client at 50 fps; TrackerClient runs forever, so cap
-# with `timeout` to about 2 s worth of traffic.
-timeout 2 "$CLIENT" 127.0.0.1 "$PORT" 50 > /dev/null 2>&1 || true
+# with a bash-side kill (GNU `timeout` isn't installed on macOS
+# runners, which silently swallowed the client earlier).
+"$CLIENT" 127.0.0.1 "$PORT" 50 > /dev/null 2>&1 &
+CPID=$!
+sleep 2
+kill -TERM $CPID 2>/dev/null || true
+wait $CPID 2>/dev/null || true
 
 # Tell the server to exit.
 sleep 0.3
