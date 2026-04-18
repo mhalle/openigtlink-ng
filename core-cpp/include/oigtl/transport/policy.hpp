@@ -95,9 +95,9 @@ struct InterfaceAddress {
 //   - IPv6 link-local (fe80::/10) flagged is_link_local=true
 //   - Interfaces that are DOWN are skipped
 //
-// POSIX-only today (getifaddrs). Returns an empty vector on
-// unsupported platforms. See the per-platform notes in
-// core-cpp/src/transport/net_iface.cpp.
+// Implemented against getifaddrs on POSIX (Linux + macOS) and
+// GetAdaptersAddresses on Windows. Returns an empty vector if
+// the OS refuses to enumerate (rare, but keep the call safe).
 std::vector<InterfaceAddress> enumerate_interfaces();
 
 // The full accept-time policy. All fields default to "no

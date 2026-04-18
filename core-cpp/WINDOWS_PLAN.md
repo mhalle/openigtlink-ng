@@ -15,13 +15,18 @@ permitting — libFuzzer on MSVC is flaky; we'll skip if needed).
 | Step | State |
 |---|---|
 | 1 — net_compat abstraction + POSIX extraction | ✅ done (commit 9558800) |
-| 2 — Winsock backend (net_compat_winsock.cpp) | ✅ done (pending CI validation) |
-| 3 — Build-system Windows quirks | partial (MSVC defines + ws2_32/iphlpapi linked; lib.exe / CMake -P parity still pending) |
-| 4 — Source-level Windows quirks | pending |
-| 5 — Binary fixtures (.gitattributes) | pending |
-| 6 — Portable interop test | pending |
-| 7 — CI matrix entry | pending |
-| 8 — Validation (external-consumer smoke) | pending |
+| 2 — Winsock backend (net_compat_winsock.cpp) | ✅ done (commit 42311f5) |
+| 3 — Build-system Windows quirks | ✅ done (commit ecb6dae) |
+| 4 — Source-level Windows quirks | ✅ done (commits 2fb995c, 45998e4, 920a24d, 4d24083) |
+| 5 — Binary fixtures (.gitattributes) | ✅ done (commit 387c8d8) |
+| 6 — Windows CI matrix entry + green | ✅ done (commit cd34d01, green at 4d24083) |
+| 7 — Documentation updates | ✅ done (this commit) |
+| 8 — External-consumer smoke on Windows | optional / deferred |
+
+**Windows is supported.** CI on `windows-latest / MSVC 2022 x64`
+runs 11/11 ctest cases green — everything except the 25 upstream-
+parity tests, which self-gate on a prebuilt `libOpenIGTLink.a`
+that we only build on POSIX jobs.
 
 Step 1 landed as a pure refactor with no behavior change; 36/36
 ctest stayed green on the existing POSIX matrix. Remaining steps

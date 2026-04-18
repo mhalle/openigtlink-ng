@@ -234,8 +234,10 @@ any peer, unlimited concurrency, no timeouts. Call them before
 `CreateServer()` (restrictions active from the first connection)
 or after it (active on the next `WaitForConnection`).
 
-**Platform note:** POSIX (Linux + macOS) today. Windows support
-is coming in a later release.
+**Platform note:** Linux, macOS, and Windows are all supported.
+`RestrictToLocalSubnet("Ethernet 2")` with a human-friendly,
+possibly space-containing interface name works on Windows where
+POSIX would use `"eth0"` / `"en0"` / `"tailscale0"`.
 
 ### Who can connect
 
@@ -637,9 +639,16 @@ directory. Summary:
 ## FAQ <a name="faq"></a>
 
 **Q: Will this run on Windows?**
-A: The code is portable C++17 with only POSIX-flavored syscalls
-in the TCP backend (via asio on Linux/macOS). Windows support is
-not currently in CI — contributions welcome.
+A: Yes. CI builds and tests `windows-latest` / MSVC 2022
+alongside Linux (gcc + clang) and macOS on every push. The
+transport layer uses a pimpl'd platform abstraction — POSIX
+sockets on Linux/macOS, Winsock2 + iphlpapi on Windows — so
+the same source code links on all three. The network
+restrictions (`RestrictToLocalSubnet`, `AllowPeerRange`, etc.)
+work identically on all platforms; the only Windows-specific
+nuance is that interface names are human-friendly strings
+("Ethernet 2", "Tailscale") rather than short POSIX names
+("eth0", "tailscale0").
 
 **Q: Does `std::atomic<int>` refcounting break my multithreaded
 assumptions?**

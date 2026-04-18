@@ -54,7 +54,7 @@ class IGTLCommon_EXPORT ServerSocket : public Socket {
     // peers may connect" for researcher-friendly prose and worked
     // examples.
     //
-    // Platform: POSIX today; Windows support pending (tracked).
+    // Platform: Linux, macOS, and Windows.
 
     /// Accept only connections from the machine running the
     /// server (loopback). Good for single-machine setups, dev

@@ -114,8 +114,8 @@ Associated class `RTSPolyDataMessage` — ✓ full.
 ### Extensions beyond upstream (ServerSocket)
 
 Not part of the upstream API — opt-in to tighten who can connect
-and how much traffic the server accepts. POSIX only today;
-Windows support coming. See [`MIGRATION.md` §Restrictions](MIGRATION.md#restrictions)
+and how much traffic the server accepts. Supported on Linux,
+macOS, and Windows. See [`MIGRATION.md` §Restrictions](MIGRATION.md#restrictions)
 for researcher-facing prose + examples.
 
 | Method | Purpose |

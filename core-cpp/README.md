@@ -118,9 +118,12 @@ C++17 in the public API. CI exercises:
 - Ubuntu / GCC 13
 - Ubuntu / Clang 15
 - macOS / Apple Clang
+- Windows / MSVC 2022 (x64)
 
-Windows / MSVC is not yet in CI; the code is expected to build but
-hasn't been verified against the MSVC warning set.
+The transport layer uses a pimpl'd platform abstraction — POSIX
+sockets on Linux/macOS, Winsock2 + iphlpapi on Windows — so
+the same public headers work everywhere. MinGW, Cygwin, and
+32-bit Windows are out of scope.
 
 Internal `.cpp` code may use later-standard features if guarded
 behind feature-test macros, but nothing in the codec currently
