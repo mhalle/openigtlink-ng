@@ -380,10 +380,18 @@ foreach(upstream_example
         target_link_libraries(upstream_${_prog_name}_via_shim
             PRIVATE igtl_compat)
         # Upstream code has legacy signed/unsigned comparisons etc.
-        # We're NOT fixing upstream — just building it.
-        target_compile_options(upstream_${_prog_name}_via_shim PRIVATE
-            -Wno-error -Wno-unused-parameter -Wno-unused-variable
-            -Wno-sign-compare -Wno-unused-but-set-variable)
+        # We're NOT fixing upstream — just building it. Relax the
+        # strict warning flags per-compiler-family: GNU/Clang take
+        # -Wno-xxx, MSVC takes /wd####. Keeping these flag lists
+        # distinct is why we don't share a single CMake variable.
+        if(CMAKE_CXX_COMPILER_ID MATCHES "GNU|Clang|AppleClang")
+            target_compile_options(upstream_${_prog_name}_via_shim PRIVATE
+                -Wno-error -Wno-unused-parameter -Wno-unused-variable
+                -Wno-sign-compare -Wno-unused-but-set-variable)
+        elseif(MSVC)
+            target_compile_options(upstream_${_prog_name}_via_shim PRIVATE
+                /WX- /wd4100 /wd4101 /wd4189 /wd4244 /wd4267 /wd4996)
+        endif()
     endif()
 endforeach()
 
