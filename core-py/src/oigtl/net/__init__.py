@@ -3,11 +3,22 @@
 Phase 1 only exports the shared primitives (framer, policy,
 interfaces). Client / Server entry points land in later phases.
 See ``core-py/TRANSPORT_PLAN.md`` for the full roadmap and
-``core-cpp/CLIENT_GUIDE.md`` for the C++ API this port mirrors.
+``core-cpp/CLIENT_GUIDE.md`` for the C++ API this port mirrors in
+capability (not in syntax — Python gets a Python-shaped API).
+
+The ``interfaces`` submodule is exposed as a namespace rather than
+flattened here, because the researcher-facing idiom is::
+
+    from oigtl.net import interfaces
+    interfaces.primary_address()
+    interfaces.subnets()
+
+— which reads naturally and doesn't collide with builtins.
 """
 
 from __future__ import annotations
 
+from oigtl.net import interfaces
 from oigtl.net.errors import (
     BufferOverflowError,
     ConnectionClosedError,
@@ -24,11 +35,6 @@ from oigtl.net.framer import (
     V3Framer,
     make_v3_framer,
 )
-from oigtl.net.interfaces import (
-    InterfaceAddress,
-    InterfaceEnumerationUnavailable,
-    enumerate_interfaces,
-)
 from oigtl.net.policy import (
     IpRange,
     PeerPolicy,
@@ -39,6 +45,8 @@ from oigtl.net.policy import (
 )
 
 __all__ = [
+    # Submodule namespaces
+    "interfaces",
     # Errors
     "BufferOverflowError",
     "ConnectionClosedError",
@@ -53,10 +61,6 @@ __all__ = [
     "Incoming",
     "V3Framer",
     "make_v3_framer",
-    # Interfaces
-    "InterfaceAddress",
-    "InterfaceEnumerationUnavailable",
-    "enumerate_interfaces",
     # Policy
     "IpRange",
     "PeerPolicy",
