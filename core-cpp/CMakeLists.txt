@@ -95,10 +95,11 @@ add_library(oigtl_transport STATIC
     src/transport/connection_tcp.cpp
     src/transport/policy.cpp
     # Platform abstraction: one backend per OS. CMake selects at
-    # configure time. Linux + macOS use the POSIX backend; Windows
-    # backend (net_compat_winsock.cpp) will be added in the Windows
-    # support phase (see WINDOWS_PLAN.md).
+    # configure time. POSIX systems use net_compat_posix.cpp;
+    # Windows uses net_compat_winsock.cpp. Both implement the same
+    # API from include/oigtl/transport/detail/net_compat.hpp.
     $<$<NOT:$<PLATFORM_ID:Windows>>:src/transport/net_compat_posix.cpp>
+    $<$<PLATFORM_ID:Windows>:src/transport/net_compat_winsock.cpp>
 )
 target_include_directories(oigtl_transport
     PUBLIC
@@ -108,6 +109,26 @@ target_include_directories(oigtl_transport
         $<BUILD_INTERFACE:${asio_SOURCE_DIR}/asio/include>)
 target_compile_definitions(oigtl_transport PRIVATE
     ASIO_STANDALONE ASIO_NO_DEPRECATED)
+# Windows hygiene for every TU that transitively pulls in <windows.h>
+# (asio does; so does our Winsock backend). These MUST be set before
+# any Windows header is included. PUBLIC because consumers of our
+# public headers may also transitively include asio's, and the
+# sympathetic behaviour between their code and Windows macros
+# depends on the same NOMINMAX/LEAN_AND_MEAN surface.
+if(WIN32)
+    target_compile_definitions(oigtl_transport PUBLIC
+        NOMINMAX
+        WIN32_LEAN_AND_MEAN
+        _WIN32_WINNT=0x0A00)    # Windows 10 baseline: WSAPoll, inet_ntop, modern GetAdaptersAddresses.
+    if(MSVC)
+        # Make __cplusplus reflect the actual standard mode (MSVC
+        # reports 199711L by default for backward-compat).
+        target_compile_options(oigtl_transport PUBLIC /Zc:__cplusplus)
+    endif()
+    # Our Winsock backend needs these; PUBLIC so downstream static
+    # consumers of oigtl_transport pick them up on their link line.
+    target_link_libraries(oigtl_transport PUBLIC ws2_32 iphlpapi)
+endif()
 target_link_libraries(oigtl_transport PUBLIC oigtl_runtime)
 # Future<T> uses condition variables; pthread on Linux.
 find_package(Threads REQUIRED)

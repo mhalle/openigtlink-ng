@@ -15,8 +15,8 @@ permitting — libFuzzer on MSVC is flaky; we'll skip if needed).
 | Step | State |
 |---|---|
 | 1 — net_compat abstraction + POSIX extraction | ✅ done (commit 9558800) |
-| 2 — Winsock backend (net_compat_winsock.cpp) | pending |
-| 3 — Build-system Windows quirks | pending |
+| 2 — Winsock backend (net_compat_winsock.cpp) | ✅ done (pending CI validation) |
+| 3 — Build-system Windows quirks | partial (MSVC defines + ws2_32/iphlpapi linked; lib.exe / CMake -P parity still pending) |
 | 4 — Source-level Windows quirks | pending |
 | 5 — Binary fixtures (.gitattributes) | pending |
 | 6 — Portable interop test | pending |
