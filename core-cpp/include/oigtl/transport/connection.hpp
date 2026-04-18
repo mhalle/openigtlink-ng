@@ -21,6 +21,7 @@
 
 #include "oigtl/transport/framer.hpp"
 #include "oigtl/transport/future.hpp"
+#include "oigtl/transport/policy.hpp"
 
 namespace oigtl::transport {
 
@@ -113,6 +114,16 @@ class Acceptor {
     // Stop accepting. Pending accept() resolves with
     // OperationCancelledError.
     virtual Future<void> close() = 0;
+
+    // Update the accept-time policy. Take effect on all
+    // subsequent accept() calls. Calling with a default-
+    // constructed PeerPolicy clears all restrictions.
+    // Thread-safe — posts onto the acceptor's executor.
+    virtual void set_policy(PeerPolicy policy) = 0;
+
+    // Current policy (copy). Thread-safe.
+    virtual PeerPolicy policy() const = 0;
+
     virtual ~Acceptor() = default;
 };
 

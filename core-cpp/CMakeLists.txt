@@ -93,6 +93,8 @@ add_library(oigtl_transport STATIC
     src/transport/connection_loopback.cpp
     src/transport/io_runtime.cpp
     src/transport/connection_tcp.cpp
+    src/transport/policy.cpp
+    src/transport/net_iface.cpp
 )
 target_include_directories(oigtl_transport
     PUBLIC
@@ -298,6 +300,18 @@ target_link_libraries(igtl_compat_socket_roundtrip_test
 add_test(NAME compat_socket_roundtrip
          COMMAND igtl_compat_socket_roundtrip_test)
 set_tests_properties(compat_socket_roundtrip PROPERTIES TIMEOUT 30)
+
+# Shim restrictions — opt-in network policy knobs on igtl::ServerSocket.
+# Covers loopback allow-list, AllowPeerRange, max-concurrent, and
+# max-message-size. Idle-timeout omitted (requires multi-second waits).
+add_executable(igtl_compat_server_restrictions_test
+    compat/tests/server_restrictions_test.cxx
+)
+target_link_libraries(igtl_compat_server_restrictions_test
+    PRIVATE igtl_compat)
+add_test(NAME compat_server_restrictions
+         COMMAND igtl_compat_server_restrictions_test)
+set_tests_properties(compat_server_restrictions PROPERTIES TIMEOUT 30)
 
 # -----------------------------------------------------------------
 # Phase 8 — upstream example programs built DIRECTLY against the

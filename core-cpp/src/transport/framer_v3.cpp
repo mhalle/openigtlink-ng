@@ -14,6 +14,7 @@
 
 #include "oigtl/runtime/error.hpp"
 #include "oigtl/runtime/header.hpp"
+#include "oigtl/transport/errors.hpp"
 
 namespace oigtl::transport {
 
@@ -21,6 +22,9 @@ namespace {
 
 class V3Framer final : public Framer {
  public:
+    explicit V3Framer(std::size_t max_body_size)
+        : max_body_size_(max_body_size) {}
+
     std::optional<Incoming>
     try_parse(std::vector<std::uint8_t>& buffer) override {
         if (buffer.size() < runtime::kHeaderSize) return std::nullopt;
@@ -30,6 +34,14 @@ class V3Framer final : public Framer {
         // until the header parses.
         runtime::Header header = runtime::unpack_header(
             buffer.data(), buffer.size());
+
+        // Per-policy pre-parse cap. Enforced BEFORE the body-bytes
+        // availability check so a peer announcing a huge body_size
+        // is rejected immediately, not after waiting for bytes.
+        if (max_body_size_ > 0 && header.body_size > max_body_size_) {
+            throw FramingError(
+                "body_size exceeds configured max_message_size");
+        }
 
         const std::size_t total = runtime::kHeaderSize + header.body_size;
         if (buffer.size() < total) return std::nullopt;
@@ -59,12 +71,15 @@ class V3Framer final : public Framer {
     }
 
     std::string name() const override { return "v3"; }
+
+ private:
+    std::size_t max_body_size_ = 0;
 };
 
 }  // namespace
 
-std::unique_ptr<Framer> make_v3_framer() {
-    return std::make_unique<V3Framer>();
+std::unique_ptr<Framer> make_v3_framer(std::size_t max_body_size) {
+    return std::make_unique<V3Framer>(max_body_size);
 }
 
 }  // namespace oigtl::transport

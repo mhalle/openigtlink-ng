@@ -25,6 +25,7 @@
 #include <cstdint>
 #include <cstring>
 #include <deque>
+#include <functional>
 #include <memory>
 #include <mutex>
 #include <string>
@@ -73,8 +74,22 @@ struct ConnImpl : std::enable_shared_from_this<ConnImpl> {
     std::mutex recv_sync_mu;
     std::vector<std::uint8_t> sync_inbox;
 
+    // Called at most once when this connection closes. Wired by
+    // the Acceptor so it can decrement its active-connections
+    // counter without holding a shared_ptr<ConnImpl> itself.
+    std::function<void()> on_close_hook;
+    bool on_close_fired = false;
+
     explicit ConnImpl(asio::io_context& ctx)
         : socket(ctx), framer(make_v3_framer()) {}
+
+    void fire_on_close_hook() {
+        if (on_close_fired) return;
+        on_close_fired = true;
+        if (on_close_hook) on_close_hook();
+    }
+
+    ~ConnImpl() { fire_on_close_hook(); }
 
     // --- must be called on io_ctx thread ---
 
@@ -407,6 +422,57 @@ void populate_peer(ConnImpl& impl) {
 }
 
 // ===========================================================================
+// Policy helpers — used on the accept path. Operate purely on the
+// byte representation of the peer's address so they don't care
+// whether the incoming socket is v4 or v6.
+// ===========================================================================
+namespace policy_impl {
+
+// Extract peer IP as a 16-byte BE array, with family tag.
+bool peer_address_bytes(const tcp::socket& s,
+                        IpRange::Family& fam,
+                        std::array<std::uint8_t, 16>& out) {
+    asio::error_code ec;
+    auto ep = s.remote_endpoint(ec);
+    if (ec) return false;
+    auto addr = ep.address();
+    out.fill(0);
+    if (addr.is_v4()) {
+        fam = IpRange::Family::V4;
+        auto raw = addr.to_v4().to_bytes();
+        std::memcpy(out.data(), raw.data(), 4);
+        return true;
+    }
+    // Treat V6 with embedded V4-mapped prefix as V4 so policies
+    // stated against the IPv4 range still match peers connecting
+    // via a dual-stack socket.
+    if (addr.is_v6()) {
+        auto raw = addr.to_v6().to_bytes();
+        if (addr.to_v6().is_v4_mapped()) {
+            fam = IpRange::Family::V4;
+            std::memcpy(out.data(), raw.data() + 12, 4);
+            return true;
+        }
+        fam = IpRange::Family::V6;
+        std::memcpy(out.data(), raw.data(), 16);
+        return true;
+    }
+    return false;
+}
+
+bool allowed_by(const PeerPolicy& p,
+                IpRange::Family fam,
+                const std::array<std::uint8_t, 16>& addr) {
+    if (p.allowed_peers.empty()) return true;   // no allow-list → any
+    for (const auto& r : p.allowed_peers) {
+        if (r.contains(fam, addr)) return true;
+    }
+    return false;
+}
+
+}  // namespace policy_impl
+
+// ===========================================================================
 // TcpAcceptor::Impl
 // ===========================================================================
 struct AccImpl : std::enable_shared_from_this<AccImpl> {
@@ -414,6 +480,12 @@ struct AccImpl : std::enable_shared_from_this<AccImpl> {
     std::deque<Promise<std::unique_ptr<Connection>>> pending;
     bool closed = false;
     bool accept_armed = false;
+
+    // Policy + active-conn accounting. Mutated only on the
+    // acceptor's executor thread, read from other threads via
+    // get_policy_snapshot() (which hops through asio::post).
+    PeerPolicy policy;
+    std::size_t active_connections = 0;
 
     explicit AccImpl(asio::io_context& ctx, const tcp::endpoint& ep)
         : acceptor(ctx, ep) {}
@@ -438,6 +510,72 @@ struct AccImpl : std::enable_shared_from_this<AccImpl> {
                     }
                     return;
                 }
+
+                // Enforce accept-time policy. Any rejection closes
+                // the socket and re-arms accept without resolving a
+                // pending promise — the caller sees no accept event
+                // for blocked peers, which is the right abstraction
+                // (they are not our peers).
+                auto& pol = self->policy;
+
+                // 1. allow-list
+                IpRange::Family fam;
+                std::array<std::uint8_t, 16> addr{};
+                if (policy_impl::peer_address_bytes(
+                        incoming_impl->socket, fam, addr)) {
+                    if (!policy_impl::allowed_by(pol, fam, addr)) {
+                        asio::error_code ignored;
+                        incoming_impl->socket.close(ignored);
+                        if (!self->closed) self->arm_accept_locked();
+                        return;
+                    }
+                }
+
+                // 2. max concurrent
+                if (pol.max_concurrent_connections > 0 &&
+                    self->active_connections >=
+                        pol.max_concurrent_connections) {
+                    asio::error_code ignored;
+                    incoming_impl->socket.close(ignored);
+                    if (!self->closed) self->arm_accept_locked();
+                    return;
+                }
+
+                // 3. per-connection framer with max-body-size cap
+                if (pol.max_message_size > 0) {
+                    incoming_impl->framer =
+                        make_v3_framer(pol.max_message_size);
+                }
+
+                // 4. idle timeout via SO_RCVTIMEO
+                //    Honored by the sync-receive path; asio's async
+                //    read is timer-driven separately (future work).
+                if (pol.idle_timeout.count() > 0) {
+                    struct timeval tv{};
+                    tv.tv_sec  = static_cast<long>(
+                        pol.idle_timeout.count());
+                    tv.tv_usec = 0;
+                    (void)::setsockopt(
+                        incoming_impl->socket.native_handle(),
+                        SOL_SOCKET, SO_RCVTIMEO, &tv, sizeof(tv));
+                }
+
+                // Accounting: one-shot decrement registered on the
+                // Impl. We use a weak_ptr to the acceptor so a
+                // destroyed acceptor doesn't keep ConnImpls alive.
+                std::weak_ptr<AccImpl> weak = self;
+                incoming_impl->on_close_hook = [weak]() {
+                    if (auto s = weak.lock()) {
+                        asio::post(s->acceptor.get_executor(),
+                            [s]() {
+                                if (s->active_connections > 0) {
+                                    --s->active_connections;
+                                }
+                            });
+                    }
+                };
+                ++self->active_connections;
+
                 populate_peer(*incoming_impl);
                 if (!self->pending.empty()) {
                     auto p = std::move(self->pending.front());
@@ -524,6 +662,28 @@ class TcpAcceptor final : public Acceptor {
         return f;
     }
 
+    void set_policy(PeerPolicy new_policy) override {
+        auto impl = impl_;
+        asio::post(impl->acceptor.get_executor(),
+            [impl, new_policy = std::move(new_policy)]() mutable {
+                impl->policy = std::move(new_policy);
+            });
+    }
+
+    PeerPolicy policy() const override {
+        // Snapshot via a promise/future round-trip on the
+        // executor, so readers see a consistent state even while
+        // an accept callback is mutating active_connections.
+        Promise<PeerPolicy> p;
+        auto f = p.get_future();
+        auto impl = impl_;
+        asio::post(impl->acceptor.get_executor(),
+            [impl, p = std::move(p)]() mutable {
+                p.set_value(impl->policy);
+            });
+        return f.get();
+    }
+
  private:
     std::shared_ptr<AccImpl> impl_;
 };
@@ -573,7 +733,9 @@ connect(std::string host, std::uint16_t port) {
 }
 
 std::unique_ptr<Acceptor>
-listen(std::uint16_t port, std::string bind_address) {
+listen(std::uint16_t port,
+       std::string bind_address,
+       PeerPolicy initial_policy) {
     auto& ctx = detail::io_ctx();
     asio::error_code ec;
     auto addr = asio::ip::make_address(bind_address, ec);
@@ -584,6 +746,7 @@ listen(std::uint16_t port, std::string bind_address) {
     tcp::endpoint ep(addr, port);
     auto impl = std::make_shared<AccImpl>(ctx, ep);
     impl->acceptor.set_option(tcp::acceptor::reuse_address(true));
+    impl->policy = std::move(initial_policy);
     return std::make_unique<TcpAcceptor>(impl);
 }
 

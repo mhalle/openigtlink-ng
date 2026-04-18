@@ -19,15 +19,16 @@ other correctly.
 1. [TL;DR](#tldr)
 2. [Quickstart: your first compat-mode program](#quickstart)
 3. [Build recipes](#build-recipes)
-4. [Verifying you linked the right library](#verifying)
-5. [Behavioral differences from upstream](#behavioral-differences)
-6. [Troubleshooting](#troubleshooting)
-7. [Performance expectations](#performance)
-8. [Interoperability with upstream peers](#interop)
-9. [Mixing compat and modern API](#mixing)
-10. [API coverage reference](#api-coverage)
-11. [FAQ](#faq)
-12. [Getting help](#help)
+4. [Restricting which peers may connect](#restrictions)
+5. [Verifying you linked the right library](#verifying)
+6. [Behavioral differences from upstream](#behavioral-differences)
+7. [Troubleshooting](#troubleshooting)
+8. [Performance expectations](#performance)
+9. [Interoperability with upstream peers](#interop)
+10. [Mixing compat and modern API](#mixing)
+11. [API coverage reference](#api-coverage)
+12. [FAQ](#faq)
+13. [Getting help](#help)
 
 ---
 
@@ -224,6 +225,150 @@ MITK's `find_package(OpenIGTLink)` call resolves against
 `oigtlConfig.cmake` when `CMAKE_PREFIX_PATH` includes our install.
 
 ---
+
+## Restricting which peers may connect <a name="restrictions"></a>
+
+All of the methods below are **opt-in**. A `ServerSocket` that
+doesn't call any of them behaves exactly like upstream: accept
+any peer, unlimited concurrency, no timeouts. Call them before
+`CreateServer()` (restrictions active from the first connection)
+or after it (active on the next `WaitForConnection`).
+
+**Platform note:** POSIX (Linux + macOS) today. Windows support
+is coming in a later release.
+
+### Who can connect
+
+```cpp
+// Option A: only the computer running the server.
+//
+// Good for: single-machine setups, dev work, "I don't want this
+// server reachable from the network at all."
+srv->RestrictToThisMachineOnly();
+
+
+// Option B: peers on the same IP subnet as one of my interfaces.
+//
+// Reads the server's own network interfaces (via getifaddrs on
+// POSIX) and allows any peer on the same subnet. Single-NIC
+// machine: accepts peers on your physical segment. Multi-NIC:
+// accepts peers on any of your subnets (see Option C to narrow).
+//
+// Prints a line to stderr so operators can confirm what got
+// allowed:
+//     [igtl] RestrictToLocalSubnet: allowing 10.1.2.0/24 (eth0),
+//            127.0.0.0/8 (lo loopback)
+//
+// Snapshot semantics: computed at call time. Plugging in a new
+// NIC later does not widen the allow-list — restart the server
+// to pick it up. This is deliberate; an unexpected USB ethernet
+// shouldn't silently enlarge your perimeter.
+srv->RestrictToLocalSubnet();
+
+
+// Option C: restrict to a specific named network interface.
+//
+// Useful when a server machine has one NIC to the "device
+// network" and another to the outside world, and you only want
+// the device NIC.
+//
+// Interface names are platform-specific:
+//     Linux:   "eth0", "enp3s0", "wlan0", "tailscale0"
+//     macOS:   "en0", "utun4"
+//     (Windows: coming soon)
+srv->RestrictToLocalSubnet("eth0");
+
+
+// Option D: add a specific host, CIDR, or address range.
+//
+// Each AllowPeer* call ADDS to the allow-list (union). Calling
+// them doesn't remove anything, and calling none leaves the
+// server accepting any peer.
+//
+// Accepted forms for AllowPeer():
+//     "10.1.2.42"          single IP address (IPv4 or IPv6)
+//     "10.1.2.0/24"        CIDR — "every address sharing this
+//                          first-24-bit prefix" = 256 addresses.
+//                          Prefer AllowPeerRange if this
+//                          notation is unfamiliar.
+//     "10.1.2.1-10.1.2.254" dash-separated range
+//     "tracker.lab.local"   a hostname, resolved here via DNS
+srv->AllowPeer("10.1.2.42");          // one machine
+srv->AllowPeer("tracker.lab.local");  // resolved on add
+srv->AllowPeer("10.1.2.0/24");        // a whole subnet
+
+// Or, the explicit first/last form — no CIDR required:
+srv->AllowPeerRange("10.1.2.1", "10.1.2.254");
+```
+
+### How much traffic to allow
+
+```cpp
+// Cap the number of peers connected at once.
+// A new connection over the cap is accepted briefly then closed;
+// your server sees no event for it. Default: unlimited.
+srv->SetMaxSimultaneousClients(4);
+
+
+// Hang up on peers that go silent. Measured from the last
+// received byte. Default: 0 = never, keep connections open
+// indefinitely.
+//
+// Typical setting for a live tracker stream at 50 Hz: a few
+// seconds. For polling clients that might pause, larger.
+srv->DisconnectIfSilentFor(std::chrono::seconds(15));
+
+
+// Reject any single message whose body is bigger than `n` bytes.
+// Check runs BEFORE body bytes are allocated, so this is also a
+// pre-parse DoS defence. Default: 0 = no extra cap (body_size
+// is only bounded by its 64-bit wire field).
+//
+// Rough IGTL body sizes for reference:
+//     TRANSFORM / POSITION / STATUS   under 1 KB
+//     POINT / TDATA with a few items  a few KB
+//     IMAGE 256×256×50 int16          6.4 MB
+//     full CT/MRI volume              100 MB+
+srv->SetMaxMessageSizeBytes(256 * 1024 * 1024);  // 256 MB cap
+```
+
+### Worked example: typical lab setup
+
+```cpp
+auto srv = igtl::ServerSocket::New();
+srv->CreateServer(18944);
+
+// Imaging-suite devices live on 10.1.2.0/24.
+srv->AllowPeerRange("10.1.2.1", "10.1.2.254");
+srv->AllowPeer("127.0.0.1");        // local viewer on the same box
+
+// Operational limits.
+srv->SetMaxSimultaneousClients(4);                         // tracker + 2 imagers + viewer
+srv->DisconnectIfSilentFor(std::chrono::seconds(15));      // catch dropped cables
+srv->SetMaxMessageSizeBytes(256 * 1024 * 1024);            // 256 MB per msg
+
+while (auto peer = srv->WaitForConnection(1000)) {
+    // handle peer …
+}
+```
+
+### What these restrictions do NOT replace
+
+- **Authentication.** An IP-based allow-list trusts the network —
+  any device on the allowed range is assumed legitimate. If you
+  need "only *my* tracker, not any tracker on the same subnet,"
+  you need a cryptographic identity mechanism. Our forthcoming
+  Noise-protocol transport (see `TRANSPORT_PLAN.md`) is the
+  planned answer; until then, a WireGuard-based mesh VPN like
+  Tailscale provides the same guarantee with an external daemon.
+
+- **A properly-configured network firewall.** These knobs are
+  defense-in-depth if a firewall rule goes wrong. They don't
+  substitute for one.
+
+- **Encryption.** Nothing in the restrictions encrypts the wire.
+  IGTL bytes still travel in the clear on the network. Again:
+  Noise, or a VPN.
 
 ## Verifying you linked the right library <a name="verifying"></a>
 

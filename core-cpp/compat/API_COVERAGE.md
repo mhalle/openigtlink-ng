@@ -109,7 +109,25 @@ Associated class `RTSPolyDataMessage` — ✓ full.
 |-----------------------|:------:|-------|
 | `igtl::Socket`        | ✓ | Over our async `oigtl::transport::Connection`. Buffers framed messages on receive; serves byte-level reads from that buffer. |
 | `igtl::ClientSocket`  | ✓ | `ConnectToServer(host, port, logErrorIfFailed)`. |
-| `igtl::ServerSocket`  | ✓ | `CreateServer(port)` (0 = ephemeral), `WaitForConnection(msec)`, `GetServerPort()`. |
+| `igtl::ServerSocket`  | ✓ | `CreateServer(port)` (0 = ephemeral), `WaitForConnection(msec)`, `GetServerPort()`. Also exposes opt-in access restrictions beyond the upstream API — see below. |
+
+### Extensions beyond upstream (ServerSocket)
+
+Not part of the upstream API — opt-in to tighten who can connect
+and how much traffic the server accepts. POSIX only today;
+Windows support coming. See [`MIGRATION.md` §Restrictions](MIGRATION.md#restrictions)
+for researcher-facing prose + examples.
+
+| Method | Purpose |
+|---|---|
+| `RestrictToThisMachineOnly()` | Loopback only |
+| `RestrictToLocalSubnet()` | Same IP subnet as any local NIC (snapshot at call time) |
+| `RestrictToLocalSubnet(ifname)` | Restrict to one named interface |
+| `AllowPeer(ip_or_host)` | Add IP / CIDR / range / hostname to allow-list |
+| `AllowPeerRange(first_ip, last_ip)` | Add inclusive address range (no CIDR required) |
+| `SetMaxSimultaneousClients(n)` | Cap concurrent peers |
+| `DisconnectIfSilentFor(seconds)` | Close idle peers |
+| `SetMaxMessageSizeBytes(n)` | Reject oversized messages before body allocation |
 
 ### Socket method coverage
 

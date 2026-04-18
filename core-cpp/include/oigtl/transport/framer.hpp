@@ -70,7 +70,11 @@ class Framer {
 };
 
 // Default v3 framer: 58-byte header + body_size body, no envelope.
-std::unique_ptr<Framer> make_v3_framer();
+// `max_body_size` = 0 means no additional cap (body_size is still
+// bounded by its 64-bit wire field). Non-zero means try_parse
+// throws FramingError if the header announces body_size > this cap,
+// BEFORE any body bytes are allocated — a pre-parse DoS defence.
+std::unique_ptr<Framer> make_v3_framer(std::size_t max_body_size = 0);
 
 }  // namespace oigtl::transport
 

@@ -29,8 +29,15 @@ connect(std::string host, std::uint16_t port);
 // Bind a listening socket on `port` (0 = ephemeral; query the
 // resulting port with `Acceptor::local_port()`). Binds to loopback
 // by default; pass an explicit address to bind elsewhere.
+//
+// `initial_policy` is applied atomically at construction — any
+// accept() after `listen()` returns enforces the restrictions. A
+// default-constructed PeerPolicy means "no restrictions" (the
+// pre-policy behaviour).
 std::unique_ptr<Acceptor>
-listen(std::uint16_t port, std::string bind_address = "127.0.0.1");
+listen(std::uint16_t port,
+       std::string bind_address = "127.0.0.1",
+       PeerPolicy initial_policy = {});
 
 }  // namespace oigtl::transport::tcp
 
