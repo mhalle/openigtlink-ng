@@ -29,6 +29,7 @@
 // the rest of the library.
 #include <winsock2.h>
 #include <ws2tcpip.h>
+#include <mstcpip.h>    // SIO_KEEPALIVE_VALS + struct tcp_keepalive
 #include <iphlpapi.h>
 #include <windows.h>
 
@@ -220,17 +221,13 @@ void configure_keepalive(socket_t s,
                          std::chrono::seconds idle,
                          std::chrono::seconds interval,
                          int count) {
-    /* Windows uses SIO_KEEPALIVE_VALS via WSAIoctl instead of the
-     * POSIX getsockopt chain. The `count` (number of probes) is
-     * not individually tunable on Windows — the kernel defaults
-     * to its own retry policy. We pass the idle + interval and
-     * document the count omission. */
+    /* Windows uses SIO_KEEPALIVE_VALS via WSAIoctl. The `count`
+     * (number of probes) is not individually tunable — the kernel
+     * defaults to its own retry policy, typically 10. We pass idle
+     * + interval and ignore count. `struct tcp_keepalive` is
+     * declared in <mstcpip.h>. */
     (void)count;
-    struct tcp_keepalive_ex {
-        ULONG onoff;
-        ULONG keepalivetime;     // idle time in milliseconds
-        ULONG keepaliveinterval; // probe interval in milliseconds
-    } ka;
+    struct tcp_keepalive ka{};
     ka.onoff             = 1;
     ka.keepalivetime     = static_cast<ULONG>(
         std::chrono::duration_cast<std::chrono::milliseconds>(idle)
