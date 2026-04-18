@@ -4,17 +4,13 @@ Mirrors ``oigtl::transport::enumerate_interfaces`` in
 ``core-cpp/src/transport/policy.cpp`` (plus its platform backends
 in ``net_compat_posix.cpp`` / ``net_compat_winsock.cpp``).
 
-Python has no stdlib equivalent of ``getifaddrs`` / ``GetAdaptersAddresses``
-that yields subnet masks — we need them to implement
-:meth:`~oigtl.net.Server.restrict_to_local_subnet`. The compromise:
-
-- Prefer ``psutil.net_if_addrs()`` if installed. Clean, cross-platform.
-- Fall back to ``ifaddr`` (tiny, pure-Python, maintained).
-- If neither is importable, return ``[]`` and raise
-  :class:`NotImplementedError` from callers that require the list.
-
-Both optional deps are declared in the ``[net]`` extras_require in
-``pyproject.toml``; the module itself loads without them.
+Python has no stdlib equivalent of ``getifaddrs`` /
+``GetAdaptersAddresses`` that yields subnet masks — we need them
+to implement :meth:`~oigtl.net.Server.restrict_to_local_subnet`.
+We depend on ``ifaddr`` (tiny pure-Python, no C build step) so
+the transport API surface works out of the box. If ``psutil`` is
+also installed — common in research environments — we prefer it.
+Both backends return the same :class:`InterfaceAddress` shape.
 """
 
 from __future__ import annotations
@@ -45,11 +41,14 @@ class InterfaceAddress:
 
 
 class InterfaceEnumerationUnavailable(RuntimeError):
-    """Neither :mod:`psutil` nor :mod:`ifaddr` is installed.
+    """Interface enumeration failed on this host.
 
-    Raised by callers (e.g. ``Server.restrict_to_local_subnet()``)
-    that require interface introspection. Install with
-    ``pip install oigtl[net]`` or ``pip install ifaddr``.
+    ``ifaddr`` is a hard dependency, so this should not fire in a
+    normal install. It's raised by callers that require a non-empty
+    interface list (e.g. ``Server.restrict_to_local_subnet()``)
+    when the OS refuses to enumerate — rare, but we keep the
+    failure typed so misconfigured environments get a clean error
+    rather than a silent allow-all.
     """
 
 
@@ -169,10 +168,10 @@ def enumerate_interfaces() -> list[InterfaceAddress]:
     - IPv6 link-local (``fe80::/10``) flagged ``is_link_local=True``.
     - Interfaces that are DOWN are skipped by the underlying libs.
 
-    Returns ``[]`` if neither :mod:`psutil` nor :mod:`ifaddr` is
-    importable. Callers that must have the list should catch the
-    empty return and raise :class:`InterfaceEnumerationUnavailable`
-    with an install hint.
+    Returns ``[]`` only in the rare case where the OS refuses to
+    enumerate (both backends failed). Callers that must have the
+    list should catch the empty return and raise
+    :class:`InterfaceEnumerationUnavailable`.
     """
     for backend in (_from_psutil, _from_ifaddr):
         result = backend()

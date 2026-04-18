@@ -215,18 +215,15 @@ version = "0.1.0"
 source = { editable = "." }
 dependencies = [
     { name = "crcmod" },
+    { name = "ifaddr" },
     { name = "oigtl-corpus-tools" },
     { name = "pydantic" },
 ]
 
 [package.optional-dependencies]
 dev = [
-    { name = "ifaddr" },
     { name = "numpy" },
     { name = "pytest" },
-]
-net = [
-    { name = "ifaddr" },
 ]
 numpy = [
     { name = "numpy" },
@@ -234,7 +231,6 @@ numpy = [
 
 [package.dev-dependencies]
 dev = [
-    { name = "ifaddr" },
     { name = "numpy" },
     { name = "pytest" },
 ]
@@ -242,19 +238,17 @@ dev = [
 [package.metadata]
 requires-dist = [
     { name = "crcmod", specifier = ">=1.7" },
-    { name = "ifaddr", marker = "extra == 'dev'", specifier = ">=0.2.0" },
-    { name = "ifaddr", marker = "extra == 'net'", specifier = ">=0.2.0" },
+    { name = "ifaddr", specifier = ">=0.2.0" },
     { name = "numpy", marker = "extra == 'dev'", specifier = ">=1.24" },
     { name = "numpy", marker = "extra == 'numpy'", specifier = ">=1.24" },
     { name = "oigtl-corpus-tools", editable = "../corpus-tools" },
     { name = "pydantic", specifier = ">=2.5" },
     { name = "pytest", marker = "extra == 'dev'", specifier = ">=8" },
 ]
-provides-extras = ["numpy", "net", "dev"]
+provides-extras = ["numpy", "dev"]
 
 [package.metadata.requires-dev]
 dev = [
-    { name = "ifaddr", specifier = ">=0.2.0" },
     { name = "numpy", specifier = ">=1.24" },
     { name = "pytest", specifier = ">=8" },
 ]

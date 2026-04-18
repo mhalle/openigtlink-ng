@@ -24,6 +24,15 @@ dependencies = [
     # because the typed library exists to be used in real code,
     # not just to round-trip fixtures.
     "crcmod>=1.7",
+    # ifaddr is a tiny pure-Python library (no C build step) that
+    # gives us cross-platform interface enumeration — needed by
+    # Server.restrict_to_local_subnet() and friends. Keeping it as
+    # a base dep rather than an extra means the transport API
+    # surface "just works" out of the box; the alternative makes a
+    # documented feature fail at import unless the user knew to
+    # ask for oigtl[net]. psutil is also recognized at runtime if
+    # present, for users who already have it.
+    "ifaddr>=0.2.0",
 ]
 
 [project.optional-dependencies]
@@ -35,25 +44,15 @@ dependencies = [
 numpy = [
     "numpy>=1.24",
 ]
-# `net` extra: pure-Python interface enumeration for the transport
-# layer (Server.restrict_to_local_subnet, etc.). ifaddr is tiny,
-# cross-platform, and has no C build step. psutil is also supported
-# as a fallback if the user already has it installed — we detect
-# either at import time.
-net = [
-    "ifaddr>=0.2.0",
-]
 dev = [
     "pytest>=8",
     "numpy>=1.24",
-    "ifaddr>=0.2.0",
 ]
 
 [dependency-groups]
 dev = [
     "pytest>=8",
     "numpy>=1.24",
-    "ifaddr>=0.2.0",
 ]
 
 [build-system]
