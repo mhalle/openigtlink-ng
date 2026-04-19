@@ -6,11 +6,10 @@ Typed Python wire codec for the OpenIGTLink protocol — symmetric to
 
 ## Status
 
-**Complete.** 84 generated typed message classes, each round-trips
-the upstream fixture byte-for-byte. 149 tests covering typed
-round-trip, default construction, dispatch, the oracle wrapper,
-variable-count primitive array coercion (numpy and array.array
-paths), and semantic helpers (`pixel_array` / `data_array`).
+**Complete.** 83 generated typed message classes (each round-trips
+the upstream fixture byte-for-byte) plus a full async+sync
+transport layer (`oigtl.net`) with client, server, resilience,
+and accept-time restrictions. 288 tests passing.
 
 ## Two Python codecs in one project
 
@@ -65,6 +64,39 @@ if isinstance(msg, Image):
     arr = pixel_array(msg)        # ndarray shape (depth, h, w[, C])
     # arr.dtype reflects scalar_type; endian field is honored.
 ```
+
+## Transport layer — `oigtl.net`
+
+A Python-shaped client and server. Async-native, with a blocking
+wrapper for scripts that don't want to learn asyncio.
+
+```python
+from oigtl.net import Client, Server, interfaces
+from oigtl.messages import Transform, Status
+
+# Minimum viable client
+async with await Client.connect("tracker.lab", 18944) as c:
+    await c.send(Transform(matrix=[...]))
+    reply = await c.receive(Status)
+
+# LAN-only server with host-level restrictions
+server = (await Server.listen(18944)) \
+    .restrict_to_local_subnet() \
+    .set_max_clients(4) \
+    .disconnect_if_silent_for(timedelta(minutes=5))
+
+@server.on(Transform)
+async def _(env, peer):
+    await peer.send(Status(code=1, ...))
+
+await server.serve()
+```
+
+See **[NET_GUIDE.md](NET_GUIDE.md)** for the full researcher-
+facing reference: resilience (auto-reconnect + offline buffer +
+TCP keepalive), the `interfaces` helpers
+(`interfaces.primary_address()` etc.), sync wrappers, and the
+error model.
 
 ## Array representation
 
