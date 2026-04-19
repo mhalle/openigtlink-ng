@@ -29,6 +29,14 @@
     "./runtime/*": {
       "types": "./dist/runtime/*.d.ts",
       "import": "./dist/runtime/*.js"
+    },
+    "./net": {
+      "types": "./dist/net/index.d.ts",
+      "import": "./dist/net/index.js"
+    },
+    "./net/*": {
+      "types": "./dist/net/*.d.ts",
+      "import": "./dist/net/*.js"
     }
   },
   "files": [
@@ -38,7 +46,7 @@
   ],
   "scripts": {
     "build": "tsc -p tsconfig.build.json",
-    "test": "tsc -p tsconfig.json && node --test 'build-tests/**/*.test.js'",
+    "test": "tsc -p tsconfig.json && node --test --test-reporter=spec \"build-tests/**/*.test.js\"",
     "typecheck": "tsc -p tsconfig.json --noEmit",
     "format": "biome format --write .",
     "lint": "biome check .",
