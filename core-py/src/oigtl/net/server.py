@@ -38,7 +38,7 @@ from pydantic import BaseModel
 
 from oigtl.messages import REGISTRY as _MESSAGE_REGISTRY
 from oigtl.net import interfaces
-from oigtl.net._options import Envelope
+from oigtl.net._options import Envelope, RawMessage
 from oigtl.net.errors import ConnectionClosedError, FramingError
 from oigtl.net.policy import IpRange, PeerPolicy
 from oigtl.runtime.exceptions import CrcMismatchError, ProtocolError
@@ -46,6 +46,11 @@ from oigtl.runtime.header import HEADER_SIZE, pack_header, unpack_header
 from oigtl_corpus_tools.codec.crc64 import crc64
 
 __all__ = ["Peer", "Server", "ServerOptions"]
+
+
+# Sentinel enqueued to ``_accept_queue`` when the server is closing,
+# so an ``accepted_peers()`` iterator knows to exit cleanly.
+_ACCEPT_SENTINEL: object = object()
 
 M = TypeVar("M", bound=BaseModel)
 PeerHandler = Callable[[Envelope[Any], "Peer"], Awaitable[None]]
@@ -129,9 +134,25 @@ class Peer:
             timestamp=timestamp,
             body=body,
         )
+        await self._write_wire(header + body)
+
+    async def send_raw(self, msg: RawMessage) -> None:
+        """Send already-framed wire bytes.
+
+        Escape hatch for gateways: moves a :class:`RawMessage` from
+        another endpoint through this peer without a decode /
+        re-encode round trip. Caller is responsible for valid OIGTL
+        framing — typically the ``RawMessage`` came from another
+        endpoint's :meth:`raw_messages`.
+        """
+        if self._closed:
+            raise ConnectionClosedError("peer is closed")
+        await self._write_wire(msg.wire)
+
+    async def _write_wire(self, wire: bytes) -> None:
         async with self._send_lock:
             try:
-                self._writer.write(header + body)
+                self._writer.write(wire)
                 await self._writer.drain()
             except (ConnectionError, BrokenPipeError, OSError) as e:
                 self._closed = True
@@ -148,6 +169,58 @@ class Peer:
                 await self._writer.wait_closed()
         except Exception:
             pass
+
+    async def raw_messages(
+        self, *, max_body_size: int = 0,
+    ) -> AsyncIterator[RawMessage]:
+        """Async iterator yielding raw (header + wire bytes) messages.
+
+        Gateway-friendly: reads framed bytes off this peer's stream
+        without decoding the body. Yields :class:`RawMessage`
+        instances whose ``wire`` bytes can be forwarded via
+        :meth:`send_raw` on any other endpoint.
+
+        ``max_body_size`` of 0 means no cap; non-zero rejects any
+        message announcing a larger ``body_size``, raising
+        :class:`FramingError` before the body bytes are allocated.
+
+        Stops on peer FIN or :meth:`close`.
+        """
+        while not self._closed:
+            try:
+                header_bytes = await self._reader.readexactly(HEADER_SIZE)
+            except (asyncio.IncompleteReadError,
+                    ConnectionError, OSError):
+                return
+
+            try:
+                header = unpack_header(header_bytes)
+            except ValueError as e:
+                raise ProtocolError(str(e)) from e
+
+            if max_body_size > 0 and header.body_size > max_body_size:
+                raise FramingError(
+                    f"body_size {header.body_size} exceeds "
+                    f"max_body_size {max_body_size}"
+                )
+
+            body_size = int(header.body_size)
+            try:
+                body = await self._reader.readexactly(body_size)
+            except asyncio.IncompleteReadError:
+                return
+
+            computed = crc64(body)
+            if computed != header.crc:
+                raise CrcMismatchError(
+                    f"header crc=0x{header.crc:016x} "
+                    f"body crc=0x{computed:016x}"
+                )
+
+            yield RawMessage(
+                header=header,
+                wire=header_bytes + body,
+            )
 
 
 # ----------------------------------------------------------------------
@@ -225,6 +298,11 @@ class Server:
         self._peer_tasks: set[asyncio.Task] = set()
         self._peers: set[Peer] = set()
 
+        # If `accepted_peers()` is in use, newly-admitted peers go
+        # onto this queue instead of the typed-dispatch loop. Use
+        # one mode or the other — not both simultaneously.
+        self._accept_queue: asyncio.Queue[Peer | object] | None = None
+
     @classmethod
     def listen_sync(
         cls,
@@ -267,6 +345,7 @@ class Server:
         inst._error_handler = None
         inst._peer_tasks = set()
         inst._peers = set()
+        inst._accept_queue = None
         inst._closed = asyncio.Event()
 
         server = await asyncio.start_server(
@@ -296,6 +375,40 @@ class Server:
     def peers(self) -> frozenset[Peer]:
         """Snapshot of currently-connected peers."""
         return frozenset(self._peers)
+
+    def accepted_peers(self) -> AsyncIterator[Peer]:
+        """Async iterator yielding each accepted peer exactly once.
+
+        The dispatch-loop / handler-decorator API
+        (:meth:`on` + :meth:`serve`) is idiomatic for servers that
+        handle typed messages. For the gateway pattern — where the
+        server is one end of a byte pipe — an iterator of peers is
+        more natural::
+
+            async for peer in server.accepted_peers():
+                asyncio.create_task(handle_one(peer))
+
+        Under the hood this wraps the same accept machinery
+        :meth:`serve` uses; exactly one of the two should be driven
+        on a given server instance.
+        """
+        return self._accepted_iter()
+
+    async def _accepted_iter(self) -> AsyncIterator[Peer]:
+        """Install a queue-based peer sink and yield from it."""
+        if self._accept_queue is not None:
+            raise RuntimeError(
+                "accepted_peers() is already being iterated elsewhere"
+            )
+        self._accept_queue = asyncio.Queue()
+        try:
+            while not self._closed.is_set():
+                peer = await self._accept_queue.get()
+                if peer is _ACCEPT_SENTINEL:
+                    return
+                yield peer
+        finally:
+            self._accept_queue = None
 
     # --------------------------------------------------------------
     # Handler registration
@@ -507,12 +620,21 @@ class Server:
             if asyncio.iscoroutine(result):
                 await result
 
-        task = asyncio.create_task(
-            self._peer_loop(peer),
-            name=f"oigtl-peer-{peer.address}",
-        )
-        self._peer_tasks.add(task)
-        task.add_done_callback(self._peer_tasks.discard)
+        # Two accept modes:
+        #  - dispatch mode: start a per-peer task driving the typed
+        #    handler loop (the @server.on(T) API).
+        #  - iterator mode: push the peer onto accept_queue so
+        #    `async for peer in server.accepted_peers()` picks it up;
+        #    the caller drives the per-peer I/O themselves.
+        if self._accept_queue is not None:
+            await self._accept_queue.put(peer)
+        else:
+            task = asyncio.create_task(
+                self._peer_loop(peer),
+                name=f"oigtl-peer-{peer.address}",
+            )
+            self._peer_tasks.add(task)
+            task.add_done_callback(self._peer_tasks.discard)
 
     async def _admit(self, peer: Peer) -> bool:
         """Consult the configured restrictions; return True to admit."""
@@ -656,6 +778,10 @@ class Server:
         if self._closed.is_set():
             return
         self._closed.set()
+
+        # Wake any accepted_peers() iterator so it returns cleanly.
+        if self._accept_queue is not None:
+            await self._accept_queue.put(_ACCEPT_SENTINEL)
 
         self._server.close()
 

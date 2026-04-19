@@ -22,6 +22,7 @@ __all__ = [
     "ClientOptions",
     "Envelope",
     "OfflineOverflow",
+    "RawMessage",
     "as_timedelta",
 ]
 
@@ -235,3 +236,32 @@ class Envelope(BaseModel, Generic[M]):
 
     header: Header
     body: M
+
+
+class RawMessage(BaseModel):
+    """One IGTL message in its on-the-wire form.
+
+    ``header`` is parsed (callers need it for routing / filtering);
+    ``wire`` is the full 58-byte header + body bytes, ready to
+    re-send on any transport without repacking. Gateways operate
+    on this type, not on decoded :class:`Envelope` instances —
+    the point of the gateway pattern is that bytes flow through
+    unchanged.
+
+    ``attributes`` is a per-transport free-form key/value map.
+    The default v3 framer leaves it empty; a future v4 streaming
+    framer would put stream-id / chunk-index here, and middleware
+    may add its own keys. See ``spec/ATTRIBUTES.md`` (planned) for
+    the shared registry convention.
+    """
+
+    model_config = ConfigDict(arbitrary_types_allowed=True)
+
+    header: Header
+    wire: bytes
+    attributes: dict[str, str] = {}
+
+    @property
+    def type_id(self) -> str:
+        """Convenience: the wire ``type_id`` string."""
+        return self.header.type_id

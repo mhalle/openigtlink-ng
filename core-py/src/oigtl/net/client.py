@@ -44,7 +44,12 @@ from typing import (
 from pydantic import BaseModel
 
 from oigtl.messages import REGISTRY as _MESSAGE_REGISTRY
-from oigtl.net._options import ClientOptions, Envelope, as_timedelta
+from oigtl.net._options import (
+    ClientOptions,
+    Envelope,
+    RawMessage,
+    as_timedelta,
+)
 from oigtl.net._resilience import (
     OfflineBuffer,
     compute_backoff,
@@ -344,6 +349,25 @@ class Client:
 
         await self._send_wire(wire)
 
+    async def send_raw(self, msg: RawMessage) -> None:
+        """Send already-framed wire bytes.
+
+        Escape hatch for gateways and middleware: moves a
+        :class:`RawMessage` from one transport to another without a
+        decode / re-encode round trip. The caller is responsible
+        for producing valid OIGTL framing — typically this
+        ``RawMessage`` came from another endpoint's
+        :meth:`raw_messages` iterator.
+
+        Same resilience semantics as :meth:`send` (buffers during
+        outages when ``auto_reconnect`` is on, raises otherwise).
+        """
+        if self._terminal or self._closed.is_set():
+            raise ConnectionClosedError(
+                "client is closed or reconnect attempts exhausted"
+            )
+        await self._send_wire(msg.wire)
+
     async def _send_wire(self, wire: bytes) -> None:
         """Send already-framed bytes, honouring resilience policy.
 
@@ -622,6 +646,60 @@ class Client:
                 yield await self._receive_with_reconnect()
         except ConnectionClosedError:
             return
+
+    async def raw_messages(self) -> AsyncIterator[RawMessage]:
+        """Async iterator yielding raw (header + wire bytes) messages.
+
+        Gateway-friendly counterpart to :meth:`messages`. Skips body
+        decoding entirely — the iterator yields :class:`RawMessage`
+        instances whose ``wire`` bytes can be pushed straight into
+        another :meth:`send_raw` call on any transport. Useful when
+        the intermediary doesn't care about message types.
+        """
+        try:
+            while not self._closed.is_set():
+                env = await self._receive_with_reconnect()
+                # Rebuild the wire bytes from the header + body.
+                # The monitor already decoded both; we re-pack the
+                # header with the original timestamp/device_name/
+                # type_id and the body bytes the peer sent.
+                yield self._envelope_to_raw(env)
+        except ConnectionClosedError:
+            return
+
+    def _envelope_to_raw(self, env: Envelope[BaseModel]) -> RawMessage:
+        """Reconstruct the wire bytes from a decoded envelope.
+
+        The receive path decodes the body for typed dispatch; to
+        offer a byte-pipe iterator we have to reconstruct the wire.
+        Alternative: keep raw bytes alongside the decoded envelope
+        in the queue. That's the right optimisation if raw_messages
+        ever becomes the hot path, but the simple approach is fine
+        for now — gateway users rarely care about latency.
+        """
+        from oigtl.runtime.header import pack_header
+
+        # If body decode produced a _RawBody (unknown type_id), its
+        # .body is the exact bytes. Otherwise re-pack via the
+        # typed message's .pack(). Both paths reproduce the wire
+        # body bit-for-bit.
+        body_bytes: bytes
+        if isinstance(env.body, _RawBody):
+            body_bytes = env.body.body
+        else:
+            body_bytes = env.body.pack()   # type: ignore[attr-defined]
+
+        header_bytes = pack_header(
+            version=env.header.version,
+            type_id=env.header.type_id,
+            device_name=env.header.device_name,
+            timestamp=env.header.timestamp,
+            body=body_bytes,
+        )
+        return RawMessage(
+            header=env.header,
+            wire=header_bytes + body_bytes,
+        )
 
     async def _receive_with_reconnect(self) -> Envelope[BaseModel]:
         """Wrap ``_receive_one`` with outage-aware retry.

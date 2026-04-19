@@ -18,11 +18,12 @@ flattened here, because the researcher-facing idiom is::
 
 from __future__ import annotations
 
-from oigtl.net import interfaces
+from oigtl.net import gateway, interfaces
 from oigtl.net._options import (
     ClientOptions,
     Envelope,
     OfflineOverflow,
+    RawMessage,
     as_timedelta,
 )
 from oigtl.net.client import Client
@@ -57,12 +58,14 @@ from oigtl.net.policy import (
 __all__ = [
     # Submodule namespaces
     "interfaces",
+    "gateway",
     # Client
     "Client",
     "SyncClient",
     "ClientOptions",
     "OfflineOverflow",
     "Envelope",
+    "RawMessage",
     "as_timedelta",
     # Server
     "Server",
