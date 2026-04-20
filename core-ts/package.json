@@ -41,6 +41,10 @@
     "./net/*": {
       "types": "./dist/net/*.d.ts",
       "import": "./dist/net/*.js"
+    },
+    "./browser": {
+      "types": "./dist/browser.d.ts",
+      "import": "./dist/browser.mjs"
     }
   },
   "files": [
@@ -49,7 +53,8 @@
     "LICENSE"
   ],
   "scripts": {
-    "build": "tsc -p tsconfig.build.json",
+    "build": "tsc -p tsconfig.build.json && npm run build:browser",
+    "build:browser": "esbuild src/browser.ts --bundle --format=esm --platform=browser --target=es2022 --sourcemap --outfile=dist/browser.mjs",
     "test": "tsc -p tsconfig.json && node --test --test-reporter=spec \"build-tests/**/*.test.js\"",
     "typecheck": "tsc -p tsconfig.json --noEmit",
     "format": "biome format --write .",
@@ -60,6 +65,7 @@
     "@biomejs/biome": "^1.9.4",
     "@types/node": "^22.10.0",
     "@types/ws": "^8.18.1",
+    "esbuild": "^0.28.0",
     "typescript": "^5.7.0",
     "ws": "^8.20.0"
   }

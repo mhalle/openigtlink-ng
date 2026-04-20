@@ -53,21 +53,15 @@ await server.serve()
 <div id="log"></div>
 
 <script type="module">
-  // This import path is the one a real app would use:
-  //   import { WsClient } from "@openigtlink/core/net/ws";
-  //   import { Transform, Status } from "@openigtlink/core/messages";
-  //
-  // For this standalone demo, adjust the paths to point at the
-  // built `dist/` output — you can either:
-  //   1. `npm run build` in core-ts/, then serve the repo root and
-  //      open this file — imports below resolve to `../dist/...`.
-  //   2. Run through Vite (`npm create vite@latest`) with
-  //      `@openigtlink/core` as a dep.
-  import { WsClient } from "../dist/net/ws/index.js";
-  import { Transform } from "../dist/messages/transform.js";
-  import { Status } from "../dist/messages/status.js";
-  // Touch the registry so STATUS is decodable.
-  import "../dist/messages/index.js";
+  // Pre-bundled ESM — one file, no bundler required. A Vite or
+  // Webpack app would instead do:
+  //   import { WsClient, Transform, Status } from "@openigtlink/core/browser";
+  // Same symbols, same behaviour; tree-shakes better in a bundler.
+  import {
+    WsClient,
+    Transform,
+    Status,
+  } from "../dist/browser.mjs";
 
   const logEl = document.getElementById("log");
   function log(msg) {
