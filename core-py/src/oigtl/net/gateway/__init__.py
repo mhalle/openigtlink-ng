@@ -41,6 +41,12 @@ from oigtl.net.gateway.tcp import (
     TcpConnector,
     TcpPeerEndpoint,
 )
+from oigtl.net.gateway.ws import (
+    WsAcceptor,
+    WsClientEndpoint,
+    WsConnector,
+    WsPeerEndpoint,
+)
 from oigtl.net.gateway.types import (
     Acceptor,
     Connector,
@@ -65,4 +71,9 @@ __all__ = [
     "TcpClientEndpoint",
     "TcpConnector",
     "TcpPeerEndpoint",
+    # WS adapters
+    "WsAcceptor",
+    "WsClientEndpoint",
+    "WsConnector",
+    "WsPeerEndpoint",
 ]

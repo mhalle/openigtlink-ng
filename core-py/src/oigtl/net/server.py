@@ -45,7 +45,7 @@ from oigtl.runtime.exceptions import CrcMismatchError, ProtocolError
 from oigtl.runtime.header import HEADER_SIZE, pack_header, unpack_header
 from oigtl_corpus_tools.codec.crc64 import crc64
 
-__all__ = ["Peer", "Server", "ServerOptions"]
+__all__ = ["Peer", "Server", "ServerOptions", "TcpPeer"]
 
 
 # Sentinel enqueued to ``_accept_queue`` when the server is closing,
@@ -75,31 +75,31 @@ class PeerAddress:
 
 
 class Peer:
-    """A single accepted client connection.
+    """A single accepted client connection — transport-agnostic base.
 
     Passed into every handler so researchers can reply (``peer.send``),
     check who's talking (``peer.address``), or close a specific
     connection without affecting others.
 
-    Methods here are a narrow subset of :class:`Client` — a server
-    peer doesn't need to dial, reconnect, or buffer. The Server
-    itself owns the lifecycle.
+    Subclasses provide the actual I/O: :class:`TcpPeer` for a
+    :mod:`asyncio` TCP stream, :class:`~oigtl.net.ws_server.WsPeer`
+    for a WebSocket. Everything a handler ever touches — ``address``,
+    ``send``, ``send_raw``, ``close``, ``raw_messages`` — lives on
+    :class:`Peer` and works the same regardless of transport.
     """
 
     def __init__(
         self,
         *,
-        reader: asyncio.StreamReader,
-        writer: asyncio.StreamWriter,
         address: PeerAddress,
         default_device: str,
     ) -> None:
-        self._reader = reader
-        self._writer = writer
         self._address = address
         self._default_device = default_device
         self._send_lock = asyncio.Lock()
         self._closed = False
+
+    # ---- Public: introspection ----------------------------------
 
     @property
     def address(self) -> PeerAddress:
@@ -108,6 +108,8 @@ class Peer:
     @property
     def is_connected(self) -> bool:
         return not self._closed
+
+    # ---- Public: send -------------------------------------------
 
     async def send(
         self,
@@ -141,13 +143,97 @@ class Peer:
 
         Escape hatch for gateways: moves a :class:`RawMessage` from
         another endpoint through this peer without a decode /
-        re-encode round trip. Caller is responsible for valid OIGTL
-        framing — typically the ``RawMessage`` came from another
-        endpoint's :meth:`raw_messages`.
+        re-encode round trip.
         """
         if self._closed:
             raise ConnectionClosedError("peer is closed")
         await self._write_wire(msg.wire)
+
+    # ---- Public: close ------------------------------------------
+
+    async def close(self) -> None:
+        """Close this peer's connection. Idempotent."""
+        if self._closed:
+            return
+        self._closed = True
+        try:
+            await self._close_transport()
+        except Exception:
+            pass
+
+    # ---- Public: receive iterator -------------------------------
+
+    async def raw_messages(
+        self, *, max_body_size: int = 0,
+    ) -> AsyncIterator[RawMessage]:
+        """Async iterator yielding raw (header + wire bytes) messages.
+
+        Gateway-friendly: reads framed bytes off this peer's stream
+        without decoding the body. Stops on peer FIN or :meth:`close`.
+
+        ``max_body_size`` of 0 means no cap; non-zero rejects any
+        message announcing a larger ``body_size``, raising
+        :class:`FramingError`.
+        """
+        while not self._closed:
+            try:
+                raw = await self._read_one_raw(
+                    max_body_size=max_body_size,
+                )
+            except ConnectionClosedError:
+                return
+            if raw is None:
+                return
+            yield raw
+
+    # ---- Subclass contract --------------------------------------
+
+    async def _write_wire(self, wire: bytes) -> None:
+        """Write *wire* bytes on the underlying transport.
+
+        Transport-specific. Must hold :attr:`_send_lock` while
+        writing so concurrent sends are serialised, and must set
+        ``self._closed = True`` and raise :class:`ConnectionClosedError`
+        on transport failure.
+        """
+        raise NotImplementedError
+
+    async def _close_transport(self) -> None:
+        """Tear down the underlying transport. Called once, from :meth:`close`."""
+        raise NotImplementedError
+
+    async def _read_one_raw(
+        self, *, max_body_size: int = 0,
+    ) -> RawMessage | None:
+        """Read one framed message off the transport.
+
+        Returns ``None`` on clean EOF, raises
+        :class:`ConnectionClosedError` on transport error. Raises
+        :class:`FramingError` / :class:`CrcMismatchError` /
+        :class:`ProtocolError` on bad bytes.
+        """
+        raise NotImplementedError
+
+
+class TcpPeer(Peer):
+    """A :class:`Peer` backed by an :mod:`asyncio` TCP stream.
+
+    Constructed by :class:`Server` when a TCP peer is admitted.
+    Researchers don't instantiate this directly; they just receive
+    :class:`Peer` references through handlers and iterators.
+    """
+
+    def __init__(
+        self,
+        *,
+        reader: asyncio.StreamReader,
+        writer: asyncio.StreamWriter,
+        address: PeerAddress,
+        default_device: str,
+    ) -> None:
+        super().__init__(address=address, default_device=default_device)
+        self._reader = reader
+        self._writer = writer
 
     async def _write_wire(self, wire: bytes) -> None:
         async with self._send_lock:
@@ -158,69 +244,49 @@ class Peer:
                 self._closed = True
                 raise ConnectionClosedError(f"send failed: {e}") from e
 
-    async def close(self) -> None:
-        """Close this peer's connection. Idempotent."""
-        if self._closed:
-            return
-        self._closed = True
-        try:
-            self._writer.close()
-            with contextlib.suppress(Exception):
-                await self._writer.wait_closed()
-        except Exception:
-            pass
+    async def _close_transport(self) -> None:
+        self._writer.close()
+        with contextlib.suppress(Exception):
+            await self._writer.wait_closed()
 
-    async def raw_messages(
+    async def _read_one_raw(
         self, *, max_body_size: int = 0,
-    ) -> AsyncIterator[RawMessage]:
-        """Async iterator yielding raw (header + wire bytes) messages.
+    ) -> RawMessage | None:
+        try:
+            header_bytes = await self._reader.readexactly(HEADER_SIZE)
+        except asyncio.IncompleteReadError:
+            return None
+        except (ConnectionError, OSError) as e:
+            raise ConnectionClosedError(f"recv failed: {e}") from e
 
-        Gateway-friendly: reads framed bytes off this peer's stream
-        without decoding the body. Yields :class:`RawMessage`
-        instances whose ``wire`` bytes can be forwarded via
-        :meth:`send_raw` on any other endpoint.
+        try:
+            header = unpack_header(header_bytes)
+        except ValueError as e:
+            raise ProtocolError(str(e)) from e
 
-        ``max_body_size`` of 0 means no cap; non-zero rejects any
-        message announcing a larger ``body_size``, raising
-        :class:`FramingError` before the body bytes are allocated.
-
-        Stops on peer FIN or :meth:`close`.
-        """
-        while not self._closed:
-            try:
-                header_bytes = await self._reader.readexactly(HEADER_SIZE)
-            except (asyncio.IncompleteReadError,
-                    ConnectionError, OSError):
-                return
-
-            try:
-                header = unpack_header(header_bytes)
-            except ValueError as e:
-                raise ProtocolError(str(e)) from e
-
-            if max_body_size > 0 and header.body_size > max_body_size:
-                raise FramingError(
-                    f"body_size {header.body_size} exceeds "
-                    f"max_body_size {max_body_size}"
-                )
-
-            body_size = int(header.body_size)
-            try:
-                body = await self._reader.readexactly(body_size)
-            except asyncio.IncompleteReadError:
-                return
-
-            computed = crc64(body)
-            if computed != header.crc:
-                raise CrcMismatchError(
-                    f"header crc=0x{header.crc:016x} "
-                    f"body crc=0x{computed:016x}"
-                )
-
-            yield RawMessage(
-                header=header,
-                wire=header_bytes + body,
+        # Pre-parse DoS defence: reject oversized messages BEFORE
+        # allocating body bytes. (WS can't do this; the frame is
+        # already buffered by the time we see it.)
+        if max_body_size > 0 and header.body_size > max_body_size:
+            raise FramingError(
+                f"body_size {header.body_size} exceeds "
+                f"max_body_size {max_body_size}"
             )
+
+        body_size = int(header.body_size)
+        try:
+            body = await self._reader.readexactly(body_size)
+        except asyncio.IncompleteReadError:
+            return None
+
+        computed = crc64(body)
+        if computed != header.crc:
+            raise CrcMismatchError(
+                f"header crc=0x{header.crc:016x} "
+                f"body crc=0x{computed:016x}"
+            )
+
+        return RawMessage(header=header, wire=header_bytes + body)
 
 
 # ----------------------------------------------------------------------
@@ -602,7 +668,7 @@ class Server:
             writer.close()
             return
 
-        peer = Peer(
+        peer = TcpPeer(
             reader=reader,
             writer=writer,
             address=peer_addr,
@@ -691,74 +757,43 @@ class Server:
                     await result
 
     async def _receive_from(self, peer: Peer) -> Envelope[BaseModel]:
-        """Read one framed message from *peer*'s stream.
+        """Read one framed message from *peer* and decode into an Envelope.
 
         Honours :attr:`ServerOptions.idle_timeout_seconds` — a peer
         that's silent past the budget is disconnected by raising
-        :class:`ConnectionClosedError`, which the peer loop handles
-        as a normal close.
+        :class:`ConnectionClosedError`.
         """
         idle = self._options.idle_timeout_seconds
-        read_coro = peer._reader.readexactly(HEADER_SIZE)
+        read_coro = peer._read_one_raw(
+            max_body_size=self._options.max_message_size,
+        )
         try:
             if idle > 0:
-                header_bytes = await asyncio.wait_for(
-                    read_coro, timeout=idle,
-                )
+                raw = await asyncio.wait_for(read_coro, timeout=idle)
             else:
-                header_bytes = await read_coro
+                raw = await read_coro
         except asyncio.TimeoutError as e:
             raise ConnectionClosedError(
                 f"peer idle > {idle}s; disconnecting"
             ) from e
-        except asyncio.IncompleteReadError as e:
-            raise ConnectionClosedError(
-                f"peer closed after {len(e.partial)}/{HEADER_SIZE} "
-                f"header bytes"
-            ) from e
-        except (ConnectionError, OSError) as e:
-            raise ConnectionClosedError(f"recv failed: {e}") from e
 
-        try:
-            header = unpack_header(header_bytes)
-        except ValueError as e:
-            raise ProtocolError(str(e)) from e
+        if raw is None:
+            raise ConnectionClosedError("peer closed")
 
-        if (self._options.max_message_size
-                and header.body_size > self._options.max_message_size):
-            raise FramingError(
-                f"body_size {header.body_size} exceeds "
-                f"max_message_size {self._options.max_message_size}"
-            )
-
-        try:
-            body = await peer._reader.readexactly(header.body_size)
-        except asyncio.IncompleteReadError as e:
-            raise ConnectionClosedError(
-                f"peer closed mid-body: got {len(e.partial)} of "
-                f"{header.body_size}"
-            ) from e
-
-        computed = crc64(body)
-        if computed != header.crc:
-            raise CrcMismatchError(
-                f"header crc=0x{header.crc:016x} "
-                f"body crc=0x{computed:016x}"
-            )
-
-        cls = _MESSAGE_REGISTRY.get(header.type_id)
+        body = raw.wire[HEADER_SIZE:]
+        cls = _MESSAGE_REGISTRY.get(raw.header.type_id)
         decoded: BaseModel
         if cls is not None:
             try:
                 decoded = cls.unpack(body)
             except (ValueError, ProtocolError) as e:
                 raise ProtocolError(
-                    f"failed to decode {header.type_id}: {e}"
+                    f"failed to decode {raw.header.type_id}: {e}"
                 ) from e
         else:
-            decoded = _RawBody(type_id=header.type_id, body=body)
+            decoded = _RawBody(type_id=raw.header.type_id, body=body)
 
-        return Envelope(header=header, body=decoded)
+        return Envelope(header=raw.header, body=decoded)
 
     # --------------------------------------------------------------
     # Serve / shutdown

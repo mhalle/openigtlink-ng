@@ -33,6 +33,7 @@ dependencies = [
     # ask for oigtl[net]. psutil is also recognized at runtime if
     # present, for users who already have it.
     "ifaddr>=0.2.0",
+    "websockets>=12.0",
 ]
 
 [project.optional-dependencies]

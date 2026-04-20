@@ -27,7 +27,13 @@ from oigtl.net._options import (
     as_timedelta,
 )
 from oigtl.net.client import Client
-from oigtl.net.server import Peer, PeerAddress, Server, ServerOptions
+from oigtl.net.server import Peer, PeerAddress, Server, ServerOptions, TcpPeer
+# Side-effect import: attaches Server.listen_ws(). Kept here so a
+# plain ``from oigtl.net import Server`` always exposes the WS
+# classmethod; users don't need a separate import line.
+import oigtl.net.ws_server as _ws_server_module  # noqa: F401
+from oigtl.net.ws_client import WsClient
+from oigtl.net.ws_server import WsPeer
 from oigtl.net.sync_client import SyncClient
 from oigtl.net.sync_server import SyncServer
 from oigtl.net.errors import (
@@ -61,6 +67,7 @@ __all__ = [
     "gateway",
     # Client
     "Client",
+    "WsClient",
     "SyncClient",
     "ClientOptions",
     "OfflineOverflow",
@@ -73,6 +80,8 @@ __all__ = [
     "ServerOptions",
     "Peer",
     "PeerAddress",
+    "TcpPeer",
+    "WsPeer",
     # Errors
     "BufferOverflowError",
     "ConnectionClosedError",
