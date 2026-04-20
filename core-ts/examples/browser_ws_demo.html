@@ -23,6 +23,17 @@
 </p>
 
 <h3>How to serve the Python side</h3>
+
+<p>A runnable companion script lives alongside this HTML — it
+hardcodes port 18945 to match the default URL below. Run from
+the repo root:</p>
+
+<pre>
+uv run --project core-py python core-ts/examples/demo_ws_server.py
+</pre>
+
+<p>…which is equivalent to:</p>
+
 <pre>
 from oigtl.net import Server
 from oigtl.messages import Transform, Status
@@ -31,7 +42,8 @@ server = await Server.listen_ws(18945)
 
 @server.on(Transform)
 async def _(env, peer):
-    await peer.send(Status(code=1, status_message=f"got {env.body.matrix[-3:]}"))
+    last3 = env.body.matrix[-3:]
+    await peer.send(Status(code=1, status_message=f"got matrix[-3:]={last3}"))
 
 await server.serve()
 </pre>
