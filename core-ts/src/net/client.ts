@@ -46,29 +46,23 @@ import {
 } from "./options.js";
 
 // ---------------------------------------------------------------------------
-// Contracts for a sendable typed message.
+// Contracts for a sendable typed message — re-exported from
+// ./types.ts so both TCP Client and WS WsClient see the same
+// types without cross-importing between the two transport
+// modules.
 // ---------------------------------------------------------------------------
 
-/**
- * Minimum shape a generated message class must satisfy to be
- * `send`-able: a `TYPE_ID` on the constructor and an instance
- * `pack()` returning the body bytes. Matches the generated
- * classes in `messages/` without modification.
- */
-export interface SendableMessage {
-  pack(): Uint8Array;
-}
+export type {
+  Handler,
+  SendableCtor,
+  SendableMessage,
+} from "./types.js";
 
-export interface SendableCtor {
-  readonly TYPE_ID: string;
-}
-
-/**
- * A handler registered via `client.on(Message, handler)`. Receives
- * the typed envelope whose `body` is the decoded instance of the
- * message class it was registered for.
- */
-export type Handler<T> = (env: Envelope<T>) => void | Promise<void>;
+import type {
+  Handler,
+  SendableCtor,
+  SendableMessage,
+} from "./types.js";
 
 // ---------------------------------------------------------------------------
 // Internal: a tiny deferred primitive so the socket's `data` event

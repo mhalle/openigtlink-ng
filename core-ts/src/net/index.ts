@@ -20,12 +20,14 @@
  *     await c.close();
  */
 
+export { Client } from "./client.js";
 export {
-  Client,
-  type Handler,
-  type SendableCtor,
-  type SendableMessage,
-} from "./client.js";
+  WsClient,
+  type WebSocketLike,
+  type WebSocketLikeCtor,
+  type WsClientOptions,
+} from "./ws_client.js";
+export type { Handler, SendableCtor, SendableMessage } from "./types.js";
 export type { ClientOptions, ResolvedClientOptions } from "./options.js";
 export { resolveClientOptions } from "./options.js";
 export { RawBody, type Envelope } from "./envelope.js";
