@@ -42,9 +42,20 @@ async def main() -> None:
 
     # Tear down cleanly when the parent signals SIGTERM (Node kills
     # the child at test teardown).
+    #
+    # Windows note: asyncio's ``add_signal_handler`` raises
+    # ``NotImplementedError`` on Windows. That's fine — Node's
+    # ``proc.kill("SIGTERM")`` on Windows maps to TerminateProcess,
+    # which kills the interpreter outright; we never get a chance
+    # to run a handler anyway. Silently skip registration and rely
+    # on hard-kill teardown semantics there.
     stop = asyncio.Event()
+    loop = asyncio.get_running_loop()
     for sig in (signal.SIGINT, signal.SIGTERM):
-        asyncio.get_running_loop().add_signal_handler(sig, stop.set)
+        try:
+            loop.add_signal_handler(sig, stop.set)
+        except NotImplementedError:
+            pass
 
     serve_task = asyncio.create_task(server.serve())
 

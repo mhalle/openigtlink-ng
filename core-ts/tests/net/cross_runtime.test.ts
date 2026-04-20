@@ -54,8 +54,35 @@ function findCorePyRoot(): string | null {
   return null;
 }
 
+/**
+ * Windows and POSIX need slightly different spawn shapes for a
+ * PATH-resolved executable:
+ *
+ *   - POSIX: ``spawn("uv", [...])`` — resolver honours $PATH, no
+ *     extension games needed.
+ *   - Windows: ``spawn("uv", [...])`` with ``shell: false`` (the
+ *     default) does NOT consult PATHEXT, so ``uv`` doesn't match
+ *     ``uv.exe``. The universally-supported workaround is to run
+ *     through a shell, which does consult PATHEXT.
+ *
+ * Wraps both paths behind one helper so the rest of the test code
+ * doesn't have to think about it.
+ */
+const WIN32 = process.platform === "win32";
+
+function spawnCmd(
+  cmd: string,
+  args: string[],
+  opts: Parameters<typeof spawn>[2] = {},
+): ChildProcess {
+  return spawn(cmd, args, { ...opts, shell: WIN32 });
+}
+
 function hasUv(): boolean {
-  const res = spawnSync("uv", ["--version"], { stdio: "ignore" });
+  const res = spawnSync("uv", ["--version"], {
+    stdio: "ignore",
+    shell: WIN32,
+  });
   return res.status === 0;
 }
 
@@ -88,7 +115,7 @@ interface PythonHarness {
 
 function spawnPython(): Promise<PythonHarness> {
   return new Promise((resolve_, reject) => {
-    const proc: ChildProcess = spawn(
+    const proc: ChildProcess = spawnCmd(
       "uv",
       ["run", "--project", CORE_PY_ROOT!, "python", FIXTURE_PATH!],
       { stdio: ["ignore", "pipe", "pipe"] },
