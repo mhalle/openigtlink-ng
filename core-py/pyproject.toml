@@ -34,7 +34,16 @@ dependencies = [
     # present, for users who already have it.
     "ifaddr>=0.2.0",
     "websockets>=12.0",
+    # typer powers the `oigtl` CLI. Installs rich + shellingham
+    # transitively; those are not directly imported by the library
+    # code, only by the CLI entry points under oigtl.cli.
+    "typer>=0.12.0",
 ]
+
+[project.scripts]
+# Installs an `oigtl` executable on $PATH that dispatches to
+# oigtl.cli.main. Also reachable as `python -m oigtl`.
+oigtl = "oigtl.cli:main"
 
 [project.optional-dependencies]
 # `numpy` extra: enables ndarray-valued variable-count non-uint8
