@@ -38,3 +38,21 @@ export {
   TransportError,
   TransportTimeoutError,
 } from "./errors.js";
+
+// Pure codec + registry API. Imported from the net barrel so
+// callers who're already reaching in for Client/WsClient have
+// decode/encode and registration in the same import.
+export {
+  packEnvelope,
+  unpackEnvelope,
+  unpackMessage,
+  type UnpackOptions,
+} from "../codec.js";
+export {
+  RegistryConflictError,
+  lookupMessageClass,
+  registerMessageType,
+  registeredTypes,
+  unregisterMessageType,
+  type MessageCtor,
+} from "../runtime/dispatch.js";

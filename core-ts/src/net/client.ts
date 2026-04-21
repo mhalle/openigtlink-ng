@@ -26,7 +26,8 @@
 import { Socket, createConnection } from "node:net";
 import { setTimeout as delay } from "node:timers/promises";
 
-import { lookup, type MessageCtor } from "../runtime/dispatch.js";
+import { unpackMessage } from "../codec.js";
+import { type MessageCtor } from "../runtime/dispatch.js";
 import { packHeader } from "../runtime/header.js";
 import {
   ConnectionClosedError,
@@ -423,6 +424,9 @@ export class Client {
       }
       const inc = await this.nextIncoming(remaining);
       if (inc.header.typeId === typeId) {
+        // Direct decode with the caller-supplied ctor — avoids the
+        // registry lookup since we already know the expected type.
+        // CRC already verified by the framer.
         const body = ctor.unpack(inc.body) as T;
         return { header: inc.header, body };
       }
@@ -497,16 +501,18 @@ export class Client {
     }
   }
 
-  /** Decode an {@link Incoming} into a typed {@link Envelope}. */
+  /** Decode an {@link Incoming} into a typed {@link Envelope}.
+   *
+   * CRC was already verified by the framer that produced `inc`, so
+   * we skip the second check. Unknown type_ids degrade to
+   * {@link RawBody} via `loose: true` — clients should be resilient
+   * to forward-compat message types they don't recognize yet.
+   */
   private decode(inc: Incoming): Envelope<unknown> {
-    const ctor = lookup(inc.header.typeId);
-    if (ctor === undefined) {
-      return {
-        header: inc.header,
-        body: new RawBody(inc.header.typeId, inc.body),
-      };
-    }
-    return { header: inc.header, body: ctor.unpack(inc.body) };
+    return unpackMessage(inc.header, inc.body, {
+      loose: true,
+      verifyCrc: false,
+    });
   }
 
   // -------------------------------------------------------------

@@ -61,12 +61,42 @@ export class BodyEncodeError extends ProtocolError {
 }
 
 /** Raised when the wire type_id has no registered typed class. */
-export class UnknownTypeError extends ProtocolError {
+export class UnknownMessageTypeError extends ProtocolError {
   readonly typeId: string;
   constructor(typeId: string) {
-    super(`no typed class registered for type_id ${JSON.stringify(typeId)}`);
-    this.name = "UnknownTypeError";
+    super(
+      `no typed class registered for type_id ${JSON.stringify(typeId)}; ` +
+        `pass { loose: true } to accept as RawBody, or register a body ` +
+        `class via registerMessageType()`,
+    );
+    this.name = "UnknownMessageTypeError";
     this.typeId = typeId;
-    Object.setPrototypeOf(this, UnknownTypeError.prototype);
+    Object.setPrototypeOf(this, UnknownMessageTypeError.prototype);
+  }
+}
+
+/**
+ * Raised when a read would have exceeded the available bytes — the
+ * caller handed us fewer bytes than a header or a declared body
+ * length requires.
+ */
+export class ShortBufferError extends ProtocolError {
+  constructor(message: string) {
+    super(message);
+    this.name = "ShortBufferError";
+    Object.setPrototypeOf(this, ShortBufferError.prototype);
+  }
+}
+
+/**
+ * Raised when wire bytes were structurally invalid for reasons
+ * other than length: bad version, size mismatches between header
+ * and buffer, trailing garbage, corrupt framing fields.
+ */
+export class MalformedMessageError extends ProtocolError {
+  constructor(message: string) {
+    super(message);
+    this.name = "MalformedMessageError";
+    Object.setPrototypeOf(this, MalformedMessageError.prototype);
   }
 }

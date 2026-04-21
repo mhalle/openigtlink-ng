@@ -23,7 +23,8 @@
  *     await c.close();
  */
 
-import { lookup, type MessageCtor } from "../runtime/dispatch.js";
+import { unpackMessage } from "../codec.js";
+import { type MessageCtor } from "../runtime/dispatch.js";
 import { packHeader, unpackHeader, HEADER_SIZE } from "../runtime/header.js";
 import { crc64 } from "../runtime/crc64.js";
 import { CrcMismatchError } from "../runtime/errors.js";
@@ -492,15 +493,17 @@ export class WsClient {
     }
   }
 
+  /** Decode an {@link Incoming} into a typed {@link Envelope}.
+   *
+   * CRC was already verified by the framer that produced `inc`, so
+   * we skip the second check. Unknown type_ids degrade to
+   * {@link RawBody} via `loose: true`.
+   */
   private decode(inc: Incoming): Envelope<unknown> {
-    const ctor = lookup(inc.header.typeId);
-    if (ctor === undefined) {
-      return {
-        header: inc.header,
-        body: new RawBody(inc.header.typeId, inc.body),
-      };
-    }
-    return { header: inc.header, body: ctor.unpack(inc.body) };
+    return unpackMessage(inc.header, inc.body, {
+      loose: true,
+      verifyCrc: false,
+    });
   }
 
   // -------------------------------------------------------------

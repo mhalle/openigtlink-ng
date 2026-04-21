@@ -39,3 +39,28 @@ export {
   TransportError,
   TransportTimeoutError,
 } from "../errors.js";
+
+// Pure codec + registry — lets browser consumers decode raw bytes
+// (e.g. from an MQTT-over-WSS payload) without reaching through
+// WsClient. Also re-exports registerMessageType so extension
+// registration works without a separate import from the barrel.
+export {
+  packEnvelope,
+  unpackEnvelope,
+  unpackMessage,
+  type UnpackOptions,
+} from "../../codec.js";
+export {
+  HEADER_SIZE,
+  type Header,
+  packHeader,
+  unpackHeader,
+} from "../../runtime/header.js";
+export {
+  RegistryConflictError,
+  lookupMessageClass,
+  registerMessageType,
+  registeredTypes,
+  unregisterMessageType,
+  type MessageCtor,
+} from "../../runtime/dispatch.js";

@@ -14,7 +14,7 @@ import { dirname, resolve } from "node:path";
 import { describe, it } from "node:test";
 
 import { fromHex } from "../src/runtime/byte_order.js";
-import { lookup, registrySize } from "../src/runtime/dispatch.js";
+import { lookupMessageClass, registrySize } from "../src/runtime/dispatch.js";
 import { parseWire, verifyWireBytes } from "../src/runtime/oracle.js";
 
 // Side-effect: registers all 84 classes with the dispatch registry.
@@ -68,11 +68,11 @@ describe("upstream fixture round-trip", () => {
   for (const [name, fx] of Object.entries(fixtures.fixtures)) {
     it(`${name} (${fx.type_id}, v${fx.version}, ${fx.body_size}B)`, () => {
       const wire = fromHex(fx.wire_hex);
-      const ctor = lookup(fx.type_id);
+      const ctor = lookupMessageClass(fx.type_id);
       if (ctor === undefined) {
         // Not all type_ids have a class — e.g. HEADER / EXT_HEADER
         // are framing helpers. Skip rather than fail so the suite
-        // stays green; they'd show up as `lookup` miss anyway.
+        // stays green; they'd show up as a lookup miss anyway.
         return;
       }
       const framing = parseWire(wire);

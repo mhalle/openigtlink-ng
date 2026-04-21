@@ -20,7 +20,7 @@ import {
   unpackHeader,
   verifyCrc,
 } from "./header.js";
-import { lookup } from "./dispatch.js";
+import { lookupMessageClass } from "./dispatch.js";
 
 export interface FramingResult {
   ok: boolean;
@@ -175,7 +175,7 @@ export function verifyWireBytes(
   }
 
   const typeId = framing.header!.typeId;
-  const ctor = lookup(typeId);
+  const ctor = lookupMessageClass(typeId);
   if (!ctor) {
     return {
       ok: false,
