@@ -41,8 +41,13 @@ from oigtl.runtime.exceptions import (
 
 
 def _wrap(msg, *, type_id: str, device_name: str = "dev",
-          timestamp: int = 0, version: int = 2) -> bytes:
-    """Build a full wire message around *msg*'s body bytes."""
+          timestamp: int = 0, version: int = 1) -> bytes:
+    """Build a full wire message around *msg*'s body bytes.
+
+    Defaults to ``version=1`` because these helpers produce a bare
+    body (no v2 extended-header region). ``pack_header``'s
+    invariant rejects ``version>=2`` with a bare body.
+    """
     body = msg.pack()
     header = pack_header(
         version=version,
@@ -122,8 +127,10 @@ def test_unpack_message_matches_unpack_envelope():
 
 
 def _wire_with_fabricated_type(type_id: str, body: bytes) -> bytes:
+    # version=1 because the body is bare (no v2 extended-header
+    # region) — matches pack_header's invariant.
     header = pack_header(
-        version=2,
+        version=1,
         type_id=type_id,
         device_name="x",
         timestamp=0,

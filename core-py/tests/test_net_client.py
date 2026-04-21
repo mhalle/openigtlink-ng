@@ -81,8 +81,9 @@ def _write_frame(
     *,
     device_name: str = "srv",
 ) -> None:
+    # version=1: body is bare (no v2 extended-header region).
     header = pack_header(
-        version=2,
+        version=1,
         type_id=type_id,
         device_name=device_name,
         timestamp=0,

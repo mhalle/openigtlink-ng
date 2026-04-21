@@ -478,6 +478,17 @@ target_link_libraries(oigtl_codec_test PRIVATE oigtl)
 add_test(NAME codec COMMAND oigtl_codec_test)
 set_tests_properties(codec PROPERTIES TIMEOUT 30)
 
+# Cross-runtime interop fixture — a port-0 TCP server that echoes
+# TRANSFORM as STATUS in the format the existing python_ws_echo.py
+# fixture uses. Driven from Python / TypeScript tests that spawn
+# this binary and round-trip through their own client. Buildable
+# but not ctest-registered; the parent tests own timing and
+# skip logic.
+add_executable(oigtl_cpp_tcp_echo
+    tests/fixtures/cpp_tcp_echo.cpp
+)
+target_link_libraries(oigtl_cpp_tcp_echo PRIVATE oigtl)
+
 # Oracle CLI — persistent subprocess for `oigtl-corpus fuzz differential`.
 # Reads hex-encoded wire bytes from stdin, emits JSON reports on stdout.
 # Not a test target; built but never invoked by ctest.

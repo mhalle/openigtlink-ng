@@ -337,8 +337,17 @@ class Client:
             )
 
         body = message.pack()
+        # We emit v1 framing: the 58-byte header followed directly
+        # by the message body, no extended-header region. Declaring
+        # version=2 with a bare v1-style body is spec-inconsistent
+        # (v2 prescribes a 12-byte extended header ahead of the
+        # content) — a strict v2 parser reads the first body bytes
+        # as ext_header_size and fails. When this Client grows v2
+        # emission (for metadata / message_id correlation), it will
+        # need to prepend the extended header + append the metadata
+        # region alongside bumping the declared version.
         header = pack_header(
-            version=2,
+            version=1,
             type_id=type_id,
             device_name=device_name or self._options.default_device,
             timestamp=timestamp,

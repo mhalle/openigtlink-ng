@@ -118,16 +118,74 @@ export function unpackMessage(
     verifyCrc(header, body);
   }
 
+  // v1 messages carry the body content verbatim. v2/v3 wrap it in
+  // [12-byte extended header | content | metadata]; the body class
+  // expects only the content slice. Peel the ext header + the
+  // trailing metadata region off before dispatching.
+  const content = _extractContent(header, body);
+
   const ctor = lookupMessageClass(header.typeId);
   if (ctor !== undefined) {
-    return { header, body: ctor.unpack(body) };
+    return { header, body: ctor.unpack(content) };
   }
 
   if (loose) {
+    // RawBody keeps the *original* body bytes (ext-header + metadata
+    // intact) so gateway code that wants to re-emit the wire
+    // untouched still works.
     return { header, body: new RawBody(header.typeId, body) };
   }
 
   throw new UnknownMessageTypeError(header.typeId);
+}
+
+// Minimum v2 extended-header size. Matches the constant in
+// runtime/header.ts (kept local here to avoid a cycle).
+const V2_EXT_HEADER_MIN_SIZE = 12;
+
+/**
+ * Return the content slice of `body` for this header version.
+ *
+ * - v1: body == content, returned as-is (a subarray view over the
+ *   same memory, not a copy).
+ * - v2/v3: [ext_header | content | metadata] — strip both ends.
+ *
+ * @throws {MalformedMessageError} v2/v3 framing fields declare
+ *   region sizes that don't fit in the available body bytes.
+ */
+function _extractContent(header: Header, body: Uint8Array): Uint8Array {
+  if (header.version < 2) {
+    return body;
+  }
+  if (body.length < V2_EXT_HEADER_MIN_SIZE) {
+    throw new MalformedMessageError(
+      `v${header.version} body too short for extended header: ` +
+        `${body.length} < ${V2_EXT_HEADER_MIN_SIZE}`,
+    );
+  }
+  const view = new DataView(body.buffer, body.byteOffset, body.byteLength);
+  const extHeaderSize = view.getUint16(0, false);
+  const metaHeaderSize = view.getUint16(2, false);
+  const metaSize = view.getUint32(4, false);
+
+  if (
+    extHeaderSize < V2_EXT_HEADER_MIN_SIZE ||
+    extHeaderSize > body.length
+  ) {
+    throw new MalformedMessageError(
+      `bogus ext_header_size ${extHeaderSize} (body is ${body.length} bytes)`,
+    );
+  }
+  const metadataTotal = metaHeaderSize + metaSize;
+  if (metadataTotal > body.length - extHeaderSize) {
+    throw new MalformedMessageError(
+      `declared metadata region (${metadataTotal} bytes) exceeds ` +
+        `remaining body after ext header ` +
+        `(${body.length - extHeaderSize} bytes)`,
+    );
+  }
+  const contentEnd = body.length - metadataTotal;
+  return body.subarray(extHeaderSize, contentEnd);
 }
 
 /**

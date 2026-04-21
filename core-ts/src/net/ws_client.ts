@@ -397,8 +397,9 @@ export class WsClient {
     }
 
     const body = message.pack();
+    // v1 framing — see the matching comment in src/net/client.ts.
     const header = packHeader({
-      version: 2,
+      version: 1,
       typeId,
       deviceName: opts?.deviceName ?? this.opts.defaultDevice,
       timestamp: opts?.timestamp ?? 0n,

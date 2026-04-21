@@ -2,10 +2,13 @@
 
 #include <cstring>
 #include <sstream>
+#include <stdexcept>
+#include <string>
 
 #include "oigtl/runtime/byte_order.hpp"
 #include "oigtl/runtime/crc64.hpp"
 #include "oigtl/runtime/error.hpp"
+#include "oigtl/runtime/extended_header.hpp"
 
 namespace oigtl::runtime {
 
@@ -76,13 +79,70 @@ Header unpack_header(const std::uint8_t* data, std::size_t length) {
     return h;
 }
 
+namespace {
+
+// Enforce the pack_header v2/v3 invariant: a body declared with
+// version >= 2 must begin with a plausible extended-header region.
+// Rejection reasons mirror the Python and TypeScript parallels
+// verbatim so the three cores' error messages converge.
+void check_v2_body_starts_with_ext_header(std::uint16_t version,
+                                          const std::uint8_t* body,
+                                          std::size_t body_length) {
+    if (body_length < kExtendedHeaderMinSize) {
+        std::ostringstream oss;
+        oss << "pack_header(version=" << version
+            << ") requires body to begin with a "
+            << kExtendedHeaderMinSize
+            << "-byte extended-header region; got " << body_length
+            << " bytes. If you meant to emit v1 framing (no extended "
+               "header), pass version=1 instead; if you're "
+               "deliberately emitting malformed bytes from a fuzzer, "
+               "pass validate=false.";
+        throw std::invalid_argument(oss.str());
+    }
+    // Same 12-byte layout unpack_extended_header reads on receive.
+    const std::uint16_t ext_header_size =
+        byte_order::read_be_u16(body + 0);
+    const std::uint16_t meta_header_size =
+        byte_order::read_be_u16(body + 2);
+    const std::uint32_t meta_size =
+        byte_order::read_be_u32(body + 4);
+
+    if (ext_header_size < kExtendedHeaderMinSize ||
+            ext_header_size > body_length) {
+        std::ostringstream oss;
+        oss << "pack_header(version=" << version
+            << "): ext_header_size " << ext_header_size
+            << " is out of range [" << kExtendedHeaderMinSize
+            << ", " << body_length << "].";
+        throw std::invalid_argument(oss.str());
+    }
+    const std::size_t metadata_total =
+        static_cast<std::size_t>(meta_header_size) +
+        static_cast<std::size_t>(meta_size);
+    if (metadata_total > body_length - ext_header_size) {
+        std::ostringstream oss;
+        oss << "pack_header(version=" << version
+            << "): declared metadata region (" << metadata_total
+            << " bytes) overruns body after the ext header ("
+            << (body_length - ext_header_size) << " bytes remain).";
+        throw std::invalid_argument(oss.str());
+    }
+}
+
+}  // namespace
+
 void pack_header(std::array<std::uint8_t, kHeaderSize>& out,
                  std::uint16_t version,
                  const std::string& type_id,
                  const std::string& device_name,
                  std::uint64_t timestamp,
                  const std::uint8_t* body,
-                 std::size_t body_length) {
+                 std::size_t body_length,
+                 bool validate) {
+    if (validate && version >= 2) {
+        check_v2_body_starts_with_ext_header(version, body, body_length);
+    }
     byte_order::write_be_u16(out.data() + 0, version);
     write_null_padded(out.data() + 2, 12, type_id);
     write_null_padded(out.data() + 14, 20, device_name);

@@ -41,8 +41,11 @@ function wrap(
     version?: number;
   },
 ): Uint8Array {
+  // Default version=1 because this helper produces a bare body
+  // (no v2 extended-header region). packHeader's invariant rejects
+  // version>=2 with a bare body.
   const header = packHeader({
-    version: opts.version ?? 2,
+    version: opts.version ?? 1,
     typeId: opts.typeId,
     deviceName: opts.deviceName ?? "dev",
     timestamp: opts.timestamp ?? 0n,

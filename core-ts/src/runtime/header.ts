@@ -137,6 +137,8 @@ function _writeAsciiNullPadded(
 // Emit
 // ---------------------------------------------------------------------------
 
+import { EXT_HEADER_MIN_SIZE } from "./ext_header.js";
+
 export interface PackHeaderOpts {
   version: number;
   typeId: string;
@@ -144,14 +146,35 @@ export interface PackHeaderOpts {
   timestamp: bigint;
   /** The body bytes. CRC is computed over this buffer. */
   body: Uint8Array;
+  /**
+   * When true (the default), enforces the invariant that a
+   * version >= 2 body begins with a plausible extended-header
+   * region. Catches a bug class (declaring v2 while emitting a
+   * v1-style bare body) at the authoring site instead of on the
+   * wire. Set to false only for fuzzers / oracle binaries that
+   * deliberately emit malformed bytes.
+   */
+  validate?: boolean;
 }
 
 /**
  * Serialize a header into a fresh 58-byte Uint8Array. Computes
  * CRC-64 over `body` and embeds it; sets `body_size` to
  * `body.length`.
+ *
+ * Invariant (enabled by default via `validate: true`): when
+ * `opts.version >= 2`, `opts.body` must begin with a plausible
+ * 12-byte extended-header region. See the docstring on the
+ * Python parallel (oigtl.runtime.header.pack_header) for the
+ * rationale and failure-mode details.
+ *
+ * @throws {HeaderParseError} The invariant fails.
  */
 export function packHeader(opts: PackHeaderOpts): Uint8Array {
+  const validate = opts.validate ?? true;
+  if (validate && opts.version >= 2) {
+    _checkV2BodyStartsWithExtHeader(opts.version, opts.body);
+  }
   const out = new Uint8Array(HEADER_SIZE);
   const view = viewOf(out);
   writeU16(view, 0, opts.version);
@@ -161,6 +184,40 @@ export function packHeader(opts: PackHeaderOpts): Uint8Array {
   writeU64(view, 42, BigInt(opts.body.length));
   writeU64(view, 50, crc64(opts.body));
   return out;
+}
+
+function _checkV2BodyStartsWithExtHeader(
+  version: number,
+  body: Uint8Array,
+): void {
+  if (body.length < EXT_HEADER_MIN_SIZE) {
+    throw new HeaderParseError(
+      `packHeader(version=${version}) requires body to begin with a ` +
+        `${EXT_HEADER_MIN_SIZE}-byte extended-header region; got ` +
+        `${body.length} bytes. If you meant to emit v1 framing (no ` +
+        `extended header), pass version=1; if you're deliberately ` +
+        `emitting malformed bytes from a fuzzer, pass validate=false.`,
+    );
+  }
+  const view = viewOf(body);
+  const extHeaderSize = view.getUint16(0, false);
+  const metaHeaderSize = view.getUint16(2, false);
+  const metaSize = view.getUint32(4, false);
+  if (extHeaderSize < EXT_HEADER_MIN_SIZE || extHeaderSize > body.length) {
+    throw new HeaderParseError(
+      `packHeader(version=${version}): ext_header_size ${extHeaderSize} ` +
+        `is out of range [${EXT_HEADER_MIN_SIZE}, ${body.length}]. See ` +
+        `packHeader's docstring for the v2 body layout.`,
+    );
+  }
+  const metadataTotal = metaHeaderSize + metaSize;
+  if (metadataTotal > body.length - extHeaderSize) {
+    throw new HeaderParseError(
+      `packHeader(version=${version}): declared metadata region ` +
+        `(${metadataTotal} bytes) overruns body after the ext header ` +
+        `(${body.length - extHeaderSize} bytes remain).`,
+    );
+  }
 }
 
 // ---------------------------------------------------------------------------

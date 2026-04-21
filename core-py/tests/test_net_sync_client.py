@@ -89,8 +89,9 @@ async def _read_one(reader):
 
 
 def _write_frame(writer, type_id, body, *, device_name="srv"):
+    # version=1: body is bare (no v2 extended-header region).
     header = pack_header(
-        version=2, type_id=type_id, device_name=device_name,
+        version=1, type_id=type_id, device_name=device_name,
         timestamp=0, body=body,
     )
     writer.write(header + body)

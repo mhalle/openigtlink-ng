@@ -20,8 +20,9 @@ from oigtl.runtime.exceptions import CrcMismatchError
 
 def _frame(body: bytes, *, type_id: str = "TRANSFORM",
            device_name: str = "test", timestamp: int = 0) -> bytes:
+    # version=1: body is bare (no v2 extended-header region).
     header = pack_header(
-        version=2,
+        version=1,
         type_id=type_id,
         device_name=device_name,
         timestamp=timestamp,

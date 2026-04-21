@@ -109,8 +109,9 @@ function writeFrame(
   body: Uint8Array,
   deviceName = "srv",
 ): void {
+  // version=1: body is bare (no v2 extended-header region).
   const header = packHeader({
-    version: 2,
+    version: 1,
     typeId,
     deviceName,
     timestamp: 0n,

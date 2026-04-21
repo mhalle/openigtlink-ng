@@ -70,8 +70,10 @@ afterEach(() => {
 // ---------------------------------------------------------------------------
 
 function wrapBody(typeId: string, body: Uint8Array): Uint8Array {
+  // version=1: body is bare (no v2 extended-header region) —
+  // matches packHeader's invariant.
   const header = packHeader({
-    version: 2,
+    version: 1,
     typeId,
     deviceName: "dev",
     timestamp: 0n,

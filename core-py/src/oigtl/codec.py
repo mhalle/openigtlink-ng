@@ -160,11 +160,17 @@ def unpack_message(
                 f"computed=0x{computed:016X}"
             )
 
+    # v1 messages carry the body content verbatim. v2/v3 wrap it in
+    # [12-byte extended header | content | metadata]; the body class
+    # expects only the content slice. We peel the ext header + the
+    # trailing metadata region off before dispatching.
+    content = _extract_content(header, body)
+
     cls = lookup_message_class(header.type_id)
     decoded: BaseModel
     if cls is not None:
         try:
-            decoded = cls.unpack(body)
+            decoded = cls.unpack(content)
         except (ValueError, ProtocolError) as e:
             # Rewrap ValueError from Pydantic / struct.unpack as a
             # ProtocolError so callers only need to catch one family.
@@ -172,6 +178,9 @@ def unpack_message(
                 f"failed to decode {header.type_id}: {e}"
             ) from e
     elif loose:
+        # RawBody keeps the *original* body bytes (including the v2
+        # ext-header/metadata regions) so gateway code that wants to
+        # re-emit the wire untouched still works.
         decoded = RawBody(type_id=header.type_id, body=body)
     else:
         raise UnknownMessageTypeError(
@@ -181,6 +190,53 @@ def unpack_message(
         )
 
     return Envelope(header=header, body=decoded)
+
+
+# Minimum v2 extended-header size. A v2/v3 body always starts with
+# at least this many bytes encoding (ext_header_size, meta_header_size,
+# meta_size, message_id). Any v2/v3 body shorter than this is
+# malformed.
+_V2_EXT_HEADER_MIN_SIZE = 12
+
+
+def _extract_content(header: Header, body: bytes) -> bytes:
+    """Return the content slice of *body* for this header version.
+
+    - v1: body == content, returned as-is.
+    - v2/v3: [ext_header | content | metadata] — strip both ends.
+
+    Raises :class:`MalformedMessageError` if the v2/v3 framing
+    fields declare region sizes that don't fit in the available
+    body bytes.
+    """
+    if header.version < 2:
+        return body
+
+    if len(body) < _V2_EXT_HEADER_MIN_SIZE:
+        raise MalformedMessageError(
+            f"v{header.version} body too short for extended header: "
+            f"{len(body)} < {_V2_EXT_HEADER_MIN_SIZE}"
+        )
+    # Layout: HH HH II II  (big-endian: ext_hdr_size, meta_hdr_size,
+    # meta_size, message_id).
+    ext_header_size = int.from_bytes(body[0:2], "big")
+    meta_header_size = int.from_bytes(body[2:4], "big")
+    meta_size = int.from_bytes(body[4:8], "big")
+
+    if ext_header_size < _V2_EXT_HEADER_MIN_SIZE or ext_header_size > len(body):
+        raise MalformedMessageError(
+            f"bogus extended_header_size {ext_header_size} "
+            f"(body is {len(body)} bytes)"
+        )
+    metadata_total = meta_header_size + meta_size
+    if metadata_total > len(body) - ext_header_size:
+        raise MalformedMessageError(
+            f"declared metadata region ({metadata_total} bytes) "
+            f"exceeds remaining body after ext header "
+            f"({len(body) - ext_header_size} bytes)"
+        )
+    content_end = len(body) - metadata_total
+    return body[ext_header_size:content_end]
 
 
 def unpack_envelope(

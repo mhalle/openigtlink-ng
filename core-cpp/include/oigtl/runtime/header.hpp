@@ -42,13 +42,28 @@ Header unpack_header(const std::uint8_t* data, std::size_t length);
 // Serialize a header into a fixed 58-byte buffer. Computes CRC over
 // (body, body_length) and stores it in out[50..58]. body_size in the
 // emitted header is set to body_length.
+//
+// Invariant (enabled by default, validate=true): when
+// version >= 2, the body must begin with a plausible
+// extended-header region — i.e. at least 12 bytes whose first 12
+// decode as (ext_header_size in [12, body_length],
+// metadata_header_size + metadata_size <= body_length -
+// ext_header_size, message_id). This catches a bug class
+// (declaring v2 while emitting a v1-style bare body, which a
+// strict v2 receiver misparses) at the authoring site. Python
+// and TypeScript parallels enforce the same invariant.
+//
+// Throws std::invalid_argument on invariant failure. Pass
+// validate=false only for fuzzers / oracle binaries that
+// deliberately emit malformed bytes.
 void pack_header(std::array<std::uint8_t, kHeaderSize>& out,
                  std::uint16_t version,
                  const std::string& type_id,
                  const std::string& device_name,
                  std::uint64_t timestamp,
                  const std::uint8_t* body,
-                 std::size_t body_length);
+                 std::size_t body_length,
+                 bool validate = true);
 
 // Throws CrcMismatchError if crc64(body) != header.crc.
 void verify_crc(const Header& header,

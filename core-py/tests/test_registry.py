@@ -188,8 +188,10 @@ def test_unregister_missing_is_noop():
 
 
 def _wrap_body(type_id: str, body: bytes) -> bytes:
+    # version=1 — body is bare, no v2 extended-header region, so
+    # pack_header's invariant would reject version>=2.
     header = pack_header(
-        version=2,
+        version=1,
         type_id=type_id,
         device_name="dev",
         timestamp=0,

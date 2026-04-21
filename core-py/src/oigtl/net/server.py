@@ -129,8 +129,10 @@ class Peer:
             )
 
         body = message.pack()
+        # v1 framing — see the matching comment in
+        # :meth:`oigtl.net.client.Client.send` for the rationale.
         header = pack_header(
-            version=2,
+            version=1,
             type_id=type_id,
             device_name=device_name or self._default_device,
             timestamp=timestamp,

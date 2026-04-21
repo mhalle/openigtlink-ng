@@ -193,8 +193,9 @@ class WsClient:
                 f"{type(message).__name__} has no TYPE_ID"
             )
         body = message.pack()
+        # v1 framing — see :meth:`oigtl.net.client.Client.send`.
         header = pack_header(
-            version=2,
+            version=1,
             type_id=type_id,
             device_name=device_name or self._options.default_device,
             timestamp=timestamp,
