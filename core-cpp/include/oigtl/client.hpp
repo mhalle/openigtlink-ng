@@ -199,7 +199,7 @@ class Client {
     template <class Msg>
     Envelope<Msg> receive() {
         auto inc = receive_any();
-        return unpack<Msg>(inc);
+        return unpack_envelope<Msg>(inc);
     }
 
     transport::Incoming receive_any();
@@ -230,7 +230,7 @@ class Client {
     Client& on(F handler) {
         auto wrapper = [h = std::move(handler)]
                        (const transport::Incoming& inc) {
-            h(unpack<Msg>(inc));
+            h(unpack_envelope<Msg>(inc));
         };
         dispatch_[Msg::kTypeId] = std::move(wrapper);
         return *this;
@@ -323,7 +323,7 @@ class Client {
 // ===========================================================================
 template <class Msg>
 void Client::send_envelope(const Envelope<Msg>& env) {
-    auto wire = pack(env);
+    auto wire = pack_envelope(env);
     send_bytes(std::move(wire));
 }
 
@@ -342,7 +342,7 @@ Envelope<Reply> Client::wait_for_typed(
             std::chrono::duration_cast<std::chrono::milliseconds>(
                 remaining));
         if (inc.header.type_id == Reply::kTypeId) {
-            return unpack<Reply>(inc);
+            return unpack_envelope<Reply>(inc);
         }
         // Dispatch other types through on<T>, or drop.
         auto it = dispatch_.find(inc.header.type_id);

@@ -133,7 +133,7 @@ VerifyResult verify_wire_bytes(const std::uint8_t* data,
         return out;
     }
 
-    auto fn = registry.lookup(framing.header.type_id);
+    auto fn = registry.lookup_message_class(framing.header.type_id);
     if (fn == nullptr) {
         std::ostringstream oss;
         oss << "no codec registered for type_id='"

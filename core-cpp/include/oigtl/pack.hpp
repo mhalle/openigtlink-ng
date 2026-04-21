@@ -1,19 +1,43 @@
-// pack(envelope) / unpack<T>(incoming) — the ergonomic bridge
-// between typed `Envelope<T>` and the runtime codec.
+// Pure wire codec — the typed, compile-time-known decode/encode API.
 //
-// v1 bodies are just `T::pack()`'s output.
-// v2/v3 bodies are [ ext_header | content | metadata ].
+// Sits above the header codec (runtime/header.hpp) and below every
+// transport (client, server, gateway). Mirrors the Python
+// `oigtl.codec` and TypeScript `@openigtlink/core/codec` modules —
+// same function vocabulary (unpack_header / unpack_message /
+// unpack_envelope / pack_header / pack_envelope), adapted to C++'s
+// compile-time typed `Envelope<T>`.
 //
-// These helpers let callers skip the framing plumbing entirely:
+// The four-step pattern
+// ---------------------
 //
-//     auto wire = oigtl::pack(env);     // ready to send
-//     auto env  = oigtl::unpack<T>(inc); // throws on type mismatch
+// Decoding one wire message follows the same four steps regardless
+// of transport:
 //
-// Header-only — the templates need to see the message type. Each
+//   1. read_header_bytes  — I/O. Read exactly kHeaderSize bytes.
+//   2. unpack_header      — pure. Parse them into a Header.
+//   3. read_message_bytes — I/O. Read header.body_size more bytes.
+//   4. unpack_message     — pure. Parse (header, body) → Envelope<T>.
+//
+// Streaming callers (TCP via the framer) use the two-step pair.
+// Non-streaming callers (a complete WS binary frame, an MQTT
+// payload, a file slice, a unit-test fixture) use unpack_envelope
+// on the whole buffer.
+//
+// Because C++ is compile-time typed, the caller picks T. If the
+// wire's type_id doesn't match T::kTypeId, MessageTypeMismatch is
+// raised — there is no runtime dispatch path here. For runtime
+// dispatch (the Python-equivalent "whatever type this is, return
+// it typed-erased") see the Registry in runtime/dispatch.hpp.
+//
+// Round-trip requirement: for any Envelope<T> produced by
+// unpack_envelope<T>(wire), pack_envelope(env) returns wire bytes
+// that byte-compare equal to the original `wire`.
+//
+// Header-only — the templates need to see the concrete T. Each
 // generated message exposes `static constexpr const char* kTypeId`,
 // `std::vector<uint8_t> pack() const`, and a static
 // `T unpack(const uint8_t*, size_t)` that together let these
-// helpers stay generic.
+// helpers stay generic over every message type.
 #ifndef OIGTL_PACK_HPP
 #define OIGTL_PACK_HPP
 
@@ -34,10 +58,10 @@
 
 namespace oigtl {
 
-// Thrown by `unpack<T>()` when the incoming message's type_id
-// doesn't match `T::kTypeId`. Distinct from the codec's
-// ProtocolError hierarchy because it's a caller-logic issue, not
-// a wire-format one.
+// Thrown by unpack_envelope<T>() / unpack_message<T>() when the
+// incoming message's type_id doesn't match T::kTypeId. Distinct
+// from the codec's ProtocolError hierarchy because it's a
+// caller-logic issue, not a wire-format one.
 class MessageTypeMismatch : public std::runtime_error {
  public:
     MessageTypeMismatch(std::string_view expected, std::string_view got)
@@ -47,19 +71,73 @@ class MessageTypeMismatch : public std::runtime_error {
           expected_(expected), got_(got) {}
     const std::string& expected() const noexcept { return expected_; }
     const std::string& got() const noexcept { return got_; }
+
  private:
     std::string expected_;
     std::string got_;
 };
 
-// Pack an Envelope to a fully-framed wire message (58-byte header +
-// body). The body layout depends on env.version:
-//   - v1:      content = T::pack() output; body = content.
-//   - v2, v3:  body = [12-byte ext header][content][metadata].
-//
-// If env.timestamp is zero, `now_igtl()` is substituted.
+namespace detail {
+
+// Given a decoded header and its body bytes, decompose v1 / v2+
+// framing and call T::unpack on the content slice. Shared between
+// the Incoming overload and the raw-bytes overload.
 template <class T>
-std::vector<std::uint8_t> pack(const Envelope<T>& env) {
+Envelope<T> unpack_message_impl(const runtime::Header& header,
+                                const std::uint8_t* body,
+                                std::size_t body_length) {
+    if (header.type_id != T::kTypeId) {
+        throw MessageTypeMismatch(T::kTypeId, header.type_id);
+    }
+    Envelope<T> env;
+    env.version = header.version;
+    env.device_name = header.device_name;
+    env.timestamp = header.timestamp;
+
+    if (header.version == 1) {
+        env.body = T::unpack(body, body_length);
+        return env;
+    }
+
+    // v2/v3: body = [12-byte ext header][content][metadata].
+    if (body_length < runtime::kExtendedHeaderMinSize) {
+        throw error::ShortBufferError(
+            "v2/v3 body too small for extended header");
+    }
+    auto ext = runtime::unpack_extended_header(body, body_length);
+    env.message_id = ext.message_id;
+
+    const std::size_t hdr_size = ext.ext_header_size;
+    const std::size_t meta_total =
+        static_cast<std::size_t>(ext.metadata_header_size) +
+        static_cast<std::size_t>(ext.metadata_size);
+    if (body_length < hdr_size + meta_total) {
+        throw error::MalformedMessageError(
+            "declared metadata exceeds body length");
+    }
+    const std::size_t content_size = body_length - hdr_size - meta_total;
+
+    env.body = T::unpack(body + hdr_size, content_size);
+    if (meta_total > 0) {
+        env.metadata = runtime::unpack_metadata(
+            body + hdr_size + content_size,
+            meta_total,
+            ext.metadata_header_size,
+            ext.metadata_size);
+    }
+    return env;
+}
+
+}  // namespace detail
+
+// ---------------------------------------------------------------------------
+// pack_envelope — serialize Envelope<T> to a fully-framed wire
+// message (58-byte header + body).
+// ---------------------------------------------------------------------------
+
+// If env.timestamp is zero, now_igtl() is substituted.
+template <class T>
+std::vector<std::uint8_t> pack_envelope(const Envelope<T>& env) {
     auto content = env.body.pack();
     const IgtlTimestamp ts = env.timestamp != 0
         ? env.timestamp
@@ -102,59 +180,72 @@ std::vector<std::uint8_t> pack(const Envelope<T>& env) {
     return wire;
 }
 
-// Unpack an Incoming into a typed Envelope<T>. Throws
-// MessageTypeMismatch if `inc.header.type_id != T::kTypeId`;
-// delegates to T::unpack for body content errors.
+// ---------------------------------------------------------------------------
+// unpack_message — step 4 of the four-step pattern (streaming path).
+// Takes the already-parsed header plus the freshly-read body bytes.
+// ---------------------------------------------------------------------------
+
 template <class T>
-Envelope<T> unpack(const transport::Incoming& inc) {
-    if (inc.header.type_id != T::kTypeId) {
-        throw MessageTypeMismatch(T::kTypeId, inc.header.type_id);
-    }
-
-    Envelope<T> env;
-    env.version = inc.header.version;
-    env.device_name = inc.header.device_name;
-    env.timestamp = inc.header.timestamp;
-
-    if (inc.header.version == 1) {
-        env.body = T::unpack(inc.body.data(), inc.body.size());
-        return env;
-    }
-
-    // v2/v3: peel the extended header, then split body into
-    // (content | metadata) using the declared sizes.
-    if (inc.body.size() < runtime::kExtendedHeaderMinSize) {
-        throw error::ShortBufferError(
-            "v2/v3 body too small for extended header");
-    }
-    auto ext = runtime::unpack_extended_header(
-        inc.body.data(), inc.body.size());
-    env.message_id = ext.message_id;
-
-    const std::size_t hdr_size = ext.ext_header_size;
-    const std::size_t meta_total =
-        static_cast<std::size_t>(ext.metadata_header_size) +
-        static_cast<std::size_t>(ext.metadata_size);
-    if (inc.body.size() < hdr_size + meta_total) {
+Envelope<T> unpack_message(const runtime::Header& header,
+                           const std::uint8_t* body,
+                           std::size_t body_length) {
+    if (body_length != header.body_size) {
         throw error::MalformedMessageError(
-            "declared metadata exceeds body length");
+            "body length does not match header.body_size");
     }
-    const std::size_t content_size =
-        inc.body.size() - hdr_size - meta_total;
+    return detail::unpack_message_impl<T>(header, body, body_length);
+}
 
-    // Decode content.
-    env.body = T::unpack(inc.body.data() + hdr_size, content_size);
+template <class T>
+Envelope<T> unpack_message(const runtime::Header& header,
+                           const std::vector<std::uint8_t>& body) {
+    return unpack_message<T>(header, body.data(), body.size());
+}
 
-    // Decode metadata (if any).
-    if (meta_total > 0) {
-        env.metadata = runtime::unpack_metadata(
-            inc.body.data() + hdr_size + content_size,
-            meta_total,
-            ext.metadata_header_size,
-            ext.metadata_size);
+// ---------------------------------------------------------------------------
+// unpack_envelope — convenience for callers holding the complete
+// wire message in memory (MQTT payload, file slice, test fixture,
+// full WS binary frame). Wraps unpack_header + unpack_message.
+// ---------------------------------------------------------------------------
+
+template <class T>
+Envelope<T> unpack_envelope(const std::uint8_t* wire,
+                            std::size_t wire_length) {
+    if (wire_length < runtime::kHeaderSize) {
+        throw error::ShortBufferError(
+            "wire shorter than header");
     }
+    auto header = runtime::unpack_header(wire, runtime::kHeaderSize);
+    const std::size_t expected =
+        runtime::kHeaderSize + header.body_size;
+    if (wire_length < expected) {
+        throw error::ShortBufferError(
+            "wire truncated: body_size declares more than available");
+    }
+    if (wire_length > expected) {
+        throw error::MalformedMessageError(
+            "wire has trailing bytes beyond declared body_size");
+    }
+    const std::uint8_t* body = wire + runtime::kHeaderSize;
+    runtime::verify_crc(header, body, header.body_size);
+    return detail::unpack_message_impl<T>(header, body, header.body_size);
+}
 
-    return env;
+template <class T>
+Envelope<T> unpack_envelope(const std::vector<std::uint8_t>& wire) {
+    return unpack_envelope<T>(wire.data(), wire.size());
+}
+
+// ---------------------------------------------------------------------------
+// Incoming-based form — the transport layer's native shape. A
+// framer yields an Incoming; this helper threads it through the
+// same pure codec.
+// ---------------------------------------------------------------------------
+
+template <class T>
+Envelope<T> unpack_envelope(const transport::Incoming& inc) {
+    return detail::unpack_message_impl<T>(
+        inc.header, inc.body.data(), inc.body.size());
 }
 
 }  // namespace oigtl

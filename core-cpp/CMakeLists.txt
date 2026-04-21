@@ -469,6 +469,15 @@ target_link_libraries(oigtl_ergo_test PRIVATE oigtl)
 add_test(NAME ergo COMMAND oigtl_ergo_test)
 set_tests_properties(ergo PROPERTIES TIMEOUT 30)
 
+# Public codec + registry API — mirrors core-py/tests/test_codec.py
+# and core-ts/tests/codec.test.ts.
+add_executable(oigtl_codec_test
+    tests/codec_test.cpp
+)
+target_link_libraries(oigtl_codec_test PRIVATE oigtl)
+add_test(NAME codec COMMAND oigtl_codec_test)
+set_tests_properties(codec PROPERTIES TIMEOUT 30)
+
 # Oracle CLI — persistent subprocess for `oigtl-corpus fuzz differential`.
 # Reads hex-encoded wire bytes from stdin, emits JSON reports on stdout.
 # Not a test target; built but never invoked by ctest.

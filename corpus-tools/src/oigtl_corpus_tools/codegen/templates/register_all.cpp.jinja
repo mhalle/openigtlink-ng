@@ -10,7 +10,7 @@ namespace oigtl::messages {
 
 void register_all(oigtl::runtime::Registry& registry) {
     {% for entry in entries %}
-    registry.register_type(
+    registry.register_message_type(
         "{{ entry.type_id }}",
         [](const std::uint8_t* data, std::size_t length) {
             return {{ entry.class_name }}::unpack(data, length).pack();

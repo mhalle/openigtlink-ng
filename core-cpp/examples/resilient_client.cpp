@@ -81,7 +81,7 @@ class ServerSession {
                     auto inc = peer_->receive_any();
                     ++counter_;
                     if (inc.header.type_id == "TRANSFORM") {
-                        auto env = oigtl::unpack<msg::Transform>(inc);
+                        auto env = oigtl::unpack_envelope<msg::Transform>(inc);
                         std::printf(
                             "  [server] TRANSFORM from %s: "
                             "[%.2f, %.2f, %.2f]\n",

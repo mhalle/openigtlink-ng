@@ -73,7 +73,7 @@ void test_pack_unpack_v1() {
                        0, 1, 0, 20,
                        0, 0, 1, 30};
 
-    auto wire = oigtl::pack(env);
+    auto wire = oigtl::pack_envelope(env);
 
     // Synthesize an Incoming as if the wire was just received.
     oigtl::transport::Incoming inc;
@@ -81,7 +81,7 @@ void test_pack_unpack_v1() {
     inc.body.assign(wire.begin() + oigtl::runtime::kHeaderSize,
                     wire.end());
 
-    auto env2 = oigtl::unpack<om::Transform>(inc);
+    auto env2 = oigtl::unpack_envelope<om::Transform>(inc);
     REQUIRE(env2.version == 1);
     REQUIRE(env2.device_name == "Tracker_A");
     REQUIRE(env2.body.matrix[3] == 10.0f);
@@ -104,14 +104,14 @@ void test_pack_unpack_v2_with_metadata() {
     env.metadata.push_back(
         oigtl::make_text_metadata("Modality", "MR"));
 
-    auto wire = oigtl::pack(env);
+    auto wire = oigtl::pack_envelope(env);
 
     oigtl::transport::Incoming inc;
     inc.header = oigtl::runtime::unpack_header(wire.data(), wire.size());
     inc.body.assign(wire.begin() + oigtl::runtime::kHeaderSize,
                     wire.end());
 
-    auto env2 = oigtl::unpack<om::Transform>(inc);
+    auto env2 = oigtl::unpack_envelope<om::Transform>(inc);
     REQUIRE(env2.version == 2);
     REQUIRE(env2.message_id == 42);
     REQUIRE(env2.metadata.size() == 2);
@@ -127,13 +127,13 @@ void test_type_mismatch_throws() {
     env.version = 1;
     env.device_name = "X";
     env.body.matrix = {1,0,0,0, 0,1,0,0, 0,0,1,0};
-    auto wire = oigtl::pack(env);
+    auto wire = oigtl::pack_envelope(env);
     oigtl::transport::Incoming inc;
     inc.header = oigtl::runtime::unpack_header(wire.data(), wire.size());
     inc.body.assign(wire.begin() + oigtl::runtime::kHeaderSize,
                     wire.end());
     bool caught = false;
-    try { (void)oigtl::unpack<om::Status>(inc); }
+    try { (void)oigtl::unpack_envelope<om::Status>(inc); }
     catch (const oigtl::MessageTypeMismatch& e) {
         caught = (e.expected() == "STATUS") &&
                  (e.got() == "TRANSFORM");
