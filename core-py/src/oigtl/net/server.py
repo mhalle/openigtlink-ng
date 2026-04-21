@@ -36,7 +36,7 @@ from typing import (
 
 from pydantic import BaseModel
 
-from oigtl.messages import REGISTRY as _MESSAGE_REGISTRY
+from oigtl.codec import RawBody, unpack_message
 from oigtl.net import interfaces
 from oigtl.net._options import Envelope, RawMessage
 from oigtl.net.errors import ConnectionClosedError, FramingError
@@ -780,20 +780,14 @@ class Server:
         if raw is None:
             raise ConnectionClosedError("peer closed")
 
+        # Byte slice the body back out of the raw wire bytes and hand
+        # off to the pure codec. The framer already verified the CRC
+        # when it produced *raw*, so we skip the check here — the
+        # wire-bytes buffer is the source of truth.
         body = raw.wire[HEADER_SIZE:]
-        cls = _MESSAGE_REGISTRY.get(raw.header.type_id)
-        decoded: BaseModel
-        if cls is not None:
-            try:
-                decoded = cls.unpack(body)
-            except (ValueError, ProtocolError) as e:
-                raise ProtocolError(
-                    f"failed to decode {raw.header.type_id}: {e}"
-                ) from e
-        else:
-            decoded = _RawBody(type_id=raw.header.type_id, body=body)
-
-        return Envelope(header=raw.header, body=decoded)
+        return unpack_message(
+            raw.header, body, loose=True, verify_crc=False,
+        )
 
     # --------------------------------------------------------------
     # Serve / shutdown
@@ -842,11 +836,9 @@ class Server:
         await self.close()
 
 
-class _RawBody(BaseModel):
-    """Sentinel body for wire messages whose type_id is unknown."""
-
-    type_id: str
-    body: bytes
+# Backwards-compatible alias — see the matching note in
+# :mod:`oigtl.net.client`. New code should use :class:`oigtl.codec.RawBody`.
+_RawBody = RawBody
 
 
 # ----------------------------------------------------------------------

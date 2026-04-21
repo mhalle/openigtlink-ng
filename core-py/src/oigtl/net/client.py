@@ -43,7 +43,7 @@ from typing import (
 
 from pydantic import BaseModel
 
-from oigtl.messages import REGISTRY as _MESSAGE_REGISTRY
+from oigtl.codec import RawBody, pack_envelope, unpack_message
 from oigtl.net._options import (
     ClientOptions,
     Envelope,
@@ -60,9 +60,8 @@ from oigtl.net.errors import (
     FramingError,
     TimeoutError as NetTimeoutError,
 )
-from oigtl.runtime.exceptions import CrcMismatchError, ProtocolError
+from oigtl.runtime.exceptions import ProtocolError
 from oigtl.runtime.header import HEADER_SIZE, pack_header, unpack_header
-from oigtl_corpus_tools.codec.crc64 import crc64
 
 __all__ = ["Client"]
 
@@ -677,29 +676,8 @@ class Client:
         ever becomes the hot path, but the simple approach is fine
         for now — gateway users rarely care about latency.
         """
-        from oigtl.runtime.header import pack_header
-
-        # If body decode produced a _RawBody (unknown type_id), its
-        # .body is the exact bytes. Otherwise re-pack via the
-        # typed message's .pack(). Both paths reproduce the wire
-        # body bit-for-bit.
-        body_bytes: bytes
-        if isinstance(env.body, _RawBody):
-            body_bytes = env.body.body
-        else:
-            body_bytes = env.body.pack()   # type: ignore[attr-defined]
-
-        header_bytes = pack_header(
-            version=env.header.version,
-            type_id=env.header.type_id,
-            device_name=env.header.device_name,
-            timestamp=env.header.timestamp,
-            body=body_bytes,
-        )
-        return RawMessage(
-            header=env.header,
-            wire=header_bytes + body_bytes,
-        )
+        wire = pack_envelope(env)
+        return RawMessage(header=env.header, wire=wire)
 
     async def _receive_with_reconnect(self) -> Envelope[BaseModel]:
         """Wrap ``_receive_one`` with outage-aware retry.
@@ -774,26 +752,12 @@ class Client:
                 f"{header.body_size}"
             ) from e
 
-        computed = crc64(body)
-        if computed != header.crc:
-            raise CrcMismatchError(
-                f"header crc=0x{header.crc:016x} "
-                f"body crc=0x{computed:016x}"
-            )
-
-        cls = _MESSAGE_REGISTRY.get(header.type_id)
-        decoded: BaseModel
-        if cls is not None:
-            try:
-                decoded = cls.unpack(body)
-            except (ValueError, ProtocolError) as e:
-                raise ProtocolError(
-                    f"failed to decode {header.type_id}: {e}"
-                ) from e
-        else:
-            decoded = _RawBody(type_id=header.type_id, body=body)
-
-        return Envelope(header=header, body=decoded)
+        # Hand off to the pure codec: CRC check + type dispatch +
+        # Envelope construction in one call. loose=True so unknown
+        # type_ids surface as RawBody rather than raising — the
+        # client's receive loop should be resilient to forward-compat
+        # message types it doesn't know yet.
+        return unpack_message(header, body, loose=True, verify_crc=True)
 
     # --------------------------------------------------------------
     # Dispatch
@@ -892,8 +856,9 @@ class Client:
             await self._unknown_handler(env)
 
 
-class _RawBody(BaseModel):
-    """Sentinel body for wire messages whose type_id is unknown."""
-
-    type_id: str
-    body: bytes
+# Backwards-compatible alias — the sentinel body class moved to
+# :mod:`oigtl.codec` so the public codec and the transport layers
+# share a single definition. New code should import :class:`RawBody`
+# directly from ``oigtl.codec`` (or from the top-level ``oigtl``
+# re-export).
+_RawBody = RawBody

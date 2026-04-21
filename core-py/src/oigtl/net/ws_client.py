@@ -28,7 +28,7 @@ import websockets
 from pydantic import BaseModel
 from websockets.asyncio.client import ClientConnection, connect as ws_connect
 
-from oigtl.messages import REGISTRY as _MESSAGE_REGISTRY
+from oigtl.codec import RawBody, unpack_message
 from oigtl.net._options import (
     ClientOptions,
     Envelope,
@@ -298,19 +298,12 @@ class WsClient:
 
     async def _receive_one(self) -> Envelope[BaseModel]:
         raw = await self._receive_one_raw()
+        # The framer that produced *raw* already verified the CRC,
+        # so skip the second check here.
         body = raw.wire[HEADER_SIZE:]
-        cls = _MESSAGE_REGISTRY.get(raw.header.type_id)
-        decoded: BaseModel
-        if cls is not None:
-            try:
-                decoded = cls.unpack(body)
-            except (ValueError, ProtocolError) as e:
-                raise ProtocolError(
-                    f"failed to decode {raw.header.type_id}: {e}"
-                ) from e
-        else:
-            decoded = _RawBody(type_id=raw.header.type_id, body=body)
-        return Envelope(header=raw.header, body=decoded)
+        return unpack_message(
+            raw.header, body, loose=True, verify_crc=False,
+        )
 
     async def _receive_one_raw(self) -> RawMessage:
         if self._closed.is_set():
@@ -418,8 +411,6 @@ class WsClient:
             await self._unknown_handler(env)
 
 
-class _RawBody(BaseModel):
-    """Sentinel body for unknown type_ids (same shape as client.py's)."""
-
-    type_id: str
-    body: bytes
+# Backwards-compatible alias — see the matching note in
+# :mod:`oigtl.net.client`. New code should use :class:`oigtl.codec.RawBody`.
+_RawBody = RawBody
