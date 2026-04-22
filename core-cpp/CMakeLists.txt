@@ -206,6 +206,7 @@ add_library(igtl_compat STATIC
     compat/src/igtlColorTableMessage.cxx
     compat/src/igtlPolyDataMessage.cxx
     compat/src/igtlBindMessage.cxx
+    compat/src/igtlMessageFactory.cxx
     compat/src/igtlSocket.cxx
     compat/src/igtlClientSocket.cxx
     compat/src/igtlServerSocket.cxx
@@ -352,6 +353,20 @@ target_link_libraries(igtl_compat_server_restrictions_test
 add_test(NAME compat_server_restrictions
          COMMAND igtl_compat_server_restrictions_test)
 set_tests_properties(compat_server_restrictions PROPERTIES TIMEOUT 30)
+
+# Shim — igtl::MessageFactory drop-in (CreateHeaderMessage /
+# CreateReceiveMessage / CreateSendMessage / AddMessageType). PLUS
+# and related consumers drive their receive dispatch through this
+# API; a missing factory would force code changes in every
+# consumer. See compat/tests/message_factory_test.cxx.
+add_executable(igtl_compat_message_factory_test
+    compat/tests/message_factory_test.cxx
+)
+target_link_libraries(igtl_compat_message_factory_test
+    PRIVATE igtl_compat)
+add_test(NAME compat_message_factory
+         COMMAND igtl_compat_message_factory_test)
+set_tests_properties(compat_message_factory PROPERTIES TIMEOUT 30)
 
 # -----------------------------------------------------------------
 # Phase 8 — upstream example programs built DIRECTLY against the
