@@ -129,11 +129,19 @@ void test_receive_roundtrip() {
 // and confirming CreateSendMessage mints it. Uses TransformMessage
 // masquerading as a different type-id so we don't need a new class —
 // the factory just stores a `New()` pointer and a name.
+//
+// Stand-alone thunk (same shape as the one inside
+// igtlMessageFactory.cxx). Avoids the UB-flavoured C-style cast
+// that upstream uses and that strict Clang/GCC reject under
+// `-Wcast-function-type[-mismatch]`.
+static igtl::MessageBase::Pointer custom_type_new() {
+    igtl::TransformMessage::Pointer p = igtl::TransformMessage::New();
+    return igtl::MessageBase::Pointer(p.GetPointer());
+}
+
 void test_add_message_type_extension() {
     auto fac = igtl::MessageFactory::New();
-    fac->AddMessageType("CUSTOM_TYPE",
-        (igtl::MessageFactory::PointerToMessageBaseNew)
-            &igtl::TransformMessage::New);
+    fac->AddMessageType("CUSTOM_TYPE", &custom_type_new);
 
     auto m = fac->CreateSendMessage("CUSTOM_TYPE", 2);
     REQUIRE(m.IsNotNull());
