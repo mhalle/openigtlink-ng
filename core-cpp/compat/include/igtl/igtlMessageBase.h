@@ -195,6 +195,14 @@ class IGTLCommon_EXPORT MessageBase : public Object {
     // by AllocateBuffer + Unpack.
     igtl_uint64 m_BodySizeToRead = 0;
 
+    // Total packed message size (58-byte header + body). Kept in
+    // sync with m_Wire everywhere m_Wire is resized, so that
+    // subclasses reaching in via `this->m_MessageSize` (upstream's
+    // protected accessor — used by PLUS's custom message classes
+    // in the `AllocateBuffer`-then-compute-body-size pattern) see
+    // the expected value. Upstream uses igtl_uint64 here; we match.
+    igtl_uint64 m_MessageSize = 0;
+
     // Tracks whether the body content has been unpacked by the
     // subclass. Reset by InitBuffer.
     bool m_IsBodyUnpacked = false;

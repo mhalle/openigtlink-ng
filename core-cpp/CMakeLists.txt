@@ -398,6 +398,21 @@ add_test(NAME compat_plus_header_surface
          COMMAND igtl_compat_plus_header_surface_test)
 set_tests_properties(compat_plus_header_surface PROPERTIES TIMEOUT 30)
 
+# Protected-surface contract — upstream-style message subclasses
+# (e.g. PLUS's PlusClientInfoMessage) read `this->m_MessageSize`
+# from the base to compute body sizes after a header has been
+# deposited. Locks the invariant that m_MessageSize tracks m_Wire
+# across InitBuffer / SetMessageHeader / AllocateBuffer / Pack.
+add_executable(igtl_compat_subclass_protected_surface_test
+    compat/tests/subclass_protected_surface_test.cxx
+)
+target_link_libraries(igtl_compat_subclass_protected_surface_test
+    PRIVATE igtl_compat)
+add_test(NAME compat_subclass_protected_surface
+         COMMAND igtl_compat_subclass_protected_surface_test)
+set_tests_properties(compat_subclass_protected_surface
+    PROPERTIES TIMEOUT 30)
+
 # -----------------------------------------------------------------
 # Phase 8 — upstream example programs built DIRECTLY against the
 # shim (no upstream library in the link). Proves the shim is a

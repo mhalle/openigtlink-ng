@@ -168,6 +168,7 @@ int MessageBase::Pack() {
                     body.data(), body.size());
     }
     m_BodySizeToRead = body.size();
+    m_MessageSize    = m_Wire.size();
     return 1;
 }
 
@@ -313,6 +314,7 @@ igtl_uint64 MessageBase::GetBufferBodySize() {
 void MessageBase::InitBuffer() {
     m_Wire.assign(oigtl::runtime::kHeaderSize, 0);
     m_Content.clear();
+    m_MessageSize = oigtl::runtime::kHeaderSize;
     m_IsBodyUnpacked = false;
     m_IsHeaderUnpacked = false;
 }
@@ -326,6 +328,7 @@ void MessageBase::AllocateBuffer() {
         oigtl::runtime::kHeaderSize +
             static_cast<std::size_t>(m_BodySizeToRead),
         0);
+    m_MessageSize = m_Wire.size();
 }
 
 int MessageBase::SetMessageHeader(const MessageHeader* mh) {
@@ -342,6 +345,12 @@ int MessageBase::SetMessageHeader(const MessageHeader* mh) {
         m_Wire.assign(mh->m_Wire.begin(),
                       mh->m_Wire.begin() + oigtl::runtime::kHeaderSize);
     }
+    // Subclasses will typically call AllocateBuffer() next, which
+    // resizes m_Wire to header+body and refreshes m_MessageSize.
+    // Seed it with the pre-allocate value (header + declared body
+    // size) so any early subclass read sees the final total.
+    m_MessageSize = oigtl::runtime::kHeaderSize +
+                    static_cast<std::size_t>(m_BodySizeToRead);
     return 1;
 }
 
