@@ -43,82 +43,98 @@
 
 namespace igtl {
 
+namespace {
+// Thunk: adapts `T::New()` (returning `SmartPointer<T>`) to the
+// `PointerToMessageBaseNew` signature (returning
+// `SmartPointer<MessageBase>`). Upstream uses C-style casts between
+// the two function pointer types, which `-Wcast-function-type`
+// (GCC ≥ 8) and `-Wcast-function-type-mismatch` (recent Clang)
+// reject — and rightly so: calling one signature through the
+// other is technically UB even if `SmartPointer<T>` layouts match.
+// A stamped-out thunk per type is zero-cost at runtime and
+// satisfies strict-warning builds on every platform we target.
+template <class T>
+igtl::MessageBase::Pointer NewAsBase() {
+    typename T::Pointer p = T::New();
+    return igtl::MessageBase::Pointer(p.GetPointer());
+}
+}  // namespace
+
 // ---------------------------------------------------------------
 // Construction — populates the built-in type map. Mirrors upstream's
-// list one-to-one. The C-style casts from `FooMessage::Pointer (*)()`
-// to `MessageBase::Pointer (*)()` are upstream's chosen form; they
-// compile because every `SmartPointer<T>` has the same layout.
+// list one-to-one. Each entry goes through `NewAsBase<T>` above to
+// get a properly-typed `MessageBase::Pointer (*)()` without a cast.
 // ---------------------------------------------------------------
 MessageFactory::MessageFactory() {
     // v1-era / always-available types.
     AddMessageType("TRANSFORM",
-        (PointerToMessageBaseNew)&igtl::TransformMessage::New);
+        &NewAsBase<igtl::TransformMessage>);
     AddMessageType("GET_TRANS",
-        (PointerToMessageBaseNew)&igtl::GetTransformMessage::New);
+        &NewAsBase<igtl::GetTransformMessage>);
     AddMessageType("POSITION",
-        (PointerToMessageBaseNew)&igtl::PositionMessage::New);
+        &NewAsBase<igtl::PositionMessage>);
     AddMessageType("IMAGE",
-        (PointerToMessageBaseNew)&igtl::ImageMessage::New);
+        &NewAsBase<igtl::ImageMessage>);
     AddMessageType("GET_IMAGE",
-        (PointerToMessageBaseNew)&igtl::GetImageMessage::New);
+        &NewAsBase<igtl::GetImageMessage>);
     AddMessageType("STATUS",
-        (PointerToMessageBaseNew)&igtl::StatusMessage::New);
+        &NewAsBase<igtl::StatusMessage>);
     AddMessageType("GET_STATUS",
-        (PointerToMessageBaseNew)&igtl::GetStatusMessage::New);
+        &NewAsBase<igtl::GetStatusMessage>);
     AddMessageType("CAPABILITY",
-        (PointerToMessageBaseNew)&igtl::CapabilityMessage::New);
+        &NewAsBase<igtl::CapabilityMessage>);
 
     // v2 additions.
     AddMessageType("POINT",
-        (PointerToMessageBaseNew)&igtl::PointMessage::New);
+        &NewAsBase<igtl::PointMessage>);
     AddMessageType("GET_POINT",
-        (PointerToMessageBaseNew)&igtl::GetPointMessage::New);
+        &NewAsBase<igtl::GetPointMessage>);
     AddMessageType("TRAJ",
-        (PointerToMessageBaseNew)&igtl::TrajectoryMessage::New);
+        &NewAsBase<igtl::TrajectoryMessage>);
     AddMessageType("GET_TRAJ",
-        (PointerToMessageBaseNew)&igtl::GetTrajectoryMessage::New);
+        &NewAsBase<igtl::GetTrajectoryMessage>);
     AddMessageType("STRING",
-        (PointerToMessageBaseNew)&igtl::StringMessage::New);
+        &NewAsBase<igtl::StringMessage>);
     AddMessageType("TDATA",
-        (PointerToMessageBaseNew)&igtl::TrackingDataMessage::New);
+        &NewAsBase<igtl::TrackingDataMessage>);
     AddMessageType("POLYDATA",
-        (PointerToMessageBaseNew)&igtl::PolyDataMessage::New);
+        &NewAsBase<igtl::PolyDataMessage>);
     AddMessageType("GET_POLYDATA",
-        (PointerToMessageBaseNew)&igtl::GetPolyDataMessage::New);
+        &NewAsBase<igtl::GetPolyDataMessage>);
     AddMessageType("RTS_POLYDATA",
-        (PointerToMessageBaseNew)&igtl::RTSPolyDataMessage::New);
+        &NewAsBase<igtl::RTSPolyDataMessage>);
     AddMessageType("STT_POLYDATA",
-        (PointerToMessageBaseNew)&igtl::StartPolyDataMessage::New);
+        &NewAsBase<igtl::StartPolyDataMessage>);
     AddMessageType("STP_POLYDATA",
-        (PointerToMessageBaseNew)&igtl::StopPolyDataMessage::New);
+        &NewAsBase<igtl::StopPolyDataMessage>);
     AddMessageType("RTS_TDATA",
-        (PointerToMessageBaseNew)&igtl::RTSTrackingDataMessage::New);
+        &NewAsBase<igtl::RTSTrackingDataMessage>);
     AddMessageType("STT_TDATA",
-        (PointerToMessageBaseNew)&igtl::StartTrackingDataMessage::New);
+        &NewAsBase<igtl::StartTrackingDataMessage>);
     AddMessageType("STP_TDATA",
-        (PointerToMessageBaseNew)&igtl::StopTrackingDataMessage::New);
+        &NewAsBase<igtl::StopTrackingDataMessage>);
     AddMessageType("QTDATA",
-        (PointerToMessageBaseNew)&igtl::QuaternionTrackingDataMessage::New);
+        &NewAsBase<igtl::QuaternionTrackingDataMessage>);
     AddMessageType("RTS_QTDATA",
-        (PointerToMessageBaseNew)&igtl::RTSQuaternionTrackingDataMessage::New);
+        &NewAsBase<igtl::RTSQuaternionTrackingDataMessage>);
     AddMessageType("STT_QTDATA",
-        (PointerToMessageBaseNew)&igtl::StartQuaternionTrackingDataMessage::New);
+        &NewAsBase<igtl::StartQuaternionTrackingDataMessage>);
     AddMessageType("STP_QTDATA",
-        (PointerToMessageBaseNew)&igtl::StopQuaternionTrackingDataMessage::New);
+        &NewAsBase<igtl::StopQuaternionTrackingDataMessage>);
     AddMessageType("GET_IMGMETA",
-        (PointerToMessageBaseNew)&igtl::GetImageMetaMessage::New);
+        &NewAsBase<igtl::GetImageMetaMessage>);
     AddMessageType("IMGMETA",
-        (PointerToMessageBaseNew)&igtl::ImageMetaMessage::New);
+        &NewAsBase<igtl::ImageMetaMessage>);
     AddMessageType("GET_LBMETA",
-        (PointerToMessageBaseNew)&igtl::GetLabelMetaMessage::New);
+        &NewAsBase<igtl::GetLabelMetaMessage>);
     AddMessageType("LBMETA",
-        (PointerToMessageBaseNew)&igtl::LabelMetaMessage::New);
+        &NewAsBase<igtl::LabelMetaMessage>);
 
     // v3 additions.
     AddMessageType("COMMAND",
-        (PointerToMessageBaseNew)&igtl::CommandMessage::New);
+        &NewAsBase<igtl::CommandMessage>);
     AddMessageType("RTS_COMMAND",
-        (PointerToMessageBaseNew)&igtl::RTSCommandMessage::New);
+        &NewAsBase<igtl::RTSCommandMessage>);
 }
 
 // ---------------------------------------------------------------

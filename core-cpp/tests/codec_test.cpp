@@ -230,9 +230,16 @@ std::vector<std::uint8_t> identity_fn(const std::uint8_t* data,
 
 std::vector<std::uint8_t> identity_fn_alt(const std::uint8_t* data,
                                           std::size_t length) {
-    // Same behaviour, different function pointer — lets us verify
-    // that collision detection compares pointers not behaviour.
-    return std::vector<std::uint8_t>(data, data + length);
+    // Functionally the same as identity_fn, but the body is
+    // deliberately different so MSVC's /OPT:ICF does not fold
+    // the two into a single symbol — ICF would make the
+    // `register_message_type(same-key, different-fn)` collision
+    // test register the same pointer twice and take the
+    // idempotent path, false-passing the test.
+    std::vector<std::uint8_t> out;
+    out.reserve(length);
+    for (std::size_t i = 0; i < length; ++i) out.push_back(data[i]);
+    return out;
 }
 
 void test_collision_throws_without_replace() {

@@ -5,7 +5,7 @@
  * ``parseMessage`` / ``verifyWireBytes`` in the runtime.
  */
 
-import { registerMessage, type MessageCtor } from "../runtime/dispatch.js";
+import { registerMessageType, type MessageCtor } from "../runtime/dispatch.js";
 
 {% for e in entries %}
 import { {{ e.class_name }} } from "./{{ e.module_name }}.js";
@@ -22,9 +22,10 @@ export const REGISTRY: Readonly<Record<string, MessageCtor>> = Object.freeze({
 });
 
 // Register each class with the runtime dispatcher on module load.
-// Import order matters only in that consumers calling `lookup()`
-// before this module loads will not find anything; since the
-// barrel is the canonical import point, that's expected.
+// Import order matters only in that consumers calling
+// `lookupMessageClass()` before this module loads will not find
+// anything; since the barrel is the canonical import point, that's
+// expected.
 for (const [, ctor] of Object.entries(REGISTRY)) {
-  registerMessage(ctor);
+  registerMessageType(ctor);
 }
