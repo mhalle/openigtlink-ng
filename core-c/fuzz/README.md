@@ -52,5 +52,5 @@ It does **not** exercise caller-responsibility bugs: view-pointer
 lifetime, aliasing, thread safety, misuse of return codes. Those
 are documented contracts, not codec behavior.
 
-See `core-c/FUZZ_PLAN.md` for the full design rationale and
-future-round plans.
+See [`../docs/history/fuzz_plan_initial.md`](../docs/history/fuzz_plan_initial.md)
+for the full original design rationale and future-round plans.

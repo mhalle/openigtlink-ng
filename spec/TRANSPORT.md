@@ -156,7 +156,7 @@ notice. Specifically missing:
 
 - **TLS.** No encrypted transport. OpenIGTLink today is
   unencrypted by protocol; adding TLS is designed (see
-  [`core-cpp/TRANSPORT_PLAN.md`](/core-cpp/TRANSPORT_PLAN.md))
+  [`core-cpp/docs/history/transport_plan.md`](/core-cpp/docs/history/transport_plan.md))
   but not implemented.
 - **Authentication.** No peer identity verification.
   Connections are accepted on network reachability alone.
@@ -217,7 +217,10 @@ envelope, framer unit tests) provide ~90% of the coverage for
 free; you'd add new interop tests for your transport pairing
 with the existing ones.
 
-The three PLAN documents linked at the top of this page capture
-the design reasoning for each language core's specific choices
-when its transport was first built. They're retained as
-decision records.
+The per-core design records under
+[`core-cpp/docs/history/`](/core-cpp/docs/history/),
+[`core-py/docs/history/`](/core-py/docs/history/), and
+[`core-ts/docs/history/`](/core-ts/docs/history/) capture the
+design reasoning for each language core's specific choices when
+its transport was first built. They're retained as decision
+records.

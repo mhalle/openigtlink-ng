@@ -96,9 +96,9 @@ future work.**
 | v4 / NG protocol extensions | not designed |
 
 See each directory's own `README.md` for detailed per-core docs
-and usage. Historical implementation plans (`core-*/PLAN.md`) are
-kept as decision records; they describe the path taken, not
-pending work.
+and usage. Historical implementation plans live under
+`core-*/docs/history/` and `security/docs/history/` as decision
+records; they describe the path taken, not pending work.
 
 ## Documentation
 

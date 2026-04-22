@@ -116,7 +116,7 @@ The fuzzer does **not** guarantee:
   [`spec/protocol/v3.md`](spec/protocol/v3.md).
 
 Details in [`security/README.md`](security/README.md) and
-[`security/PLAN.md`](security/PLAN.md).
+[`security/docs/history/plan.md`](security/docs/history/plan.md).
 
 ---
 

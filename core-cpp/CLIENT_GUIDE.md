@@ -204,10 +204,10 @@ client.close();
 
 ## Related docs
 
-- **[CLIENT_TRANSPORT_PLAN.md](CLIENT_TRANSPORT_PLAN.md)** — the
-  design plan for the resilience features (what decisions we
-  made, why, and what's intentionally deferred). Useful when
-  reading the implementation in `src/client.cpp`.
+- **[docs/history/client_transport_plan.md](docs/history/client_transport_plan.md)**
+  — the original design record for the resilience features (what
+  decisions we made, why, and what's intentionally deferred).
+  Useful when reading the implementation in `src/client.cpp`.
 - **[compat/MIGRATION.md](compat/MIGRATION.md)** — mapping from
   upstream `igtl::*` APIs to the modern equivalents, for code
   that needs both.

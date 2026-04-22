@@ -57,8 +57,9 @@ in the message struct point into the input buffer. Use
 (primitive arrays) to copy into caller-supplied storage before
 the wire buffer's lifetime ends.
 
-See the design discussion in `core-cpp/WINDOWS_PLAN.md`-adjacent
-work and the repo-level architecture docs for the full rationale.
+See the Windows-adjacent design discussion in
+[`core-cpp/docs/history/windows_plan.md`](../core-cpp/docs/history/windows_plan.md)
+and the repo-level architecture docs for the full rationale.
 
 ## Build + test
 
@@ -117,5 +118,6 @@ the codec:
   no allocation). Whether your caller code is safe to share
   structs across threads is your problem.
 
-See `core-c/FUZZ_PLAN.md` for the fuzz target design and
-planned future coverage (struct-element arrays, metadata).
+See [`docs/history/fuzz_plan_initial.md`](docs/history/fuzz_plan_initial.md)
+for the original fuzz-target design and planned future coverage
+(struct-element arrays, metadata).

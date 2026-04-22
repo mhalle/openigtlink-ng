@@ -1,6 +1,8 @@
 # core-cpp/fuzz — libFuzzer memory-safety gate
 
-Part of `security/PLAN.md` Phase 3. Two libFuzzer entry points run
+Part of the security harness — see `security/README.md` for the
+top-level fuzzer story and `security/docs/history/plan.md` for the
+phased design record. Two libFuzzer entry points run
 under ASan + UBSan, built by an opt-in CMake option.
 
 ## Why C++ specifically

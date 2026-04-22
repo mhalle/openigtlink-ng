@@ -360,7 +360,7 @@ while (auto peer = srv->WaitForConnection(1000)) {
   any device on the allowed range is assumed legitimate. If you
   need "only *my* tracker, not any tracker on the same subnet,"
   you need a cryptographic identity mechanism. Our forthcoming
-  Noise-protocol transport (see `TRANSPORT_PLAN.md`) is the
+  Noise-protocol transport (see `../docs/history/transport_plan.md`) is the
   planned answer; until then, a WireGuard-based mesh VPN like
   Tailscale provides the same guarantee with an external daemon.
 
