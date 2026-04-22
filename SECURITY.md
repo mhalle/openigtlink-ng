@@ -115,8 +115,7 @@ The fuzzer does **not** guarantee:
   against upstream's test fixtures and document the decision in
   [`spec/protocol/v3.md`](spec/protocol/v3.md).
 
-Details in [`security/README.md`](security/README.md) and
-[`security/PLAN.md`](security/PLAN.md).
+Details in [`security/README.md`](security/README.md).
 
 ---
 

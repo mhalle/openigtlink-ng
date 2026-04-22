@@ -585,7 +585,8 @@ add_executable(oigtl_oracle_cli
 target_link_libraries(oigtl_oracle_cli PRIVATE oigtl)
 
 # ---------------------------------------------------------------------------
-# libFuzzer memory-safety gate (Phase 3 of security/PLAN.md)
+# libFuzzer memory-safety gate — see security/README.md for the
+# full fuzzer story.
 # ---------------------------------------------------------------------------
 # Opt-in: configure with `-DBUILD_FUZZERS=ON` on a Clang toolchain.
 # Requires Clang's libFuzzer support; GCC is not supported (no

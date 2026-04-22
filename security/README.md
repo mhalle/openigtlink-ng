@@ -7,8 +7,6 @@ The tooling here exploits that.
 
 ## What's in here
 
-- [`PLAN.md`](PLAN.md) — phased plan for the harness. Phases 1-2
-  are complete; Phases 3-5 are ongoing.
 - `disagreements/*.jsonl` — fuzzer output, one disagreement per
   line. Each line records the input bytes (hex), the report from
   every oracle, and which fields disagreed. Gitignored by default;
@@ -156,4 +154,4 @@ statically via `spec/corpus/upstream-fixtures.json` (24 byte-exact
 wire blobs from upstream's test vectors, round-tripped by every
 codec on every PR). A live upstream oracle would surface the
 reference library's own memory-safety bugs as "disagreements" —
-CVE tourism, not a quality signal for us. See [`PLAN.md`](PLAN.md).
+CVE tourism, not a quality signal for us.

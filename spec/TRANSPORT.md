@@ -155,9 +155,8 @@ This layer is **over trusted network segments** until further
 notice. Specifically missing:
 
 - **TLS.** No encrypted transport. OpenIGTLink today is
-  unencrypted by protocol; adding TLS is designed (see
-  [`core-cpp/TRANSPORT_PLAN.md`](/core-cpp/TRANSPORT_PLAN.md))
-  but not implemented.
+  unencrypted by protocol; TLS is on the roadmap but not
+  implemented.
 - **Authentication.** No peer identity verification.
   Connections are accepted on network reachability alone.
 - **Session state above framing.** Each connection carries a
@@ -216,8 +215,3 @@ surface. The existing tests in each language (round-trip,
 envelope, framer unit tests) provide ~90% of the coverage for
 free; you'd add new interop tests for your transport pairing
 with the existing ones.
-
-The three PLAN documents linked at the top of this page capture
-the design reasoning for each language core's specific choices
-when its transport was first built. They're retained as
-decision records.
