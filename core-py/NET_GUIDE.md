@@ -267,9 +267,6 @@ await client.close()
 
 ## Related
 
-- **[TRANSPORT_PLAN.md](TRANSPORT_PLAN.md)** — the design plan
-  behind this implementation. What decisions we made, why, and
-  what's intentionally deferred.
 - **[examples/resilient_client.py](examples/resilient_client.py)**
   — runnable demo of the resilient Client pattern. Self-contained
   (runs its own server) and self-verifying.

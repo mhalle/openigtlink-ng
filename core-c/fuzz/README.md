@@ -52,5 +52,6 @@ It does **not** exercise caller-responsibility bugs: view-pointer
 lifetime, aliasing, thread safety, misuse of return codes. Those
 are documented contracts, not codec behavior.
 
-See `core-c/FUZZ_PLAN.md` for the full design rationale and
-future-round plans.
+See [`../../security/README.md`](../../security/README.md) for how
+the C-codec fuzzers fit into the broader differential + libFuzzer
+harness.

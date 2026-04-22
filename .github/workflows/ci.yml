@@ -3,7 +3,7 @@
 # downstream consumers to run on — Linux (gcc + clang), macOS,
 # and Windows / MSVC. Windows CI validates the Winsock backend
 # of the transport's net_compat abstraction (see
-# core-cpp/WINDOWS_PLAN.md).
+# core-cpp/README.md).
 
 name: CI
 
@@ -223,7 +223,7 @@ jobs:
         run: uv run pytest --all-extras || uv run pytest
 
   # ---------------------------------------------------------------------------
-  # fuzz-smoke: security/PLAN.md Phase 3-4.
+  # fuzz-smoke — see security/README.md.
   #
   # Two independent smokes run back-to-back on a single Linux+Clang job:
   #
@@ -238,7 +238,7 @@ jobs:
   #   2. Differential oracle fuzzer — 50k iterations across all four
   #      codecs (py-ref, py, cpp, ts). Any cross-language divergence
   #      is a wire-protocol conformance bug. The 1M-iteration clean
-  #      baseline is documented in security/PLAN.md; the CI run is a
+  #      baseline is documented in security/README.md; the CI run is a
   #      smoke, not a full sweep.
   # ---------------------------------------------------------------------------
   fuzz-smoke:
