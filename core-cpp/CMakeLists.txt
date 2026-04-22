@@ -384,6 +384,20 @@ add_test(NAME compat_v3_metadata_audit
          COMMAND igtl_compat_v3_metadata_audit_test)
 set_tests_properties(compat_v3_metadata_audit PROPERTIES TIMEOUT 30)
 
+# Phase 3a — compile-time proof that every igtl:: symbol PLUS
+# Toolkit references resolves against our shim. See
+# compat/PLUS_AUDIT.md for the full audit (pinned PLUS SHA + symbol
+# inventory). Excludes PLUS-internal + VTK/IGSIO dependencies, which
+# are upstream-of-us and out of this test's scope.
+add_executable(igtl_compat_plus_header_surface_test
+    compat/tests/plus_header_surface_test.cxx
+)
+target_link_libraries(igtl_compat_plus_header_surface_test
+    PRIVATE igtl_compat)
+add_test(NAME compat_plus_header_surface
+         COMMAND igtl_compat_plus_header_surface_test)
+set_tests_properties(compat_plus_header_surface PROPERTIES TIMEOUT 30)
+
 # -----------------------------------------------------------------
 # Phase 8 — upstream example programs built DIRECTLY against the
 # shim (no upstream library in the link). Proves the shim is a
