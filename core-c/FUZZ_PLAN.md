@@ -1,7 +1,15 @@
 # core-c fuzz plan
 
-Status: **planned, not yet implemented.** Scoped as a follow-on
-round after the initial C codec + tests ship and CI stabilizes.
+> **Status: initial targets shipped.** Fuzz harnesses for
+> `fuzz_point`, `fuzz_position`, `fuzz_sensor`, `fuzz_status`,
+> and `fuzz_transform` live under
+> [`core-c/fuzz/`](fuzz/) with a seed corpus. Build instructions
+> in [`core-c/fuzz/README.md`](fuzz/README.md). This document is
+> retained as the original design record; status of additional
+> targets and coverage goals tracks below.
+
+Originally scoped as a follow-on round after the initial C
+codec + tests ship and CI stabilizes.
 
 ## Purpose
 

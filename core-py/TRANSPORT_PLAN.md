@@ -1,14 +1,20 @@
 # core-py transport — plan
 
-Status: **planned, not yet implemented.** Ports the client + server
-transport features currently shipping in core-cpp to Python,
-with asyncio as the primary model and a sync wrapper for the
-research-friendly case.
+> **Status: shipped.** Async + sync TCP client, TCP server,
+> WebSocket client and server all live under
+> [`core-py/src/oigtl/net/`](src/oigtl/net/) with 149 tests
+> including cross-runtime interop against core-cpp and core-ts.
+> This document is retained as the original design record. For
+> current usage see [`NET_GUIDE.md`](NET_GUIDE.md); for status
+> see [`README.md`](README.md).
 
-Target: a Python researcher writing a tracker client or a receive
-server gets the same ergonomics as our C++ API, without having
-to `import socket` or hand-frame bytes. Matches the feature
-surface we ship in core-cpp as of v0.3.0.
+Originally scoped as a port of the client + server transport
+features from core-cpp to Python, with asyncio as the primary
+model and a sync wrapper for the research-friendly case.
+
+Target: a Python researcher writing a tracker client or a
+receive server gets the same ergonomics as our C++ API, without
+having to `import socket` or hand-frame bytes.
 
 ---
 

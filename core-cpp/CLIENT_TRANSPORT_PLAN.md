@@ -1,13 +1,21 @@
 # oigtl::Client transport features — tier-1 plan
 
-Status: **planned, not yet implemented.** Scopes three features
-that close the biggest usability gaps against pyigtl and real-
-world research-lab deployments: auto-reconnect, keepalive, and
-outgoing buffering while disconnected.
+> **Status: shipped.** All three features (auto-reconnect, TCP
+> keepalive, offline outgoing buffer) are implemented in
+> `core-cpp/include/oigtl/client.hpp` and documented in
+> [`CLIENT_GUIDE.md`](CLIENT_GUIDE.md). This document is
+> retained as the original design record. For current usage,
+> see the guide; for overall status, see
+> [`README.md`](README.md).
 
-Targets core-cpp only. Python, TypeScript, and C port the same
-shape later (core-py/core-ts first-class transport is a separate
-project; core-c stays codec-only).
+Originally scoped as three features that close the biggest
+usability gaps against pyigtl and real-world research-lab
+deployments: auto-reconnect, keepalive, and outgoing buffering
+while disconnected.
+
+Targeted core-cpp first. Python and TypeScript now ship the
+same shape (see their per-core READMEs); core-c stays
+codec-only.
 
 ## Motivation
 

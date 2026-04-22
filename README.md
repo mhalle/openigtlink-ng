@@ -111,6 +111,12 @@ pending work.
 - [`SECURITY.md`](SECURITY.md) — threat model, memory-safety
   posture per language core, fuzzer guarantees, vulnerability
   reporting.
+- [`spec/TRANSPORT.md`](spec/TRANSPORT.md) — shared transport
+  design across the three typed cores (TCP + WebSocket,
+  resilience, framing).
+- [`spec/CONFORMANCE.md`](spec/CONFORMANCE.md) — how the test
+  suite verifies correctness (five layers, from unit tests to
+  differential fuzzing to cross-runtime interop).
 - Per-core `README.md` — usage and status for each language
   library.
 
