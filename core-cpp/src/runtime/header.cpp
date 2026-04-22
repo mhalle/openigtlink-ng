@@ -1,3 +1,9 @@
+// Fixed 58-byte OpenIGTLink header codec — pack_header and
+// unpack_header entry points plus the v2-body-shape invariant
+// check. See header.hpp for field layout and the rationale for
+// why `pack_header` rejects declared-version≥2 bodies that
+// don't begin with a valid 12-byte extended header.
+
 #include "oigtl/runtime/header.hpp"
 
 #include <cstring>

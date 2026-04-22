@@ -1,3 +1,10 @@
+// Conformance-oracle entry points. Used by the differential
+// fuzzer and the cross-language parity tests to turn wire bytes
+// into a canonical JSON report describing what this codec saw.
+// A CLI wrapper exposes the same API for out-of-process oracles
+// (core-cpp used as an oracle by corpus-tools runs through this
+// surface). See oracle.hpp for the report schema.
+
 #include "oigtl/runtime/oracle.hpp"
 
 #include <cstring>

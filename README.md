@@ -117,6 +117,8 @@ pending work.
 - [`spec/CONFORMANCE.md`](spec/CONFORMANCE.md) — how the test
   suite verifies correctness (five layers, from unit tests to
   differential fuzzing to cross-runtime interop).
+- [`CHANGELOG.md`](CHANGELOG.md) — versioning policy and
+  change history.
 - Per-core `README.md` — usage and status for each language
   library.
 

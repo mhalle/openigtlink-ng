@@ -1,3 +1,7 @@
+// Type-id → factory registry for typed message dispatch. See
+// dispatch.hpp for the public API (register_message_type /
+// lookup_message_class / unregister_message_type) and error model.
+
 #include "oigtl/runtime/dispatch.hpp"
 
 #include <algorithm>

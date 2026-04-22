@@ -1,3 +1,8 @@
+// v2/v3 extended header codec. Parses and emits the 12-byte
+// ExtendedHeader struct that precedes the content region when
+// header version ≥ 2. See extended_header.hpp for field layout
+// and error semantics.
+
 #include "oigtl/runtime/extended_header.hpp"
 
 #include <sstream>

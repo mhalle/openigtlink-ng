@@ -152,6 +152,120 @@ Output shape (stable):
 }
 ```
 
+## Walkthrough: adding a new message type
+
+Concrete end-to-end example for the most common contribution to
+this tree. Say you want to add a `HEARTRATE` message that
+carries one `uint16` beats-per-minute value and a 4-character
+ASCII sensor-id string.
+
+### 1. Write the schema
+
+Create `../spec/schemas/heartrate.json`:
+
+```json
+{
+  "$schema": "../meta-schema.json",
+
+  "message_type": "HEARTRATE",
+  "type_id": "HEARTRATE",
+  "introduced_in": "v2",
+
+  "description": "Instantaneous heart rate from a pulse-oximetry or ECG-derived sensor.",
+  "rationale": "Demonstration schema for the corpus-tools walkthrough; not part of the deployed OpenIGTLink spec.",
+
+  "body_size": 6,
+
+  "fields": [
+    {
+      "name": "bpm",
+      "type": "uint16",
+      "size_bytes": 2,
+      "description": "Beats per minute, integer. 0 indicates no valid reading."
+    },
+    {
+      "name": "sensor_id",
+      "type": "fixed_string",
+      "encoding": "ascii",
+      "size_bytes": 4,
+      "description": "4-character ASCII sensor identifier, space-padded."
+    }
+  ],
+
+  "metadata_allowed": true
+}
+```
+
+Match the structure of an existing schema (`transform.json`,
+`status.json`, `string.json`) to see the full field vocabulary.
+The meta-schema at `../spec/meta-schema.json` is the formal
+contract; pydantic validates against it.
+
+### 2. Validate the schema
+
+```bash
+cd corpus-tools
+uv run oigtl-corpus schema validate ../spec/schemas/heartrate.json
+```
+
+This confirms the schema is well-formed and the field sizes
+add up to `body_size`. Fix any reported errors before
+continuing.
+
+### 3. Regenerate every language core
+
+```bash
+uv run oigtl-corpus codegen python
+uv run oigtl-corpus codegen ts
+uv run oigtl-corpus codegen cpp
+uv run oigtl-corpus codegen c
+```
+
+Each target writes generated files into its respective core
+(e.g., `core-py/src/oigtl/messages/heartrate.py`). Every
+generated file carries a `GENERATED … do not edit` banner.
+
+### 4. Check that each core's tests still pass
+
+```bash
+cd ../core-py && uv run pytest
+cd ../core-ts && npm test
+cmake --build ../core-cpp/build && ctest --test-dir ../core-cpp/build
+cmake --build ../core-c/build && ctest --test-dir ../core-c/build
+```
+
+The generated message class is automatically picked up by each
+core's registry; no hand-wiring.
+
+### 5. (Optional but recommended) Add a fixture
+
+If you want cross-language conformance proof — and you do —
+construct a byte-exact wire blob and add it to the positive
+corpus. See [`../spec/CONFORMANCE.md`](../spec/CONFORMANCE.md)
+for the full conformance-testing story.
+
+### 6. Run the differential fuzzer
+
+```bash
+cd corpus-tools
+uv run oigtl-corpus fuzz differential -n 100000 \
+    --oracle py-ref --oracle py --oracle cpp --oracle ts
+```
+
+Should stay at zero disagreements. If not, you've uncovered a
+schema-interpretation divergence between two language targets'
+codegen — investigate before shipping.
+
+### 7. Commit
+
+Per [`../CONTRIBUTING.md`](../CONTRIBUTING.md), the commit should
+include the schema, the generated outputs from all four cores,
+and the fixture if you added one. A Conventional Commit message
+like `feat(spec): add HEARTRATE message type` captures the change
+type and scope.
+
+---
+
 ## Project layout
 
 ```

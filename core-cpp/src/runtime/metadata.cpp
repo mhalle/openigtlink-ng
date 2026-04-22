@@ -1,3 +1,9 @@
+// v2/v3 metadata region codec. Packs and parses the
+// [metadata_header][metadata_body] section that sits after the
+// content region when the extended header advertises a non-zero
+// metadata size. See metadata.hpp for entry layout and encoding
+// rules.
+
 #include "oigtl/runtime/metadata.hpp"
 
 #include <cstring>
