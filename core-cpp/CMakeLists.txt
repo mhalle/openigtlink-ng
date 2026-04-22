@@ -368,6 +368,22 @@ add_test(NAME compat_message_factory
          COMMAND igtl_compat_message_factory_test)
 set_tests_properties(compat_message_factory PROPERTIES TIMEOUT 30)
 
+# Shim audit — v3 metadata + header-version surface round-trip.
+# Locks the contract that PLUS depends on: SetMetaDataElement /
+# GetMetaDataElement / GetMetaData / GetHeaderVersion survive a
+# Pack → CreateReceiveMessage → Unpack cycle byte-for-byte, and a
+# v3-declared send decodes back to headerVersion==3 on the receive
+# side. See compat/tests/v3_metadata_audit_test.cxx for what's
+# in-scope vs. what we deliberately defer to Phase 3 feedback.
+add_executable(igtl_compat_v3_metadata_audit_test
+    compat/tests/v3_metadata_audit_test.cxx
+)
+target_link_libraries(igtl_compat_v3_metadata_audit_test
+    PRIVATE igtl_compat)
+add_test(NAME compat_v3_metadata_audit
+         COMMAND igtl_compat_v3_metadata_audit_test)
+set_tests_properties(compat_v3_metadata_audit PROPERTIES TIMEOUT 30)
+
 # -----------------------------------------------------------------
 # Phase 8 — upstream example programs built DIRECTLY against the
 # shim (no upstream library in the link). Proves the shim is a
