@@ -76,6 +76,16 @@ jobs:
         working-directory: corpus-tools
         run: uv sync --all-extras
 
+      # Pre-sync core-py so the cross_runtime_py ctest's
+      # `uv run python python_tcp_echo.py` doesn't pay the sync
+      # cost inline (and fails fast if core-py's deps are broken).
+      # The test itself skips on Windows (POSIX-only fork/exec), so
+      # only sync on non-Windows runners.
+      - name: Sync core-py (for cross_runtime_py ctest)
+        if: runner.os != 'Windows'
+        working-directory: core-py
+        run: uv sync --all-extras
+
       # POSIX: single-config Makefile/Ninja. Windows: we use the
       # Visual Studio 17 2022 multi-config generator explicitly so
       # MSBuild picks up MSVC 2022 without environment gymnastics.
@@ -400,6 +410,16 @@ jobs:
       - name: Install TS deps
         working-directory: core-ts
         run: npm ci
+
+      # Build the C++ TCP-echo fixture so
+      # tests/net/cross_runtime_cpp.test.ts has a live core-cpp
+      # server to round-trip against. Without this the TS test
+      # self-skips and a ts↔cpp wire regression could slip through
+      # review.
+      - name: Build core-cpp TCP-echo fixture for ts↔cpp interop
+        run: |
+          cmake -B core-cpp/build -S core-cpp
+          cmake --build core-cpp/build --target oigtl_cpp_tcp_echo --parallel
 
       - name: Typecheck
         working-directory: core-ts

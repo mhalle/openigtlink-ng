@@ -489,6 +489,21 @@ add_executable(oigtl_cpp_tcp_echo
 )
 target_link_libraries(oigtl_cpp_tcp_echo PRIVATE oigtl)
 
+# Cross-runtime interop — core-cpp Client ↔ core-py Server. Spawns
+# the python_tcp_echo.py fixture as a subprocess and round-trips a
+# TRANSFORM through core-cpp's Client. POSIX-only (fork/exec);
+# self-skips on Windows and when `uv` isn't installed. Complements
+# test_cross_runtime_cpp.py (which exercises the reverse direction).
+if(NOT WIN32)
+    add_executable(oigtl_cross_runtime_py_test
+        tests/cross_runtime_py_test.cpp
+    )
+    target_link_libraries(oigtl_cross_runtime_py_test PRIVATE oigtl)
+    add_test(NAME cross_runtime_py
+             COMMAND oigtl_cross_runtime_py_test)
+    set_tests_properties(cross_runtime_py PROPERTIES TIMEOUT 60)
+endif()
+
 # Oracle CLI — persistent subprocess for `oigtl-corpus fuzz differential`.
 # Reads hex-encoded wire bytes from stdin, emits JSON reports on stdout.
 # Not a test target; built but never invoked by ctest.

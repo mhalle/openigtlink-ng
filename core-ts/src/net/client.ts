@@ -26,7 +26,7 @@
 import { Socket, createConnection } from "node:net";
 import { setTimeout as delay } from "node:timers/promises";
 
-import { unpackMessage } from "../codec.js";
+import { extractContent, unpackMessage } from "../codec.js";
 import { type MessageCtor } from "../runtime/dispatch.js";
 import { packHeader } from "../runtime/header.js";
 import {
@@ -434,8 +434,13 @@ export class Client {
       if (inc.header.typeId === typeId) {
         // Direct decode with the caller-supplied ctor — avoids the
         // registry lookup since we already know the expected type.
-        // CRC already verified by the framer.
-        const body = ctor.unpack(inc.body) as T;
+        // CRC already verified by the framer. `extractContent` peels
+        // the v2/v3 extended header + trailing metadata before
+        // `ctor.unpack` sees only content bytes; without it a v2
+        // message from a spec-compliant sender (core-cpp, upstream
+        // C++) decodes garbage.
+        const content = extractContent(inc.header, inc.body);
+        const body = ctor.unpack(content) as T;
         return { header: inc.header, body };
       }
       // Route intermediate types through their handler, if any.

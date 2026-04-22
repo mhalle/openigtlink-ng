@@ -122,7 +122,7 @@ export function unpackMessage(
   // [12-byte extended header | content | metadata]; the body class
   // expects only the content slice. Peel the ext header + the
   // trailing metadata region off before dispatching.
-  const content = _extractContent(header, body);
+  const content = extractContent(header, body);
 
   const ctor = lookupMessageClass(header.typeId);
   if (ctor !== undefined) {
@@ -150,10 +150,15 @@ const V2_EXT_HEADER_MIN_SIZE = 12;
  *   same memory, not a copy).
  * - v2/v3: [ext_header | content | metadata] — strip both ends.
  *
+ * Exposed publicly because typed-receive fast-paths in `Client` /
+ * `WsClient` bypass the full registry dispatch — they still need
+ * the same content-extraction logic before calling their caller-
+ * supplied `ctor.unpack(content)`.
+ *
  * @throws {MalformedMessageError} v2/v3 framing fields declare
  *   region sizes that don't fit in the available body bytes.
  */
-function _extractContent(header: Header, body: Uint8Array): Uint8Array {
+export function extractContent(header: Header, body: Uint8Array): Uint8Array {
   if (header.version < 2) {
     return body;
   }

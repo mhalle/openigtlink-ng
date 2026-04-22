@@ -23,7 +23,7 @@
  *     await c.close();
  */
 
-import { unpackMessage } from "../codec.js";
+import { extractContent, unpackMessage } from "../codec.js";
 import { type MessageCtor } from "../runtime/dispatch.js";
 import { packHeader, unpackHeader, HEADER_SIZE } from "../runtime/header.js";
 import { crc64 } from "../runtime/crc64.js";
@@ -443,7 +443,10 @@ export class WsClient {
       }
       const inc = await this.nextIncoming(remaining);
       if (inc.header.typeId === typeId) {
-        return { header: inc.header, body: ctor.unpack(inc.body) as T };
+        // Strip v2/v3 ext_header + metadata before ctor.unpack;
+        // same reasoning as Client.receive.
+        const content = extractContent(inc.header, inc.body);
+        return { header: inc.header, body: ctor.unpack(content) as T };
       }
       await this.dispatchOne(inc);
     }
