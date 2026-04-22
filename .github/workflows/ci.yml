@@ -186,6 +186,20 @@ jobs:
           cmake -B core-cpp/build -S core-cpp
           cmake --build core-cpp/build --target oigtl_cpp_tcp_echo --parallel
 
+      # Compile core-ts so tests/test_cross_runtime_ts_ws.py has the
+      # TS WS echo fixture to spawn via `node`. Same pattern as the
+      # C++ fixture build above: without this step the interop test
+      # self-skips and a py↔ts-ws wire regression could slip through.
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+
+      - name: Install core-ts deps and compile fixtures
+        working-directory: core-ts
+        run: |
+          npm ci
+          npx tsc -p tsconfig.json
+
       - name: Run core-py tests
         working-directory: core-py
         run: uv run pytest --all-extras || uv run pytest

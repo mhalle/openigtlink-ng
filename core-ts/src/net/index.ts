@@ -27,6 +27,14 @@ export {
   type WebSocketLikeCtor,
   type WsClientOptions,
 } from "./ws_client.js";
+export {
+  WsServer,
+  WsPeer,
+  type PeerConnectedHandler,
+  type PeerHandler,
+  type UnknownPeerHandler,
+  type WsServerOptions,
+} from "./ws_server.js";
 export type { Handler, SendableCtor, SendableMessage } from "./types.js";
 export type { ClientOptions, ResolvedClientOptions } from "./options.js";
 export { resolveClientOptions } from "./options.js";
