@@ -35,6 +35,14 @@ export {
   type UnknownPeerHandler,
   type WsServerOptions,
 } from "./ws_server.js";
+export {
+  Server,
+  Peer,
+  type ServerOptions,
+  type TcpPeerConnectedHandler,
+  type TcpPeerHandler,
+  type TcpUnknownPeerHandler,
+} from "./server.js";
 export type { Handler, SendableCtor, SendableMessage } from "./types.js";
 export type { ClientOptions, ResolvedClientOptions } from "./options.js";
 export { resolveClientOptions } from "./options.js";

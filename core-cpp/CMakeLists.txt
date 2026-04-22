@@ -502,6 +502,18 @@ if(NOT WIN32)
     add_test(NAME cross_runtime_py
              COMMAND oigtl_cross_runtime_py_test)
     set_tests_properties(cross_runtime_py PROPERTIES TIMEOUT 60)
+
+    # Cross-runtime interop — core-cpp Client ↔ core-ts Server
+    # (TCP). Spawns the compiled ts_tcp_echo.js fixture via `node`.
+    # Self-skips when `node` isn't on PATH or the fixture hasn't
+    # been built (run `npm test` in core-ts to compile it).
+    add_executable(oigtl_cross_runtime_ts_tcp_test
+        tests/cross_runtime_ts_tcp_test.cpp
+    )
+    target_link_libraries(oigtl_cross_runtime_ts_tcp_test PRIVATE oigtl)
+    add_test(NAME cross_runtime_ts_tcp
+             COMMAND oigtl_cross_runtime_ts_tcp_test)
+    set_tests_properties(cross_runtime_ts_tcp PROPERTIES TIMEOUT 60)
 endif()
 
 # Oracle CLI — persistent subprocess for `oigtl-corpus fuzz differential`.

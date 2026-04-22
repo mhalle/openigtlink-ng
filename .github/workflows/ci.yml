@@ -86,6 +86,24 @@ jobs:
         working-directory: core-py
         run: uv sync --all-extras
 
+      # Build the core-ts TCP echo fixture (ts_tcp_echo.js) so the
+      # cross_runtime_ts_tcp ctest has a live TS server to round-trip
+      # against. Node + compiled build-tests fixtures are required;
+      # the ctest self-skips on Windows and when node/fixture are
+      # absent.
+      - name: Set up Node (for cross_runtime_ts_tcp ctest)
+        if: runner.os != 'Windows'
+        uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+
+      - name: Install core-ts deps and compile fixtures (for cross_runtime_ts_tcp)
+        if: runner.os != 'Windows'
+        working-directory: core-ts
+        run: |
+          npm ci
+          npx tsc -p tsconfig.json
+
       # POSIX: single-config Makefile/Ninja. Windows: we use the
       # Visual Studio 17 2022 multi-config generator explicitly so
       # MSBuild picks up MSVC 2022 without environment gymnastics.
