@@ -1,0 +1,81 @@
+diff --git a/src/PlusOpenIGTLink/igtlPlusClientInfoMessage.cxx b/src/PlusOpenIGTLink/igtlPlusClientInfoMessage.cxx
+index 84e33ec..bd9d6e4 100644
+--- a/src/PlusOpenIGTLink/igtlPlusClientInfoMessage.cxx
++++ b/src/PlusOpenIGTLink/igtlPlusClientInfoMessage.cxx
+@@ -10,6 +10,7 @@ See License.txt for details.
+ #include "vtkPlusIgtlMessageFactory.h"
+ 
+ // IGTL includes
++#include <igtlMacro.h>       // OIGTL_NG_SHIM feature-test macro (shim only)
+ #include <igtl_header.h>
+ #include <igtl_util.h>
+ 
+@@ -37,22 +38,37 @@ namespace igtl
+ 
+     igtl::PlusClientInfoMessage::Pointer msg = dynamic_cast<igtl::PlusClientInfoMessage*>(clone.GetPointer());
+ 
+-    int bodySize = this->m_MessageSize - IGTL_HEADER_SIZE;
+-    msg->InitBuffer();
+-    msg->CopyHeader(this);
+-    msg->AllocateBuffer(bodySize);
++    msg->CloneReceivedStateFrom(*this);
++
++    return clone;
++  }
++
++  //----------------------------------------------------------------------------
++  void PlusClientInfoMessage::CloneReceivedStateFrom(const PlusClientInfoMessage& src)
++  {
++#ifdef OIGTL_NG_SHIM
++    // Sanctioned tier-2 API on the hardened shim — handles header
++    // fields, content region, metadata map, and v2/v3 extended-
++    // header state in one bounds-aware call.
++    this->CopyReceivedFrom(src);
++#else
++    // Original upstream idiom — reaches into MessageBase's
++    // protected members directly.
++    int bodySize = src.m_MessageSize - IGTL_HEADER_SIZE;
++    this->InitBuffer();
++    this->CopyHeader(&src);
++    this->AllocateBuffer(bodySize);
+     if (bodySize > 0)
+     {
+-      msg->CopyBody(this);
++      this->CopyBody(&src);
+     }
+ 
+-#if OpenIGTLink_HEADER_VERSION >= 2
+-    msg->m_MetaDataHeader = this->m_MetaDataHeader;
+-    msg->m_MetaDataMap = this->m_MetaDataMap;
+-    msg->m_IsExtendedHeaderUnpacked = this->m_IsExtendedHeaderUnpacked;
++  #if OpenIGTLink_HEADER_VERSION >= 2
++    this->m_MetaDataHeader = src.m_MetaDataHeader;
++    this->m_MetaDataMap = src.m_MetaDataMap;
++    this->m_IsExtendedHeaderUnpacked = src.m_IsExtendedHeaderUnpacked;
++  #endif
+ #endif
+-
+-    return clone;
+   }
+ 
+   //----------------------------------------------------------------------------
+diff --git a/src/PlusOpenIGTLink/igtlPlusClientInfoMessage.h b/src/PlusOpenIGTLink/igtlPlusClientInfoMessage.h
+index 39ed4cf..01a53c4 100644
+--- a/src/PlusOpenIGTLink/igtlPlusClientInfoMessage.h
++++ b/src/PlusOpenIGTLink/igtlPlusClientInfoMessage.h
+@@ -41,6 +41,15 @@ namespace igtl
+     PlusClientInfoMessage();
+     ~PlusClientInfoMessage();
+ 
++    // Receive-state clone helper — centralises the base-class-
++    // internal access pattern in one #ifdef-gated method so the
++    // call site in Clone() stays backend-agnostic. Against the
++    // openigtlink-ng shim (OIGTL_NG_SHIM defined) this delegates
++    // to the sanctioned MessageBase::CopyReceivedFrom; against
++    // upstream OpenIGTLink it replays the original
++    // InitBuffer/CopyHeader/AllocateBuffer/CopyBody sequence.
++    void CloneReceivedStateFrom(const PlusClientInfoMessage& src);
++
+     PlusIgtlClientInfo m_ClientInfo;
+   };
+ } // namespace igtl

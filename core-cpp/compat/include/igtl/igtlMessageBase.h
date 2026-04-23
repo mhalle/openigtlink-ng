@@ -170,6 +170,49 @@ class IGTLCommon_EXPORT MessageBase : public Object {
     // size the buffer before calling PackContent().
     virtual igtlUint64 CalculateContentBufferSize() { return 0; }
 
+    // ---------------------------------------------------------------
+    // Sanctioned protected surface for upstream-pattern subclasses
+    // ---------------------------------------------------------------
+    //
+    // The shim intentionally does not expose `m_Content` as a raw
+    // `unsigned char*` the way upstream OpenIGTLink did — our
+    // `std::vector<std::uint8_t>` is strictly safer, but upstream
+    // subclasses (PLUS's `PlusClientInfoMessage`,
+    // `PlusTrackedFrameMessage`, `PlusUsMessage`) reach into the
+    // base's internals and expect raw-pointer semantics. Rather
+    // than silently exposing a less-safe view of our vector, the
+    // three helpers below publish a documented *tier-2* extension
+    // contract: the smallest surface an upstream-pattern subclass
+    // needs to operate, designed to be bounds-aware by
+    // construction.
+    //
+    // These are `protected` on purpose: they're extension points
+    // for subclass authors, not public API for end users. Direct
+    // consumers should use `Pack()` / `Unpack()` and friends.
+    //
+    // See core-cpp/compat/API_COVERAGE.md §"Subclass extension
+    // API (tier 2)" for the full contract and versioning policy.
+
+    // Raw pointer into the content region (body minus ext-header
+    // and metadata on v2+, or the whole body on v1). Replaces
+    // upstream's `(char*)(m_Content + offset)` pointer arithmetic
+    // idiom with a documented accessor. Non-null after any
+    // successful `PackContent()` or `UnpackContent()`; invalidated
+    // by the next `Pack()` / `AllocateBuffer()` / `InitBuffer()`.
+    std::uint8_t*       GetContentPointer();
+    const std::uint8_t* GetContentPointer() const;
+    std::size_t         GetContentSize() const { return m_Content.size(); }
+
+    // Clone helper — copies the full receive-path state (header
+    // fields, content region, metadata, v2/v3 extended-header
+    // flag) from `other` into `*this`. Replaces upstream's
+    // `InitBuffer(); CopyHeader(other); AllocateBuffer(bodySize);
+    // CopyBody(other);` sequence with a single checked call.
+    // Returns 1 on success, 0 on version/type mismatch (the shim
+    // refuses to clone across incompatible header versions, unlike
+    // upstream's permissive memcpy).
+    int CopyReceivedFrom(const MessageBase& other);
+
     // Fields the subclass identifies itself with. Set in ctor.
     std::string m_SendMessageType;   // e.g. "TRANSFORM"
     std::string m_DeviceType;
