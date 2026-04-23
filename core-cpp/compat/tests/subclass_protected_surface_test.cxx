@@ -255,13 +255,22 @@ void test_copy_received_from_rejects_version_mismatch() {
 // -------- Feature-test macro OIGTL_NG_SHIM is visible to consumers.
 // The macro lets PLUS-style forks branch on "am I linked against
 // the hardened shim?" at compile time.
-void test_feature_macro_defined() {
+// Compile-time check instead of runtime: the macro is literal `1`,
+// so a runtime `==` would emit a constant-condition warning on
+// strict /W4 builds (MSVC C4127). A static_assert expresses the
+// intent directly and fires at build time on any consumer where
+// the macro is missing or wrong.
 #ifndef OIGTL_NG_SHIM
-    REQUIRE(false && "OIGTL_NG_SHIM should be defined by igtlMacro.h");
+#error "OIGTL_NG_SHIM should be defined by igtlMacro.h"
 #endif
-    // Sentinel body — compiling is the real check; this just forces
-    // at-least-one-assertion accounting.
-    REQUIRE(OIGTL_NG_SHIM == 1);
+static_assert(OIGTL_NG_SHIM == 1,
+              "OIGTL_NG_SHIM should have value 1");
+
+void test_feature_macro_defined() {
+    // The real check is the static_assert above, which fires at
+    // compile time if OIGTL_NG_SHIM is missing or misvalued. This
+    // function is a no-op whose presence in main() documents that
+    // the macro is part of the test coverage.
 }
 
 }  // namespace
