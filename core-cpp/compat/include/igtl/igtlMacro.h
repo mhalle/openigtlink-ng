@@ -15,6 +15,17 @@
 
 #include <string>
 
+// Feature-test macro — downstream consumers (e.g., a PLUS fork
+// with compatibility ifdefs) can branch on `defined(OIGTL_NG_SHIM)`
+// to target the sanctioned tier-2 protected API (GetContentPointer,
+// CopyReceivedFrom, etc.) when compiled against us, while keeping
+// the upstream-idiom path for builds against the reference
+// OpenIGTLink library. See core-cpp/compat/API_COVERAGE.md for the
+// full contract.
+#ifndef OIGTL_NG_SHIM
+#define OIGTL_NG_SHIM 1
+#endif
+
 // Export decoration for DLL boundaries. Empty on static / non-Windows
 // builds — which is our target. Defined for source compatibility with
 // upstream's public headers.

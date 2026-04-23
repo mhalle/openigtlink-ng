@@ -331,6 +331,53 @@ void MessageBase::AllocateBuffer() {
     m_MessageSize = m_Wire.size();
 }
 
+// ---------------------------------------------------------------
+// Sanctioned protected surface — see igtlMessageBase.h for the
+// contract. Keep implementations tight; these are extension points
+// whose behaviour upstream-pattern subclasses will lean on.
+// ---------------------------------------------------------------
+std::uint8_t* MessageBase::GetContentPointer() {
+    return m_Content.data();
+}
+
+const std::uint8_t* MessageBase::GetContentPointer() const {
+    return m_Content.data();
+}
+
+int MessageBase::CopyReceivedFrom(const MessageBase& other) {
+    // Refuse across incompatible header versions. Upstream's
+    // CopyHeader/CopyBody memcpy'd without this check and quietly
+    // produced wrongly-framed output; the shim makes it fail loud.
+    if (other.m_HeaderVersion != m_HeaderVersion) {
+        return 0;
+    }
+
+    // Header fields first.
+    m_SendMessageType  = other.m_SendMessageType;
+    m_DeviceName       = other.m_DeviceName;
+    m_TimeStamp        = other.m_TimeStamp;
+    m_MessageID        = other.m_MessageID;
+    m_BodySizeToRead   = other.m_BodySizeToRead;
+    m_IsHeaderUnpacked = other.m_IsHeaderUnpacked;
+    m_IsBodyUnpacked   = other.m_IsBodyUnpacked;
+
+    // Content region. Vector assignment handles size adjustment
+    // and bounds consistency; no raw memcpy required.
+    m_Content = other.m_Content;
+
+    // Metadata region (v2+). Copy always — cheap when empty.
+    m_MetaData = other.m_MetaData;
+
+    // Wire buffer. m_Wire tracks the packed-message byte image;
+    // copy it so GetPackPointer()/GetPackSize() reflect the same
+    // bytes as `other`. m_MessageSize is kept in lockstep per the
+    // class invariant.
+    m_Wire        = other.m_Wire;
+    m_MessageSize = other.m_MessageSize;
+
+    return 1;
+}
+
 int MessageBase::SetMessageHeader(const MessageHeader* mh) {
     if (!mh) return 0;
     m_HeaderVersion    = mh->m_HeaderVersion;

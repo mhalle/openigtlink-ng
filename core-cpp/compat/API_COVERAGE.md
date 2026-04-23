@@ -211,6 +211,87 @@ for researcher-facing prose + examples.
 
 ---
 
+## Subclass extension API (tier 2)
+
+Upstream's `MessageBase` exposes a handful of `protected` members
+(`m_Content` as raw `unsigned char*`, `m_MessageSize`,
+`m_MetaDataMap`, etc.) that custom-message subclasses in the
+field — notably PLUS Toolkit's `PlusClientInfoMessage`,
+`PlusTrackedFrameMessage`, `PlusUsMessage` — reach into. These
+members were never documented as a stable API. They're
+implementation detail that happens to be reachable from
+subclasses that live in the `igtl::` namespace.
+
+Our shim cannot match the upstream-internal surface byte-for-byte
+without inheriting the unsafe patterns that motivated the
+rewrite. Instead, we publish a documented **tier-2 extension
+API**: the smallest set of helpers an upstream-pattern subclass
+needs, designed bounds-aware by construction. Subclasses that
+target this surface gain a versioned contract we commit to
+maintaining.
+
+### Contract
+
+On `igtl::MessageBase`, in the `protected` section:
+
+| Helper | Purpose |
+| --- | --- |
+| `std::uint8_t* GetContentPointer()` | Pointer to the content region. Replaces `(char*)(m_Content + offset)` pointer arithmetic. Invalidated by the next `Pack()` / `AllocateBuffer()` / `InitBuffer()`. |
+| `const std::uint8_t* GetContentPointer() const` | `const` variant, same contract. |
+| `std::size_t GetContentSize() const` | Content-region size. Matches `m_Content.size()`. |
+| `int CopyReceivedFrom(const MessageBase&)` | Full receive-path clone — header fields, content region, metadata map, wire image, `m_MessageSize`. Replaces upstream's `InitBuffer / CopyHeader / AllocateBuffer / CopyBody / metadata-state` sequence. Returns `0` on version mismatch (stricter than upstream's permissive memcpy). |
+| `igtl_uint64 m_MessageSize` | Total packed message size. Protected field, kept in lockstep with `m_Wire` across all resize sites so the upstream idiom `this->m_MessageSize - IGTL_HEADER_SIZE` returns the expected value. |
+
+### Feature-test macro
+
+`igtlMacro.h` defines `OIGTL_NG_SHIM` (as `1`) whenever our shim
+is in the include path. Subclass forks that want to support both
+backends with a single source can branch on
+`#ifdef OIGTL_NG_SHIM` / `#ifndef OIGTL_NG_SHIM`:
+
+```cpp
+void CloneReceivedStateFrom(const MyMessage& src) {
+#ifdef OIGTL_NG_SHIM
+    this->CopyReceivedFrom(src);
+#else
+    int bodySize = src.m_MessageSize - IGTL_HEADER_SIZE;
+    this->InitBuffer();
+    this->CopyHeader(&src);
+    this->AllocateBuffer(bodySize);
+    if (bodySize > 0) this->CopyBody(&src);
+#endif
+}
+```
+
+See [`plus-patches/`](plus-patches/) for a complete worked
+example against the three PLUS Toolkit custom-message classes.
+
+### Versioning policy
+
+Tier-2 helpers carry the same semver discipline as the public
+API. Breaking them is a major-version event. Adding new ones is
+a minor-version addition. The policy is deliberately stricter
+than upstream's implicit "protected is implementation detail"
+stance — the purpose of publishing a contract is to *have* one.
+
+### What the tier-2 API does not do
+
+- **It does not mirror upstream's unsafe internals.**
+  Upstream's `m_Content` as `unsigned char*`, upstream's
+  parameterised `AllocateBuffer(size_t)` that trusts the caller,
+  upstream's `CopyHeader`/`CopyBody` that `memcpy` with
+  `std::min<int>` truncation bugs — these are deliberately not
+  ported. A consumer that needs those exact shapes cannot use
+  the shim as a drop-in; they'd need either the upstream
+  library directly, or a PLUS-style source patch to target the
+  tier-2 helpers.
+- **It is not a general C++ extension framework.** The surface
+  is limited to what upstream-pattern subclasses actually need,
+  based on the PLUS audit in [`PLUS_AUDIT.md`](PLUS_AUDIT.md).
+  Additions driven by new consumers are evaluated case by case.
+
+---
+
 ## Known compile-time compatibility shims
 
 These aren't APIs per se — they're the definitions our install
