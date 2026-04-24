@@ -326,17 +326,22 @@ int main(void) {
     uint8_t *wire = (uint8_t *)malloc(MAX_WIRE_BYTES);
     if (!wire) return 2;
 
-    for (;;) {
 #if defined(_WIN32)
-        /* getline is POSIX; Windows has its own convention; this
-         * verifier is POSIX-only for now. Falling through to EOF
-         * gives a clean-exit binary on Windows that the CI build
-         * still smoke-runs. */
-        break;
+    /* getline is POSIX; Windows has its own convention. This
+     * verifier is POSIX-only for the stdin loop — the Windows
+     * build compiles to a clean-exit binary that CI can still
+     * smoke-run, and Windows contributors can build + run it
+     * under MSYS/WSL to drive real input. The entire read-
+     * process-report loop sits inside this #else so every
+     * variable it references is defined on both platforms. */
+    (void)line;
+    (void)cap;
+    (void)wire;
 #else
+    for (;;) {
         ssize_t len = getline(&line, &cap, stdin);
         if (len < 0) break;
-#endif
+
         /* Strip trailing newline. */
         while (len > 0 && (line[len - 1] == '\n' || line[len - 1] == '\r'))
             line[--len] = '\0';
@@ -354,6 +359,7 @@ int main(void) {
         emit_report(stdout, &r);
         fflush(stdout);
     }
+#endif
 
     free(line);
     free(wire);
