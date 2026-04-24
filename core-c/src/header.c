@@ -15,6 +15,12 @@ int oigtl_header_unpack(const uint8_t *buf, size_t len,
     if (len < OIGTL_HEADER_SIZE)    return OIGTL_ERR_SHORT_BUFFER;
 
     out->version   = oigtl_read_be_u16(buf + 0);
+    /* Spec defines versions 1, 2, 3. Reject anything else at parse
+     * time so downstream body dispatch never sees an unrecognized
+     * framing version. Matches core-py / core-cpp / core-ts. */
+    if (out->version != 1 && out->version != 2 && out->version != 3) {
+        return OIGTL_ERR_MALFORMED;
+    }
 
     /* type_id: 12-byte null-padded field. */
     {
