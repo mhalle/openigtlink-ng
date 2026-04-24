@@ -1,20 +1,44 @@
 """Typed options for ``oigtl.net.Client`` / ``Server``.
 
 Kept in a private module so the public API surface (imports from
-``oigtl.net.client``) stays compact. Duration fields accept either
-:class:`datetime.timedelta` or a bare ``int`` / ``float`` taken as
-milliseconds — researchers writing quick scripts tend to reach for
-``timeout=500`` rather than ``timeout=timedelta(milliseconds=500)``,
-and both should work.
+``oigtl.net.client``) stays compact.
+
+Duration-unit convention
+------------------------
+
+We settled on **unit-bearing parameter names** rather than a single
+"duration" field with an implicit unit:
+
+- ``timeout=<number>`` → **seconds** (matches ``socket.settimeout``,
+  ``asyncio.wait_for``, ``time.sleep``). ``timedelta`` also accepted.
+- ``timeout_ms=<int>`` → **milliseconds**, integer. Idiomatic when
+  tuning network budgets.
+
+Every duration field on :class:`ClientOptions` accepts both spellings
+— e.g. ``connect_timeout=2.5`` is equivalent to
+``connect_timeout_ms=2500``. Setting both on the same construction
+raises :class:`ValueError`.
+
+(Historical note: before v0.4.0 bare numbers were interpreted as
+milliseconds. That conflicted with the user-facing NET_GUIDE and
+with stdlib convention; tests were already passing ``timeout=2``
+expecting seconds. The switch landed as a breaking change — callers
+relying on the old behaviour should update to the ``_ms`` variant.)
 """
 
 from __future__ import annotations
 
 from datetime import timedelta
 from enum import Enum
-from typing import Annotated
+from typing import Annotated, Any
 
-from pydantic import BaseModel, BeforeValidator, ConfigDict, Field
+from pydantic import (
+    BaseModel,
+    BeforeValidator,
+    ConfigDict,
+    Field,
+    model_validator,
+)
 
 from oigtl.runtime.envelope import Envelope, RawMessage
 
@@ -24,6 +48,7 @@ __all__ = [
     "OfflineOverflow",
     "RawMessage",
     "as_timedelta",
+    "as_timedelta_ms",
 ]
 
 
@@ -52,16 +77,21 @@ def _coerce_to_timedelta(value: object) -> timedelta | None:
     Accepts:
 
     - :class:`~datetime.timedelta` (passed through).
-    - ``int`` / ``float`` — interpreted as milliseconds. Matches the
-      "researcher writes ``timeout=500``" idiom.
+    - ``int`` / ``float`` — interpreted as **seconds** (SI base unit,
+      stdlib convention: ``socket.settimeout``, ``asyncio.wait_for``,
+      ``time.sleep``).
     - ``None`` — passed through; the field's type must include it.
+
+    For a bare count of milliseconds, use the ``_ms`` variant of the
+    field (e.g. ``connect_timeout_ms=500``) or call
+    :func:`as_timedelta_ms` directly.
     """
     if value is None or isinstance(value, timedelta):
         return value  # type: ignore[return-value]
     if isinstance(value, (int, float)):
-        return timedelta(milliseconds=value)
+        return timedelta(seconds=value)
     raise TypeError(
-        f"duration fields accept timedelta or int/float ms, "
+        f"duration fields accept timedelta or int/float seconds, "
         f"got {type(value).__name__}"
     )
 
@@ -76,13 +106,45 @@ OptionalDuration = Annotated[
 def as_timedelta(
     value: timedelta | int | float | None,
 ) -> timedelta | None:
-    """Coerce a duration argument the same way :class:`ClientOptions` does.
+    """Coerce an inline ``timeout=`` argument (seconds or timedelta).
 
     Exposed because :meth:`Client.receive` and friends accept an
     inline ``timeout=`` argument that should honour the same rule as
-    the option-struct fields.
+    the option-struct fields: bare numbers are seconds.
     """
     return _coerce_to_timedelta(value)
+
+
+def as_timedelta_ms(
+    value: timedelta | int | float | None,
+) -> timedelta | None:
+    """Coerce an inline ``timeout_ms=`` argument.
+
+    Counterpart to :func:`as_timedelta` for callers writing
+    ``timeout_ms=500``. ``timedelta`` and ``None`` pass through;
+    bare numbers are interpreted as milliseconds.
+    """
+    if value is None or isinstance(value, timedelta):
+        return value
+    if isinstance(value, (int, float)):
+        return timedelta(milliseconds=value)
+    raise TypeError(
+        f"duration _ms fields accept timedelta or int/float ms, "
+        f"got {type(value).__name__}"
+    )
+
+
+# Set of ClientOptions duration-field names. Kept in sync by hand —
+# the pre-validator below uses it to translate "<name>_ms" → "<name>".
+_DURATION_FIELDS = frozenset({
+    "connect_timeout",
+    "receive_timeout",
+    "send_timeout",
+    "reconnect_initial_backoff",
+    "reconnect_max_backoff",
+    "tcp_keepalive_idle",
+    "tcp_keepalive_interval",
+})
 
 
 class ClientOptions(BaseModel):
@@ -93,13 +155,60 @@ class ClientOptions(BaseModel):
     connection/send/receive fields; resilience fields land in
     Phase 4.
 
-    Duration fields (``connect_timeout``, ``receive_timeout``) accept
-    either a :class:`~datetime.timedelta` or a bare number of
-    milliseconds — ``ClientOptions(receive_timeout=500)`` is
-    equivalent to ``ClientOptions(receive_timeout=timedelta(milliseconds=500))``.
+    Duration fields accept either a :class:`~datetime.timedelta` or
+    a bare number of **seconds**:
+    ``ClientOptions(connect_timeout=2.5)``. For a bare count of
+    milliseconds, pass the ``_ms`` companion:
+    ``ClientOptions(connect_timeout_ms=2500)`` (equivalent). Setting
+    both the base name and its ``_ms`` companion on the same call is
+    an error.
     """
 
-    model_config = ConfigDict(arbitrary_types_allowed=True)
+    model_config = ConfigDict(
+        arbitrary_types_allowed=True,
+        # Reject keyword arguments we don't recognise. The _ms
+        # variants are handled in a pre-validator below, so they're
+        # translated away before the model hits this check.
+        extra="forbid",
+    )
+
+    @model_validator(mode="before")
+    @classmethod
+    def _translate_ms_fields(cls, data: Any) -> Any:
+        """Translate ``<name>_ms=<int>`` into a timedelta on ``<name>``.
+
+        Raises if the caller supplies both the canonical field and
+        its ``_ms`` companion on the same construction — that would
+        be ambiguous.
+        """
+        if not isinstance(data, dict):
+            return data
+        for field in _DURATION_FIELDS:
+            ms_key = f"{field}_ms"
+            if ms_key not in data:
+                continue
+            if field in data:
+                raise ValueError(
+                    f"{field} and {ms_key} are mutually exclusive "
+                    f"(set one or the other, not both)"
+                )
+            ms_value = data.pop(ms_key)
+            # None propagates unchanged (same semantics as None on
+            # the canonical field: "no budget").
+            if ms_value is None:
+                data[field] = None
+            elif isinstance(ms_value, timedelta):
+                # Accept timedelta on the _ms variant too — it would
+                # be strange to reject it. Just pass through.
+                data[field] = ms_value
+            elif isinstance(ms_value, (int, float)):
+                data[field] = timedelta(milliseconds=ms_value)
+            else:
+                raise TypeError(
+                    f"{ms_key} accepts int/float/timedelta/None, "
+                    f"got {type(ms_value).__name__}"
+                )
+        return data
 
     # ---- Connection identity -------------------------------------
     default_device: str = Field(
@@ -113,17 +222,20 @@ class ClientOptions(BaseModel):
 
     # ---- Timeouts -------------------------------------------------
     connect_timeout: OptionalDuration = timedelta(seconds=10)
-    """Time budget for the initial TCP connect. ``None`` = no limit."""
+    """Time budget for the initial TCP connect. ``None`` = no limit.
+    Bare numbers are seconds; use ``connect_timeout_ms`` for ms."""
 
     receive_timeout: OptionalDuration = None
     """Default wall-clock budget for ``receive()`` / ``receive_any()``
     when the caller doesn't pass a per-call timeout. ``None`` =
-    block forever."""
+    block forever. Bare numbers are seconds; use
+    ``receive_timeout_ms`` for ms."""
 
     send_timeout: OptionalDuration = None
     """Budget for a blocked ``send()`` when the offline buffer is full
     and :attr:`offline_overflow_policy` is ``BLOCK``. ``None`` = wait
-    forever. Has no effect on other policies."""
+    forever. Has no effect on other policies. Bare numbers are
+    seconds; use ``send_timeout_ms`` for ms."""
 
     # ---- Framer policy -------------------------------------------
     max_message_size: int = Field(
@@ -150,10 +262,12 @@ class ClientOptions(BaseModel):
 
     reconnect_initial_backoff: Duration = timedelta(milliseconds=200)
     """First-retry wait. Doubles each attempt up to
-    :attr:`reconnect_max_backoff`."""
+    :attr:`reconnect_max_backoff`. Bare numbers are seconds; use
+    ``reconnect_initial_backoff_ms`` for ms."""
 
     reconnect_max_backoff: Duration = timedelta(seconds=30)
-    """Upper bound on the per-attempt delay."""
+    """Upper bound on the per-attempt delay. Bare numbers are
+    seconds; use ``reconnect_max_backoff_ms`` for ms."""
 
     reconnect_backoff_jitter: float = Field(
         default=0.25,
@@ -187,10 +301,12 @@ class ClientOptions(BaseModel):
     )
 
     tcp_keepalive_idle: Duration = timedelta(seconds=30)
-    """Seconds of idle before the first keepalive probe is sent."""
+    """Seconds of idle before the first keepalive probe is sent.
+    Bare numbers are seconds; use ``tcp_keepalive_idle_ms`` for ms."""
 
     tcp_keepalive_interval: Duration = timedelta(seconds=10)
-    """Seconds between keepalive probes once started."""
+    """Seconds between keepalive probes once started. Bare numbers
+    are seconds; use ``tcp_keepalive_interval_ms`` for ms."""
 
     tcp_keepalive_count: int = Field(
         default=3, ge=1,

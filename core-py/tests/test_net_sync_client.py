@@ -224,7 +224,12 @@ def test_sync_preserves_exception_types():
 
 
 def test_sync_duration_coercion():
-    """Int ms and timedelta produce the same ClientOptions."""
-    opt1 = ClientOptions(receive_timeout=250)
-    opt2 = ClientOptions(receive_timeout=timedelta(milliseconds=250))
-    assert opt1.receive_timeout == opt2.receive_timeout
+    """Unit-bearing duration spellings all yield the same timedelta."""
+    # Bare number on the canonical name → seconds.
+    opt_seconds = ClientOptions(receive_timeout=0.25)
+    # Milliseconds via the _ms companion.
+    opt_ms = ClientOptions(receive_timeout_ms=250)
+    # Explicit timedelta.
+    opt_td = ClientOptions(receive_timeout=timedelta(milliseconds=250))
+    assert opt_seconds.receive_timeout == opt_ms.receive_timeout
+    assert opt_ms.receive_timeout == opt_td.receive_timeout

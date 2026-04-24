@@ -613,25 +613,41 @@ class Server:
         return self
 
     def disconnect_if_silent_for(
-        self, timeout: timedelta | float | int,
+        self,
+        timeout: timedelta | float | int | None = None,
+        *,
+        timeout_ms: float | int | None = None,
     ) -> "Server":
         """Close a peer that hasn't sent any bytes in *timeout*.
 
-        Accepts :class:`~datetime.timedelta`, seconds as float, or
-        milliseconds as int — mirrors the ``ClientOptions`` convention.
-        ``0`` disables (default).
+        Pass **one** of ``timeout`` (``timedelta`` or a number of
+        seconds) or ``timeout_ms`` (a number of milliseconds). Setting
+        both raises :class:`ValueError`. ``0`` disables (default).
         """
-        if isinstance(timeout, timedelta):
+        if timeout is not None and timeout_ms is not None:
+            raise ValueError(
+                "disconnect_if_silent_for accepts timeout OR timeout_ms, "
+                "not both"
+            )
+        if timeout_ms is not None:
+            if not isinstance(timeout_ms, (int, float)) or isinstance(
+                timeout_ms, bool,
+            ):
+                raise TypeError(
+                    f"timeout_ms expects int/float, got "
+                    f"{type(timeout_ms).__name__}"
+                )
+            secs = float(timeout_ms) / 1000.0
+        elif isinstance(timeout, timedelta):
             secs = timeout.total_seconds()
-        elif isinstance(timeout, int) and not isinstance(timeout, bool):
-            # Int = milliseconds (matches ClientOptions convention).
-            secs = timeout / 1000.0
-        elif isinstance(timeout, float):
+        elif isinstance(timeout, (int, float)) and not isinstance(
+            timeout, bool,
+        ):
             secs = float(timeout)
         else:
             raise TypeError(
-                f"disconnect_if_silent_for expects timedelta/int ms/"
-                f"float seconds, got {type(timeout).__name__}"
+                f"disconnect_if_silent_for expects timedelta or a "
+                f"number of seconds, got {type(timeout).__name__}"
             )
         if secs < 0:
             raise ValueError("timeout must be >= 0")
