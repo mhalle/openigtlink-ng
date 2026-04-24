@@ -109,16 +109,29 @@ std::vector<MetadataEntry> unpack_metadata(
 PackedMetadata pack_metadata(const std::vector<MetadataEntry>& entries) {
     PackedMetadata out;
 
-    // Size validation. The wire format encodes the count as u16, each
-    // key size as u16, and each value size as u32. Silently casting
-    // oversize values to those widths (as this function used to do)
-    // truncates the *index* numbers but copies the untruncated
-    // payload bytes below — a heap overflow on the pre-sized body
-    // buffer. Reject at the source instead.
-    if (entries.size() > std::numeric_limits<std::uint16_t>::max()) {
+    // Size validation. Two layers of wire-format limits to enforce:
+    //
+    // 1. Per-entry: each key_size is u16 and each value_size is u32.
+    //    Oversize entries silently truncated would hand the memcpy
+    //    loop a mismatched body buffer — heap overflow. Reject at
+    //    the source.
+    //
+    // 2. Aggregate: the extended-header fields metadata_header_size
+    //    (u16) and metadata_size (u32) encode the *packed* totals.
+    //    The count cap alone is insufficient — with 8192 entries,
+    //    index_bytes is 2 + 8192*8 = 65538 bytes, above u16, and
+    //    the caller's cast truncates it to 2. The cap that keeps
+    //    index_bytes in u16 is therefore count <= 8191, not 65535.
+    //    Same reasoning for body: accumulate in u64 and reject when
+    //    the sum exceeds u32 even if each individual value fits.
+    constexpr std::size_t kMaxCount =
+        (std::numeric_limits<std::uint16_t>::max() - kCountFieldSize)
+        / kIndexEntrySize;  // 8191
+    if (entries.size() > kMaxCount) {
         throw oigtl::error::MalformedMessageError(
-            "metadata: too many entries (max 65535)");
+            "metadata: too many entries (max 8191 — index must fit u16)");
     }
+    std::uint64_t body_total = 0;
     for (const auto& m : entries) {
         if (m.key.size() > std::numeric_limits<std::uint16_t>::max()) {
             throw oigtl::error::MalformedMessageError(
@@ -127,6 +140,12 @@ PackedMetadata pack_metadata(const std::vector<MetadataEntry>& entries) {
         if (m.value.size() > std::numeric_limits<std::uint32_t>::max()) {
             throw oigtl::error::MalformedMessageError(
                 "metadata: value size exceeds u32 (max 4 GiB)");
+        }
+        body_total += static_cast<std::uint64_t>(m.key.size())
+                    + static_cast<std::uint64_t>(m.value.size());
+        if (body_total > std::numeric_limits<std::uint32_t>::max()) {
+            throw oigtl::error::MalformedMessageError(
+                "metadata: aggregate body size exceeds u32 (max 4 GiB)");
         }
     }
 

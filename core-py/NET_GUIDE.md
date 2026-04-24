@@ -13,10 +13,13 @@ Python API is built researcher-first, not C++-in-Python:
 - **One function per researcher question.** "What IP should I
   share?" → `interfaces.primary_address()`. "What subnets am I
   on?" → `interfaces.subnets()`.
-- **Duration fields use unit-bearing names.** `timeout=2` means
-  2 **seconds** (stdlib convention: `socket.settimeout`,
-  `asyncio.wait_for`). For milliseconds, pass the `_ms` variant:
-  `timeout_ms=500`. `timedelta` always works.
+- **Duration parameters use unit-bearing names.** Bare numbers are
+  seconds (stdlib convention: `socket.settimeout`, `asyncio.wait_for`).
+  For milliseconds, use the `_ms` companion. `timedelta` always works.
+  Applies both to `ClientOptions` fields (`receive_timeout=2.0`
+  or `receive_timeout_ms=2000`) and to inline receive APIs
+  (`c.receive(Status, timeout=2)` or `c.receive(Status, timeout_ms=2000)`).
+  Setting both variants on the same call raises `ValueError`.
 
 If you're writing a new research script, start here. If you
 need API parity across the C++ and Python sides of the same

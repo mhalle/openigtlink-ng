@@ -49,6 +49,7 @@ __all__ = [
     "RawMessage",
     "as_timedelta",
     "as_timedelta_ms",
+    "resolve_timeout",
 ]
 
 
@@ -132,6 +133,27 @@ def as_timedelta_ms(
         f"duration _ms fields accept timedelta or int/float ms, "
         f"got {type(value).__name__}"
     )
+
+
+def resolve_timeout(
+    timeout: timedelta | int | float | None,
+    timeout_ms: timedelta | int | float | None,
+) -> timedelta | None:
+    """Pick one of ``timeout`` (seconds) or ``timeout_ms`` (ms).
+
+    Helper for the inline ``receive`` / ``receive_any`` APIs that
+    accept both spellings. Setting both raises ``ValueError``.
+    Returns ``None`` if neither is set — callers fall back to the
+    option-struct default.
+    """
+    if timeout is not None and timeout_ms is not None:
+        raise ValueError(
+            "pass timeout= (seconds) OR timeout_ms= (milliseconds), "
+            "not both"
+        )
+    if timeout_ms is not None:
+        return as_timedelta_ms(timeout_ms)
+    return as_timedelta(timeout)
 
 
 # Set of ClientOptions duration-field names. Kept in sync by hand —

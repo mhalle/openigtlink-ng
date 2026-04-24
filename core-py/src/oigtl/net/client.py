@@ -49,6 +49,7 @@ from oigtl.net._options import (
     Envelope,
     RawMessage,
     as_timedelta,
+    resolve_timeout,
 )
 from oigtl.net._resilience import (
     OfflineBuffer,
@@ -586,9 +587,16 @@ class Client:
         self,
         *,
         timeout: timedelta | float | int | None = None,
+        timeout_ms: float | int | None = None,
     ) -> Envelope[BaseModel]:
-        """Receive the next message of any registered type."""
-        budget = as_timedelta(timeout) or self._options.receive_timeout
+        """Receive the next message of any registered type.
+
+        Pass ``timeout=<seconds>`` or ``timeout_ms=<ms>`` to override
+        the default ``receive_timeout``. Setting both raises
+        ``ValueError``.
+        """
+        budget = resolve_timeout(timeout, timeout_ms) \
+            or self._options.receive_timeout
         coro = self._receive_with_reconnect()
         if budget is None:
             return await coro
@@ -606,8 +614,14 @@ class Client:
         message_type: type[M],
         *,
         timeout: timedelta | float | int | None = None,
+        timeout_ms: float | int | None = None,
     ) -> Envelope[M]:
-        """Receive until a message of *message_type* arrives."""
+        """Receive until a message of *message_type* arrives.
+
+        Pass ``timeout=<seconds>`` or ``timeout_ms=<ms>`` to override
+        the default ``receive_timeout``. Setting both raises
+        ``ValueError``.
+        """
         expected_type_id = getattr(message_type, "TYPE_ID", None)
         if not isinstance(expected_type_id, str):
             raise TypeError(
@@ -615,7 +629,8 @@ class Client:
                 f"generated OpenIGTLink message class?"
             )
 
-        budget = as_timedelta(timeout) or self._options.receive_timeout
+        budget = resolve_timeout(timeout, timeout_ms) \
+            or self._options.receive_timeout
         loop = asyncio.get_running_loop()
         deadline = (
             loop.time() + budget.total_seconds()
