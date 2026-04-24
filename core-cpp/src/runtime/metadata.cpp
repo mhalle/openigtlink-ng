@@ -7,6 +7,7 @@
 #include "oigtl/runtime/metadata.hpp"
 
 #include <cstring>
+#include <limits>
 #include <sstream>
 
 #include "oigtl/runtime/byte_order.hpp"
@@ -107,6 +108,27 @@ std::vector<MetadataEntry> unpack_metadata(
 
 PackedMetadata pack_metadata(const std::vector<MetadataEntry>& entries) {
     PackedMetadata out;
+
+    // Size validation. The wire format encodes the count as u16, each
+    // key size as u16, and each value size as u32. Silently casting
+    // oversize values to those widths (as this function used to do)
+    // truncates the *index* numbers but copies the untruncated
+    // payload bytes below — a heap overflow on the pre-sized body
+    // buffer. Reject at the source instead.
+    if (entries.size() > std::numeric_limits<std::uint16_t>::max()) {
+        throw oigtl::error::MalformedMessageError(
+            "metadata: too many entries (max 65535)");
+    }
+    for (const auto& m : entries) {
+        if (m.key.size() > std::numeric_limits<std::uint16_t>::max()) {
+            throw oigtl::error::MalformedMessageError(
+                "metadata: key size exceeds u16 (max 65535 bytes)");
+        }
+        if (m.value.size() > std::numeric_limits<std::uint32_t>::max()) {
+            throw oigtl::error::MalformedMessageError(
+                "metadata: value size exceeds u32 (max 4 GiB)");
+        }
+    }
 
     // Always emit the 2-byte count field, even for empty metadata.
     // This matches the wire layout: a v2/v3 message with no metadata
