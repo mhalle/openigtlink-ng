@@ -296,6 +296,13 @@ set_tests_properties(negative_corpus PROPERTIES
     WORKING_DIRECTORY "${CMAKE_CURRENT_SOURCE_DIR}")
 
 # Transport Phase 1 — loopback Connection + Framer + Future contract.
+add_executable(oigtl_metadata_overflow_test
+    tests/metadata_overflow_test.cpp
+)
+target_link_libraries(oigtl_metadata_overflow_test
+    PRIVATE oigtl_runtime)
+add_test(NAME metadata_overflow COMMAND oigtl_metadata_overflow_test)
+
 add_executable(oigtl_transport_loopback_test
     tests/transport_loopback_test.cpp
 )
