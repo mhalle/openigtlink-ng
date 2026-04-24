@@ -199,6 +199,32 @@ async def test_receive_timeout_ms_variant():
         await srv.stop()
 
 
+async def test_receive_zero_timeout_does_not_fall_back_to_default():
+    """``timeout=0`` means "fail immediately", not "use the default".
+
+    Regression: timedelta(0) is falsy in Python, and an earlier
+    version used ``resolve_timeout(...) or self._options.receive_timeout``
+    — which treated 0 as "not provided" and could then wait forever
+    (default receive_timeout is None). Make sure a caller asking for
+    zero gets zero, independent of options.
+    """
+    async def handler(reader, writer):
+        await asyncio.sleep(5)
+
+    srv = _LoopbackServer(handler)
+    port = await srv.start()
+    try:
+        # options default receive_timeout is None ("block forever").
+        # A zero override must still time out promptly.
+        async with await Client.connect("127.0.0.1", port) as c:
+            with pytest.raises(NetTimeoutError):
+                await c.receive(Status, timeout_ms=0)
+            with pytest.raises(NetTimeoutError):
+                await c.receive(Status, timeout=0)
+    finally:
+        await srv.stop()
+
+
 async def test_receive_rejects_both_timeout_spellings():
     """Setting both ``timeout=`` and ``timeout_ms=`` is ambiguous."""
     async def handler(reader, writer):

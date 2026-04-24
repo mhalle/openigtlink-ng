@@ -595,8 +595,14 @@ class Client:
         the default ``receive_timeout``. Setting both raises
         ``ValueError``.
         """
-        budget = resolve_timeout(timeout, timeout_ms) \
-            or self._options.receive_timeout
+        # Explicit is-not-None — a caller-supplied zero budget must
+        # not silently fall back to the option default (which could
+        # be None and wait forever). timedelta(0) is falsy in Python,
+        # so `... or self._options.receive_timeout` would promote an
+        # explicit zero to "no override".
+        override = resolve_timeout(timeout, timeout_ms)
+        budget = override if override is not None \
+            else self._options.receive_timeout
         coro = self._receive_with_reconnect()
         if budget is None:
             return await coro
@@ -629,8 +635,10 @@ class Client:
                 f"generated OpenIGTLink message class?"
             )
 
-        budget = resolve_timeout(timeout, timeout_ms) \
-            or self._options.receive_timeout
+        # See receive_any for why this is an explicit is-not-None.
+        override = resolve_timeout(timeout, timeout_ms)
+        budget = override if override is not None \
+            else self._options.receive_timeout
         loop = asyncio.get_running_loop()
         deadline = (
             loop.time() + budget.total_seconds()
