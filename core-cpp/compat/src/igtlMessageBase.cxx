@@ -8,6 +8,7 @@
 #include <algorithm>
 #include <array>
 #include <cstring>
+#include <limits>
 #include <stdexcept>
 
 #include "oigtl/runtime/error.hpp"
@@ -222,7 +223,18 @@ int MessageBase::Unpack(int crccheck) {
     status |= UNPACK_HEADER;
 
     // 2) If the full body isn't present yet, stop after header.
-    if (m_Wire.size() < rt::kHeaderSize + hdr.body_size) {
+    // Overflow guard: a hostile/malformed header can announce a
+    // body_size that wraps size_t when added to kHeaderSize. Reject
+    // by reporting "body not yet available" (caller keeps the header
+    // status and may decide what to do). We deliberately don't raise
+    // because upstream's Unpack() is expected to return a status
+    // bitmask, not throw on wire-level mismatches.
+    if (hdr.body_size >
+        std::numeric_limits<std::size_t>::max() - rt::kHeaderSize) {
+        return status;
+    }
+    if (m_Wire.size() <
+        rt::kHeaderSize + static_cast<std::size_t>(hdr.body_size)) {
         return status;
     }
 
@@ -324,6 +336,19 @@ void MessageBase::AllocateBuffer() {
     // caller has already deposited via InitPack+recv. Upstream's
     // AllocateBuffer does the same: it grows the buffer so a
     // body recv can land in wire[58..58+body_size].
+    //
+    // Overflow guard: m_BodySizeToRead is peer-supplied (populated
+    // from the wire header). A hostile value near UINT64_MAX would
+    // wrap size_t on the addition and hand vector::resize a small
+    // number — silently shrinking the buffer and then letting a
+    // subsequent body recv overrun the heap. Throw instead; the
+    // caller can catch std::length_error and refuse the connection.
+    if (m_BodySizeToRead >
+        std::numeric_limits<std::size_t>::max() -
+            oigtl::runtime::kHeaderSize) {
+        throw std::length_error(
+            "MessageBase::AllocateBuffer: body_size would overflow");
+    }
     m_Wire.resize(
         oigtl::runtime::kHeaderSize +
             static_cast<std::size_t>(m_BodySizeToRead),

@@ -420,6 +420,18 @@ add_test(NAME compat_subclass_protected_surface
 set_tests_properties(compat_subclass_protected_surface
     PROPERTIES TIMEOUT 30)
 
+# Overflow-guard regression: Unpack + AllocateBuffer must reject
+# peer-supplied body_size values that wrap size_t.
+add_executable(igtl_compat_messagebase_overflow_test
+    compat/tests/messagebase_overflow_test.cxx
+)
+target_link_libraries(igtl_compat_messagebase_overflow_test
+    PRIVATE igtl_compat oigtl_runtime)
+add_test(NAME compat_messagebase_overflow
+         COMMAND igtl_compat_messagebase_overflow_test)
+set_tests_properties(compat_messagebase_overflow
+    PROPERTIES TIMEOUT 30)
+
 # -----------------------------------------------------------------
 # Phase 8 — upstream example programs built DIRECTLY against the
 # shim (no upstream library in the link). Proves the shim is a
