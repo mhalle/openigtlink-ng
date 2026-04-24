@@ -13,9 +13,16 @@ int oigtl_null_padded_length(const uint8_t *src, size_t width) {
     if (src == NULL) {
         return OIGTL_ERR_INVALID_ARG;
     }
-    /* Find the first null. */
+    /* Scan for the first null. Along the way, reject any byte >= 0x80
+     * — these fields (type_id, device_name) are declared ASCII in the
+     * spec, and Python / C++ / TS codecs all reject non-ASCII at
+     * unpack time. Tolerating them here was a divergence and blocked
+     * the negative-corpus contract. */
     size_t k = 0;
     while (k < width && src[k] != 0) {
+        if (src[k] >= 0x80) {
+            return OIGTL_ERR_MALFORMED;
+        }
         ++k;
     }
     /* Anything after the first null must also be null, else the

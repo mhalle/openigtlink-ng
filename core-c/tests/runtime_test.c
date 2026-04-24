@@ -145,6 +145,56 @@ static void test_null_padded(void) {
 
     const uint8_t no_null[4] = {'A', 'B', 'C', 'D'};
     REQUIRE(oigtl_null_padded_length(no_null, 4) == 4);
+
+    /* Non-ASCII byte before the first NUL is rejected — declared-
+     * ASCII string fields must stay in 0x00..0x7F. Matches
+     * core-py / core-cpp / core-ts. */
+    const uint8_t non_ascii[4] = {'A', 0x80, 0, 0};
+    REQUIRE(oigtl_null_padded_length(non_ascii, 4) == OIGTL_ERR_MALFORMED);
+
+    const uint8_t high_bit[4] = {0xC3, 0xA9, 0, 0};  /* UTF-8 "é" */
+    REQUIRE(oigtl_null_padded_length(high_bit, 4) == OIGTL_ERR_MALFORMED);
+
+    /* 0x7F (DEL) is the boundary — still ASCII, still accepted. */
+    const uint8_t boundary[4] = {0x7F, 0, 0, 0};
+    REQUIRE(oigtl_null_padded_length(boundary, 4) == 1);
+}
+
+/* Regression: protocol version must be in {1, 2, 3}. Previously the
+ * parser accepted any uint16 value, diverging from core-py / -cpp /
+ * -ts and from the negative-corpus contract. */
+static void test_header_unsupported_version(void) {
+    fprintf(stderr, "test_header_unsupported_version\n");
+
+    /* Build a valid header, then overwrite the version field. */
+    uint8_t wire[OIGTL_HEADER_SIZE];
+    const int rc = oigtl_header_pack(wire, sizeof wire,
+                                     /*version=*/1,
+                                     "STATUS", "dev",
+                                     /*timestamp=*/0,
+                                     /*body=*/NULL, 0);
+    REQUIRE(rc == OIGTL_OK);
+
+    /* version=0 — never valid. */
+    wire[0] = 0; wire[1] = 0;
+    oigtl_header_t out;
+    REQUIRE(oigtl_header_unpack(wire, sizeof wire, &out)
+            == OIGTL_ERR_MALFORMED);
+
+    /* version=4 — outside the supported set. */
+    wire[0] = 0; wire[1] = 4;
+    REQUIRE(oigtl_header_unpack(wire, sizeof wire, &out)
+            == OIGTL_ERR_MALFORMED);
+
+    /* version=0xFFFF — uint16 max, explicitly hostile. */
+    wire[0] = 0xFF; wire[1] = 0xFF;
+    REQUIRE(oigtl_header_unpack(wire, sizeof wire, &out)
+            == OIGTL_ERR_MALFORMED);
+
+    /* version=2 — spec-conformant, must still succeed. */
+    wire[0] = 0; wire[1] = 2;
+    REQUIRE(oigtl_header_unpack(wire, sizeof wire, &out) == OIGTL_OK);
+    REQUIRE(out.version == 2);
 }
 
 static void test_copy_string(void) {
@@ -168,6 +218,7 @@ int main(void) {
     test_header_short_buffer();
     test_header_field_range();
     test_null_padded();
+    test_header_unsupported_version();
     test_copy_string();
 
     if (g_fail == 0) {
