@@ -303,6 +303,13 @@ target_link_libraries(oigtl_transport_loopback_test
     PRIVATE oigtl_transport oigtl_runtime)
 add_test(NAME transport_loopback COMMAND oigtl_transport_loopback_test)
 
+add_executable(oigtl_framer_overflow_test
+    tests/framer_overflow_test.cpp
+)
+target_link_libraries(oigtl_framer_overflow_test
+    PRIVATE oigtl_transport oigtl_runtime)
+add_test(NAME framer_overflow COMMAND oigtl_framer_overflow_test)
+
 # Transport Phase 2 — TCP backend over asio.
 add_executable(oigtl_transport_tcp_test
     tests/transport_tcp_test.cpp

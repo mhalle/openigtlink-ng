@@ -11,6 +11,7 @@
 #include "oigtl/transport/framer.hpp"
 
 #include <cstring>
+#include <limits>
 
 #include "oigtl/runtime/error.hpp"
 #include "oigtl/runtime/header.hpp"
@@ -43,7 +44,21 @@ class V3Framer final : public Framer {
                 "body_size exceeds configured max_message_size");
         }
 
-        const std::size_t total = runtime::kHeaderSize + header.body_size;
+        // Overflow guard. Even with max_body_size_==0 ("no policy
+        // cap") we must never let `kHeaderSize + body_size` wrap
+        // size_t — the wrapped value would pass the short-frame
+        // check below and then drive out-of-range iterator
+        // arithmetic on `buffer.begin() + kHeaderSize + body_size`.
+        // A peer announcing body_size near UINT64_MAX is hostile;
+        // reject with the same FramingError the cap check uses.
+        if (header.body_size >
+            std::numeric_limits<std::size_t>::max() - runtime::kHeaderSize) {
+            throw FramingError(
+                "body_size would overflow total frame size");
+        }
+
+        const std::size_t total = runtime::kHeaderSize +
+            static_cast<std::size_t>(header.body_size);
         if (buffer.size() < total) return std::nullopt;
 
         Incoming inc;
