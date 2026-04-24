@@ -65,15 +65,21 @@ def _register_differential(subparsers: argparse._SubParsersAction) -> None:
     p.add_argument(
         "--oracle",
         action="append", dest="oracles",
-        choices=["py-ref", "py", "py-noarray", "cpp", "ts", "upstream"],
+        choices=["py-ref", "py", "py-noarray", "cpp", "ts",
+                 "upstream", "c-upstream"],
         help=(
             "Oracle to include; may be given multiple times. "
             "py-ref = reference dict codec (fastest, in-process). "
             "py = typed Python classes through numpy path. "
             "py-noarray = same but with OIGTL_NO_NUMPY=1 forcing "
             "the array.array fallback. cpp, ts: external CLIs. "
-            "upstream = pinned OpenIGTLink reference library "
-            "(gated — only runs on inputs another oracle accepted). "
+            "upstream = pinned OpenIGTLink reference library C++ "
+            "layer (gated — only runs on inputs another oracle "
+            "accepted). c-upstream = pinned library's pure-C "
+            "byte layer (igtlutil), TRANSFORM and STATUS only, "
+            "v1 only — an independent low-level verifier, "
+            "plugged in here because the flag is historically "
+            "named `--oracle`. "
             "Default: py-ref only."
         ),
     )
@@ -103,6 +109,19 @@ def _register_differential(subparsers: argparse._SubParsersAction) -> None:
             "Required when --oracle upstream is used. Default: "
             "<repo>/corpus-tools/reference-libs/upstream-oracle/"
             "build/upstream_oracle_cli."
+        ),
+    )
+    p.add_argument(
+        "--c-upstream-binary",
+        type=Path, default=None,
+        help=(
+            "Path to the built `oigtl_c_upstream_verifier_cli` "
+            "binary. Required when --oracle c-upstream is used. "
+            "(`--oracle` is the pre-existing flag name; strictly "
+            "the c-upstream entry is a differential verifier, not "
+            "an authoritative oracle.) "
+            "Default: <repo>/core-cpp/build/"
+            "oigtl_c_upstream_verifier_cli."
         ),
     )
     p.add_argument(
@@ -305,6 +324,9 @@ def _cmd_differential(args: argparse.Namespace) -> int:
         repo_root / "corpus-tools" / "reference-libs" / "upstream-oracle"
         / "build" / "upstream_oracle_cli"
     )
+    c_upstream_binary = args.c_upstream_binary or (
+        repo_root / "core-cpp" / "build" / "oigtl_c_upstream_oracle_cli"
+    )
     core_py_dir = repo_root / "core-py"
     log_file = args.log_file or (
         repo_root / "security" / "disagreements" / f"{args.seed}.jsonl"
@@ -319,6 +341,9 @@ def _cmd_differential(args: argparse.Namespace) -> int:
             cpp_binary=cpp_binary if "cpp" in oracles else None,
             ts_script=ts_script if "ts" in oracles else None,
             upstream_binary=upstream_binary if "upstream" in oracles else None,
+            c_upstream_binary=(
+                c_upstream_binary if "c-upstream" in oracles else None
+            ),
             core_py_dir=(
                 core_py_dir
                 if ("py" in oracles or "py-noarray" in oracles)
