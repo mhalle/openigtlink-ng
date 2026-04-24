@@ -135,6 +135,46 @@ def _spawn_ts(script: Path) -> OracleSubprocess:
                             stdin=proc.stdin, stdout=proc.stdout)
 
 
+def _spawn_c_upstream_verifier(binary: Path) -> OracleSubprocess:
+    """Spawn the c-upstream verifier CLI.
+
+    Uses upstream OpenIGTLink's pure-C byte layer as an
+    independent low-level differential-check participant.
+    Supports TRANSFORM and STATUS at v1 only (see
+    security/verifiers/c-upstream/README.md). Not gated — the CLI
+    emits ok=false reports for unsupported types and versions,
+    and the runner treats those as skip-for-this-participant
+    rather than disagreements.
+
+    Nomenclature note: this slots into the runner's
+    OracleSubprocess machinery like the other differential
+    participants (cpp, ts, upstream). In strict testing
+    terminology it's a *verifier*, not an *oracle* — py-ref plus
+    the upstream test fixtures are the authoritative oracle.
+    """
+    if not binary.is_file():
+        raise FileNotFoundError(
+            f"c-upstream verifier CLI not found at {binary}. Build it with "
+            "`cmake --build core-cpp/build --target "
+            "oigtl_c_upstream_verifier_cli`. The target is gated on the "
+            "upstream clone being present at "
+            "corpus-tools/reference-libs/openigtlink-upstream/."
+        )
+    proc = subprocess.Popen(
+        [str(binary)],
+        stdin=subprocess.PIPE,
+        stdout=subprocess.PIPE,
+        stderr=sys.stderr,
+        text=True,
+        bufsize=1,
+        encoding="utf-8",
+        errors="replace",
+    )
+    assert proc.stdin is not None and proc.stdout is not None
+    return OracleSubprocess(name="c-upstream", process=proc,
+                            stdin=proc.stdin, stdout=proc.stdout)
+
+
 def _spawn_upstream(binary: Path) -> "UpstreamOracle":
     """Spawn the upstream reference-library oracle subprocess.
 
@@ -308,6 +348,12 @@ def _compare(reports: dict[str, dict[str, Any]]) -> list[str]:
       adversarial input and its crashes aren't findings we own.
     - If filtering leaves upstream with nothing to compare, the rest
       of the oracle set is compared among themselves.
+
+    Special handling for the c-upstream oracle:
+    - It only covers TRANSFORM and STATUS at v1 framing. Reports
+      flagged "unsupported type_id" or "out of scope (v1 only)" are
+      filtered out for c-upstream only — the oracle is deliberately
+      narrow, not a conformance divergence.
     """
     # Defensively filter out upstream's known non-findings.
     filtered = dict(reports)
@@ -320,6 +366,17 @@ def _compare(reports: dict[str, dict[str, Any]]) -> list[str]:
             or error.startswith("upstream quirk:")
         ):
             filtered.pop("upstream")
+
+    # c-upstream is a deliberately narrow oracle (TRANSFORM +
+    # STATUS, v1 only). Skip inputs outside its scope.
+    cu = filtered.get("c-upstream")
+    if cu is not None:
+        error = cu.get("error", "")
+        if (
+            error.startswith("unsupported type_id")
+            or "out of scope" in error
+        ):
+            filtered.pop("c-upstream")
 
     if len(filtered) < 2:
         # Only one (or zero) oracle left after filtering — nothing to
@@ -381,6 +438,7 @@ def run(
     cpp_binary: Path | None,
     ts_script: Path | None,
     upstream_binary: Path | None = None,
+    c_upstream_binary: Path | None = None,
     core_py_dir: Path | None = None,
     disagreements_log: Path | None = None,
     progress_every: int = 1000,
@@ -432,6 +490,13 @@ def run(
                 "upstream oracle selected but upstream_binary not provided"
             )
         handles["upstream"] = _spawn_upstream(upstream_binary)
+    if "c-upstream" in oracles:
+        if c_upstream_binary is None:
+            raise ValueError(
+                "c-upstream oracle selected but c_upstream_binary "
+                "not provided"
+            )
+        handles["c-upstream"] = _spawn_c_upstream_verifier(c_upstream_binary)
 
     # Upstream is a *gated* oracle — it only sees inputs that at
     # least one other oracle accepted. This avoids feeding upstream's

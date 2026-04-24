@@ -472,6 +472,83 @@ if(TARGET upstream_ReceiveServer_via_shim
         PROPERTIES TIMEOUT 15)
 endif()
 
+# ---------------------------------------------------------------------------
+# c-upstream verifier — independent differential-check participant
+# built from upstream's igtlutil C source files (the byte-level codec
+# one layer below upstream's C++ API). Plugged into the differential
+# fuzzer alongside py-ref (the authoritative oracle) and our py /
+# cpp / ts implementations; serves as a second, lower-level reference
+# codec that disagrees with us exactly where upstream's C layer
+# diverges from spec. Opt-in: only if the upstream clone is present
+# (CI arranges this via the "Clone upstream OpenIGTLink" step).
+# Source + README in security/verifiers/c-upstream/. No dependency on
+# upstream's CMake configure — we ship a minimal igtlConfigure.h
+# stand-in there.
+# ---------------------------------------------------------------------------
+set(IGTL_UPSTREAM_ROOT
+    "${CMAKE_CURRENT_SOURCE_DIR}/../corpus-tools/reference-libs/openigtlink-upstream"
+    CACHE PATH "Path to upstream OpenIGTLink source tree (for c-upstream verifier)")
+if(EXISTS "${IGTL_UPSTREAM_ROOT}/Source/igtlutil/igtl_transform.c")
+    # The project() declaration above is CXX-only. Enable C here so
+    # we can compile upstream's pure-C igtlutil sources. Scoped — no
+    # impact on any other target.
+    enable_language(C)
+    # Compile upstream's pure-C byte layer into a static lib we link
+    # the verifier CLI against. These are the 24 files under Source/
+    # igtlutil; we pick the ones the CLI actually uses (transform,
+    # status, header, util, and the shared CRC). A follow-up that
+    # broadens verifier coverage can add more.
+    add_library(oigtl_c_upstream_static STATIC
+        "${IGTL_UPSTREAM_ROOT}/Source/igtlutil/igtl_header.c"
+        "${IGTL_UPSTREAM_ROOT}/Source/igtlutil/igtl_transform.c"
+        "${IGTL_UPSTREAM_ROOT}/Source/igtlutil/igtl_status.c"
+        "${IGTL_UPSTREAM_ROOT}/Source/igtlutil/igtl_util.c"
+    )
+    # Include order matters: our shim directory FIRST so our
+    # igtlConfigure.h masquerades for upstream's (generated) one.
+    target_include_directories(oigtl_c_upstream_static PUBLIC
+        "${CMAKE_CURRENT_SOURCE_DIR}/../security/verifiers/c-upstream"
+        "${IGTL_UPSTREAM_ROOT}/Source/igtlutil")
+    # IGTLSTATIC disables the dllimport/dllexport attributes in
+    # upstream's igtl_win32header.h. On MSVC without this flag,
+    # igtl_export expands to __declspec(dllimport), which makes
+    # every function definition a C2491 "definition of dllimport
+    # function not allowed." We're compiling upstream's sources
+    # into a plain static library; the attributes aren't wanted.
+    target_compile_definitions(oigtl_c_upstream_static PUBLIC
+        IGTLSTATIC)
+    # Upstream C code has legacy conventions — signed/unsigned cmps,
+    # unused params, mild sign-conversion. We're not patching upstream.
+    if(CMAKE_C_COMPILER_ID MATCHES "GNU|Clang|AppleClang")
+        target_compile_options(oigtl_c_upstream_static PRIVATE
+            -w)  # all warnings off for upstream sources
+    elseif(MSVC)
+        target_compile_options(oigtl_c_upstream_static PRIVATE /W0)
+    endif()
+
+    add_executable(oigtl_c_upstream_verifier_cli
+        "${CMAKE_CURRENT_SOURCE_DIR}/../security/verifiers/c-upstream/verifier_cli.c")
+    target_link_libraries(oigtl_c_upstream_verifier_cli PRIVATE
+        oigtl_c_upstream_static)
+    # Our CLI source is held to C11 with our own warning discipline;
+    # only the upstream TUs get the -w relaxation above.
+    set_target_properties(oigtl_c_upstream_verifier_cli PROPERTIES
+        C_STANDARD 11
+        C_STANDARD_REQUIRED ON
+        C_EXTENSIONS OFF)
+    # Upstream's headers use pre-C99 conventions (empty-paren
+    # function declarations etc.) that modern compilers treat as
+    # errors under our default flags. Relax the two warnings that
+    # would fire on upstream's public API. Our own CLI code
+    # follows C11 conventions and would fire neither warning on
+    # its own.
+    if(CMAKE_C_COMPILER_ID MATCHES "GNU|Clang|AppleClang")
+        target_compile_options(oigtl_c_upstream_verifier_cli PRIVATE
+            -Wno-strict-prototypes
+            -Wno-missing-prototypes)
+    endif()
+endif()
+
 # Byte-parity gate — two separate emitter binaries to avoid ODR
 # collisions on `igtl::FooMessage` (our shim's class and upstream's
 # class share the namespace; linking both in the same binary is
