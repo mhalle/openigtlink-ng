@@ -509,6 +509,14 @@ if(EXISTS "${IGTL_UPSTREAM_ROOT}/Source/igtlutil/igtl_transform.c")
     target_include_directories(oigtl_c_upstream_static PUBLIC
         "${CMAKE_CURRENT_SOURCE_DIR}/../security/verifiers/c-upstream"
         "${IGTL_UPSTREAM_ROOT}/Source/igtlutil")
+    # IGTLSTATIC disables the dllimport/dllexport attributes in
+    # upstream's igtl_win32header.h. On MSVC without this flag,
+    # igtl_export expands to __declspec(dllimport), which makes
+    # every function definition a C2491 "definition of dllimport
+    # function not allowed." We're compiling upstream's sources
+    # into a plain static library; the attributes aren't wanted.
+    target_compile_definitions(oigtl_c_upstream_static PUBLIC
+        IGTLSTATIC)
     # Upstream C code has legacy conventions — signed/unsigned cmps,
     # unused params, mild sign-conversion. We're not patching upstream.
     if(CMAKE_C_COMPILER_ID MATCHES "GNU|Clang|AppleClang")

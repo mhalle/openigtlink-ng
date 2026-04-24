@@ -41,6 +41,13 @@
  * dependency on upstream's CMake configure step.
  */
 
+/* POSIX feature gate — enables `getline` and `ssize_t` on Linux
+ * glibc (where they're hidden behind this macro) without
+ * affecting macOS or Windows. Must precede every #include. */
+#ifndef _POSIX_C_SOURCE
+#define _POSIX_C_SOURCE 200809L
+#endif
+
 #include <ctype.h>
 #include <inttypes.h>
 #include <stdint.h>
@@ -141,7 +148,15 @@ static void emit_report(FILE *f, const report_t *r) {
     fputs(",\"device_name\":", f);
     json_escape_cstr(f, r->device_name);
     fprintf(f, ",\"version\":%u", (unsigned)r->version);
-    fprintf(f, ",\"body_size\":%" PRIu64, r->body_size);
+    /* Cast to unsigned long long + %llu rather than PRIu64: our
+     * body_size field is uint64_t but upstream's igtl_uint64 is
+     * `unsigned long long` via IGTL_TYPE_USE_LONG_LONG. On LP64
+     * Linux PRIu64 expands to "lu" (for unsigned long), which
+     * GCC's -Wformat flags as a type mismatch even though the
+     * sizes match. The explicit cast sidesteps the issue and is
+     * portable across every platform we target. */
+    fprintf(f, ",\"body_size\":%llu",
+            (unsigned long long)r->body_size);
     /* ext_header_size and metadata_count are always null/0 for
      * this v1-only oracle. Keep the field names in the output so
      * the differential runner's shape-check stays happy. */
@@ -278,8 +293,9 @@ static void process_one(const uint8_t *wire, size_t n, report_t *r) {
 
     if (n < IGTL_HEADER_SIZE + hdr.body_size) {
         snprintf(r->error, sizeof(r->error),
-                 "body truncated: have %zu, need %" PRIu64,
-                 n - IGTL_HEADER_SIZE, hdr.body_size);
+                 "body truncated: have %zu, need %llu",
+                 n - IGTL_HEADER_SIZE,
+                 (unsigned long long)hdr.body_size);
         return;
     }
 
@@ -311,13 +327,14 @@ int main(void) {
     if (!wire) return 2;
 
     for (;;) {
-        ssize_t len;
 #if defined(_WIN32)
-        /* getline is POSIX; Windows has its own; this oracle is
-         * POSIX-only for now. */
+        /* getline is POSIX; Windows has its own convention; this
+         * verifier is POSIX-only for now. Falling through to EOF
+         * gives a clean-exit binary on Windows that the CI build
+         * still smoke-runs. */
         break;
 #else
-        len = getline(&line, &cap, stdin);
+        ssize_t len = getline(&line, &cap, stdin);
         if (len < 0) break;
 #endif
         /* Strip trailing newline. */
