@@ -13,8 +13,10 @@ Python API is built researcher-first, not C++-in-Python:
 - **One function per researcher question.** "What IP should I
   share?" → `interfaces.primary_address()`. "What subnets am I
   on?" → `interfaces.subnets()`.
-- **Duration fields accept `timedelta` or bare int ms.** Both
-  `timeout=500` and `timeout=timedelta(milliseconds=500)` work.
+- **Duration fields use unit-bearing names.** `timeout=2` means
+  2 **seconds** (stdlib convention: `socket.settimeout`,
+  `asyncio.wait_for`). For milliseconds, pass the `_ms` variant:
+  `timeout_ms=500`. `timedelta` always works.
 
 If you're writing a new research script, start here. If you
 need API parity across the C++ and Python sides of the same
@@ -100,7 +102,7 @@ opt = ClientOptions(
     offline_buffer_capacity=100,
     offline_overflow_policy=OfflineOverflow.DROP_OLDEST,
     # Optional tuning:
-    reconnect_initial_backoff=200,           # ms (or timedelta)
+    reconnect_initial_backoff_ms=200,        # or reconnect_initial_backoff=0.2 (s)
     reconnect_max_backoff=timedelta(seconds=30),
     reconnect_backoff_jitter=0.25,           # ±25%
     reconnect_max_attempts=0,                # forever (default)
@@ -188,7 +190,7 @@ All return `self` so they chain. All are additive — calling
 | `server.restrict_to_local_subnet()` | One-liner for `allow(interfaces.subnets())`. Lab-LAN only. |
 | `server.restrict_to_this_machine_only()` | One-liner for `allow(interfaces.subnets(include_loopback=True))`. Localhost only — useful for tests. |
 | `server.set_max_clients(n)` | Cap simultaneous connections. `0` = unlimited. |
-| `server.disconnect_if_silent_for(timeout)` | Close peers idle for *timeout*. Accepts `timedelta`, int ms, or float seconds. |
+| `server.disconnect_if_silent_for(timeout)` | Close peers idle for *timeout*. Accepts `timedelta` or a number of seconds (matches the rest of the library). |
 | `server.set_max_message_size_bytes(n)` | Reject inbound messages with `body_size > n`. Pre-parse DoS defence. |
 
 If a peer fails the allow-list check it's closed before any

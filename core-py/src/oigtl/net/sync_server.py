@@ -112,9 +112,12 @@ class SyncServer:
         return self
 
     def disconnect_if_silent_for(
-        self, timeout: timedelta | float | int,
+        self,
+        timeout: timedelta | float | int | None = None,
+        *,
+        timeout_ms: float | int | None = None,
     ) -> "SyncServer":
-        self._inner.disconnect_if_silent_for(timeout)
+        self._inner.disconnect_if_silent_for(timeout, timeout_ms=timeout_ms)
         return self
 
     def set_max_message_size_bytes(self, n: int) -> "SyncServer":

@@ -285,8 +285,24 @@ async def test_receive_dispatches_intermediate_messages():
         await srv.stop()
 
 
-async def test_options_accept_int_ms():
-    """Duration coercion: int ms and timedelta produce equal timeouts."""
-    opt1 = ClientOptions(connect_timeout=500)
-    opt2 = ClientOptions(connect_timeout=timedelta(milliseconds=500))
-    assert opt1.connect_timeout == opt2.connect_timeout
+async def test_options_duration_unit_variants():
+    """Duration coercion: bare numbers on ``connect_timeout`` mean
+    seconds; the ``_ms`` companion takes milliseconds; both spellings
+    are equivalent for the same wall-clock value."""
+    # Bare number on the canonical field → seconds.
+    opt_seconds = ClientOptions(connect_timeout=0.5)
+    # Explicit ms via companion field → milliseconds.
+    opt_ms = ClientOptions(connect_timeout_ms=500)
+    # Explicit timedelta.
+    opt_td = ClientOptions(connect_timeout=timedelta(milliseconds=500))
+
+    assert opt_seconds.connect_timeout == opt_ms.connect_timeout
+    assert opt_ms.connect_timeout == opt_td.connect_timeout
+
+
+async def test_options_rejects_both_canonical_and_ms():
+    """Specifying both ``connect_timeout`` and ``connect_timeout_ms``
+    is ambiguous and must raise."""
+    import pytest  # local: other tests in this file also import this way
+    with pytest.raises(ValueError):
+        ClientOptions(connect_timeout=1.0, connect_timeout_ms=1000)

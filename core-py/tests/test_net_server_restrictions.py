@@ -211,9 +211,9 @@ async def test_disconnect_if_silent_for_closes_idle_peer():
         await serve_task
 
 
-async def test_disconnect_if_silent_for_accepts_int_ms():
-    """Builder accepts int ms (ClientOptions convention)."""
-    server = (await Server.listen(0)).disconnect_if_silent_for(500)
+async def test_disconnect_if_silent_for_accepts_ms_kwarg():
+    """Builder accepts `timeout_ms=` for the millisecond idiom."""
+    server = (await Server.listen(0)).disconnect_if_silent_for(timeout_ms=500)
     assert server.options.idle_timeout_seconds == 0.5
     await server.close()
 
@@ -222,6 +222,23 @@ async def test_disconnect_if_silent_for_accepts_float_seconds():
     server = (await Server.listen(0)).disconnect_if_silent_for(1.5)
     assert server.options.idle_timeout_seconds == 1.5
     await server.close()
+
+
+async def test_disconnect_if_silent_for_accepts_int_seconds():
+    """Bare int is seconds now (matches stdlib convention)."""
+    server = (await Server.listen(0)).disconnect_if_silent_for(2)
+    assert server.options.idle_timeout_seconds == 2.0
+    await server.close()
+
+
+async def test_disconnect_if_silent_for_rejects_both_units():
+    import pytest
+    server = await Server.listen(0)
+    try:
+        with pytest.raises(ValueError):
+            server.disconnect_if_silent_for(1.0, timeout_ms=1000)
+    finally:
+        await server.close()
 
 
 # --------------------------- max message size -------------------------
