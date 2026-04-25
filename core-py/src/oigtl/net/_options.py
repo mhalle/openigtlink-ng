@@ -89,6 +89,17 @@ def _coerce_to_timedelta(value: object) -> timedelta | None:
     """
     if value is None or isinstance(value, timedelta):
         return value  # type: ignore[return-value]
+    # Reject bool *before* the int branch — bool is a subclass of
+    # int in Python, so timeout=True would otherwise quietly become
+    # timedelta(seconds=1). Almost certainly a caller error;
+    # disconnect_if_silent_for already rejects this explicitly,
+    # normalise the option-side behaviour to match.
+    if isinstance(value, bool):
+        raise TypeError(
+            "duration fields reject bool (timeout=True/False is "
+            "almost certainly a mistake; pass an explicit number "
+            "of seconds or a timedelta)"
+        )
     if isinstance(value, (int, float)):
         return timedelta(seconds=value)
     raise TypeError(
@@ -127,6 +138,10 @@ def as_timedelta_ms(
     """
     if value is None or isinstance(value, timedelta):
         return value
+    if isinstance(value, bool):
+        raise TypeError(
+            "duration _ms fields reject bool (see _coerce_to_timedelta)"
+        )
     if isinstance(value, (int, float)):
         return timedelta(milliseconds=value)
     raise TypeError(
@@ -223,6 +238,14 @@ class ClientOptions(BaseModel):
                 # Accept timedelta on the _ms variant too — it would
                 # be strange to reject it. Just pass through.
                 data[field] = ms_value
+            elif isinstance(ms_value, bool):
+                # Reject bool *before* the int branch — bool is an
+                # int subclass in Python, so timeout_ms=True would
+                # otherwise become timedelta(milliseconds=1).
+                raise TypeError(
+                    f"{ms_key} rejects bool (almost certainly a "
+                    f"mistake; pass an int/float ms or timedelta)"
+                )
             elif isinstance(ms_value, (int, float)):
                 data[field] = timedelta(milliseconds=ms_value)
             else:
