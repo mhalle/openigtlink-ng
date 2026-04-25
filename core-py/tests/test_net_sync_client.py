@@ -77,8 +77,29 @@ class ThreadedLoopbackServer:
         try:
             self._loop.run_forever()
         finally:
-            if self._server is not None:
-                self._server.close()
+            # Drain pending tasks *on this loop* before closing it.
+            # Without this step, in-flight connection tasks (still
+            # holding open transports) get garbage-collected after
+            # the loop is gone, and their __del__ tries to schedule
+            # the connection-lost callback — which then fires
+            # PytestUnraisableExceptionWarning("Event loop is closed").
+            # Cancel + gather here closes the cleanup loop cleanly.
+            async def _drain():
+                if self._server is not None:
+                    self._server.close()
+                    try:
+                        await self._server.wait_closed()
+                    except Exception:
+                        pass
+                pending = [
+                    t for t in asyncio.all_tasks(self._loop)
+                    if t is not asyncio.current_task()
+                ]
+                for t in pending:
+                    t.cancel()
+                if pending:
+                    await asyncio.gather(*pending, return_exceptions=True)
+            self._loop.run_until_complete(_drain())
             self._loop.close()
 
 
