@@ -31,10 +31,13 @@ int g_fail_count = 0;
 void test_rejects_too_many_entries() {
     std::fprintf(stderr, "test_rejects_too_many_entries\n");
 
-    // 65536 entries — one past u16 count capacity. Keep each entry
-    // tiny so the test doesn't burn memory.
-    std::vector<oigtl::runtime::MetadataEntry> entries(
-        std::size_t(std::numeric_limits<std::uint16_t>::max()) + 1);
+    // The correct cap is not 65535 (u16 count) but 8191 — because
+    // metadata_header_size is itself a u16 and equals
+    //   2 + count*8  bytes.
+    // So count=8192 gives index_bytes=65538 which truncates when
+    // the caller casts to u16. 8192 is the smallest bad value.
+    constexpr std::size_t kTooMany = 8192;
+    std::vector<oigtl::runtime::MetadataEntry> entries(kTooMany);
     for (auto& e : entries) {
         e.key = "k";
         e.value_encoding = 3;  // ASCII
@@ -48,6 +51,18 @@ void test_rejects_too_many_entries() {
         caught = true;
     }
     REQUIRE(caught);
+
+    // 8191 entries — the boundary — still packs. Confirms the cap
+    // is tight: any looser limit would let 8192 through; any
+    // tighter limit would reject this legal call.
+    entries.pop_back();
+    bool boundary_ok = true;
+    try {
+        (void)oigtl::runtime::pack_metadata(entries);
+    } catch (...) {
+        boundary_ok = false;
+    }
+    REQUIRE(boundary_ok);
 }
 
 void test_rejects_oversize_key() {
@@ -69,12 +84,13 @@ void test_rejects_oversize_key() {
     REQUIRE(caught);
 }
 
-// Note: a value-size-exceeds-u32 test would require allocating
-// >4 GiB, which makes the test effectively impossible to run on CI
-// machines. The guard for it is identical in shape to the key-size
-// and count guards above, all three go through the same validation
-// block, and the unit test exercises two of the three branches. We
-// opt to document rather than allocate 4 GiB in a unit test.
+// Note: two branches can't be exercised affordably:
+//   - value-size-exceeds-u32 requires allocating >4 GiB for one
+//     entry.
+//   - aggregate-body-exceeds-u32 requires two 2+ GiB entries.
+// Both branches live in the same validation block as the count and
+// key-size cases above, and both throw the same exception type. We
+// document them here rather than burn 2–4 GiB of RAM on CI.
 
 void test_accepts_boundary_sizes() {
     std::fprintf(stderr, "test_accepts_boundary_sizes\n");

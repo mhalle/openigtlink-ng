@@ -112,32 +112,43 @@ class SyncClient:
         message_type: type[M],
         *,
         timeout: timedelta | float | int | None = None,
+        timeout_ms: float | int | None = None,
     ) -> Envelope[M]:
-        """Block until a message of *message_type* arrives."""
+        """Block until a message of *message_type* arrives.
+
+        Pass ``timeout=<seconds>`` or ``timeout_ms=<ms>``. Setting
+        both raises ``ValueError``.
+        """
         return submit(self._inner.receive(
-            message_type, timeout=timeout,
+            message_type, timeout=timeout, timeout_ms=timeout_ms,
         )).result()
 
     def receive_any(
         self,
         *,
         timeout: timedelta | float | int | None = None,
+        timeout_ms: float | int | None = None,
     ) -> Envelope[BaseModel]:
-        """Block until the next message of any type arrives."""
+        """Block until the next message of any type arrives.
+
+        Pass ``timeout=<seconds>`` or ``timeout_ms=<ms>``. Setting
+        both raises ``ValueError``.
+        """
         return submit(self._inner.receive_any(
-            timeout=timeout,
+            timeout=timeout, timeout_ms=timeout_ms,
         )).result()
 
     def messages(
         self,
         *,
         timeout: timedelta | float | int | None = None,
+        timeout_ms: float | int | None = None,
     ) -> Iterator[Envelope[BaseModel]]:
         """Iterator of incoming messages.
 
-        Each ``next()`` blocks until a message arrives or *timeout*
-        elapses (a per-message budget, not an overall one).
-        Yielding ends when the peer closes or :meth:`close` is called.
+        Each ``next()`` blocks until a message arrives or the per-
+        message ``timeout`` / ``timeout_ms`` elapses. Yielding ends
+        when the peer closes or :meth:`close` is called.
 
         Translates the async ``async for msg in c.messages():`` idiom
         to::
@@ -147,7 +158,9 @@ class SyncClient:
         """
         while True:
             try:
-                env = self.receive_any(timeout=timeout)
+                env = self.receive_any(
+                    timeout=timeout, timeout_ms=timeout_ms,
+                )
             except ConnectionClosedError:
                 return
             yield env

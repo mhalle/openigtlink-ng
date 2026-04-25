@@ -34,6 +34,7 @@ from oigtl.net._options import (
     Envelope,
     RawMessage,
     as_timedelta,
+    resolve_timeout,
 )
 from oigtl.net.errors import (
     ConnectionClosedError,
@@ -225,8 +226,13 @@ class WsClient:
         self,
         *,
         timeout: timedelta | float | int | None = None,
+        timeout_ms: float | int | None = None,
     ) -> Envelope[BaseModel]:
-        budget = as_timedelta(timeout) or self._options.receive_timeout
+        # Explicit is-not-None so timeout=0 / timeout_ms=0 isn't
+        # promoted to the option default. timedelta(0) is falsy.
+        override = resolve_timeout(timeout, timeout_ms)
+        budget = override if override is not None \
+            else self._options.receive_timeout
         coro = self._receive_one()
         if budget is None:
             return await coro
@@ -244,13 +250,17 @@ class WsClient:
         message_type: type[M],
         *,
         timeout: timedelta | float | int | None = None,
+        timeout_ms: float | int | None = None,
     ) -> Envelope[M]:
         expected = getattr(message_type, "TYPE_ID", None)
         if not isinstance(expected, str):
             raise TypeError(
                 f"{message_type.__name__} has no TYPE_ID"
             )
-        budget = as_timedelta(timeout) or self._options.receive_timeout
+        # Explicit is-not-None — see receive_any.
+        override = resolve_timeout(timeout, timeout_ms)
+        budget = override if override is not None \
+            else self._options.receive_timeout
         loop = asyncio.get_running_loop()
         deadline = (
             loop.time() + budget.total_seconds()
