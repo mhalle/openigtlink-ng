@@ -32,12 +32,33 @@ static int failures = 0;
         }                                                               \
     } while (0)
 
+// Hard-fail early when an environmental prerequisite is missing.
+// EXPECT(...) records a failure and continues — that's right for
+// assertions about the test's own logic, but wrong for setup
+// preconditions: continuing after a failed bind() spawns a client
+// thread that tries to connect to an invalid port, then the server
+// side's WaitForConnection returns null and peer->GetConnected()
+// segfaults. Surface a clean failure with a diagnostic instead.
+#define REQUIRE_OR_ABORT(cond, msg) do {                                \
+    if (!(cond)) {                                                      \
+        std::fprintf(stderr,                                            \
+            "ABORT %s:%d: %s — %s\n"                                    \
+            "  (network ops blocked? sandbox restricting bind/listen?)\n", \
+            __FILE__, __LINE__, #cond, msg);                            \
+        return 1;                                                       \
+    }                                                                   \
+} while (0)
+
 int main() {
     // --- bind an ephemeral port on the server --------------------------
     igtl::ServerSocket::Pointer srv = igtl::ServerSocket::New();
-    EXPECT(srv->CreateServer(0) == 0);
+    // CreateServer returns 0 on success. If it fails, we have nothing
+    // to test against — fail fast rather than soldier on with a port
+    // of -1 and trip downstream null derefs.
+    REQUIRE_OR_ABORT(srv->CreateServer(0) == 0,
+                     "ServerSocket::CreateServer(0) failed");
     int port = srv->GetServerPort();
-    EXPECT(port > 0);
+    REQUIRE_OR_ABORT(port > 0, "GetServerPort returned non-positive");
 
     // --- client thread -------------------------------------------------
     std::atomic<bool> client_done{false};
@@ -79,7 +100,15 @@ int main() {
 
     // --- server side: accept, then header-then-body -------------------
     igtl::Socket::Pointer peer = srv->WaitForConnection(5000).GetPointer();
-    EXPECT(peer);
+    // No peer = client never connected (or the platform refused). Every
+    // line below dereferences `peer`, so abort instead of segfaulting.
+    if (!peer) {
+        std::fprintf(stderr,
+            "ABORT %s:%d: WaitForConnection returned null\n",
+            __FILE__, __LINE__);
+        client.join();
+        return 1;
+    }
     EXPECT(peer->GetConnected());
 
     igtl::MessageHeader::Pointer headerMsg = igtl::MessageHeader::New();
