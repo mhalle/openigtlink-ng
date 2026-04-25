@@ -356,6 +356,18 @@ async def test_options_duration_unit_variants():
     assert opt_ms.connect_timeout == opt_td.connect_timeout
 
 
+async def test_options_rejects_bool_in_duration():
+    """`timeout=True` is almost certainly a mistake — bool is an int
+    subclass, but we should reject explicitly so it doesn't silently
+    become 1 second. Mirrors the existing reject in
+    Server.disconnect_if_silent_for."""
+    import pytest
+    with pytest.raises((TypeError, ValueError)):
+        ClientOptions(connect_timeout=True)
+    with pytest.raises((TypeError, ValueError)):
+        ClientOptions(connect_timeout_ms=False)
+
+
 async def test_options_rejects_both_canonical_and_ms():
     """Specifying both ``connect_timeout`` and ``connect_timeout_ms``
     is ambiguous and must raise."""
