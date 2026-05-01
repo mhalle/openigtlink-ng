@@ -58,14 +58,17 @@ in the same translation unit if you need to. See
   flags, build recipes, behavioral differences from upstream,
   troubleshooting, FAQ. **Start here if you are an existing
   upstream user.**
+- **[`PORTING_PLUS.md`](PORTING_PLUS.md)** — task-oriented,
+  step-by-step guide for porting an existing PLUS Toolkit build
+  to use this shim. End-to-end, with verification and
+  troubleshooting. **Start here if you are a PLUS user.**
 - **[`API_COVERAGE.md`](API_COVERAGE.md)** — exhaustive
   per-class/per-method coverage matrix. Documents which upstream
   symbols the shim provides, which it stubs, and which it
   deliberately omits.
-- **[`PLUS_AUDIT.md`](PLUS_AUDIT.md)** — focused audit of the PLUS
-  Toolkit's interaction with the shim, including the
-  protected-member access pattern PLUS uses and the small
-  ifdef-gated patches needed to make PLUS link cleanly.
+- **[`PLUS_AUDIT.md`](PLUS_AUDIT.md)** — focused audit of PLUS's
+  interaction with the shim. The reference behind PORTING_PLUS:
+  surface inventory, dependency landscape, scope decisions.
 - **[`plus-patches/`](plus-patches/)** — the unified diffs
   themselves, against a pinned PLUS commit.
 

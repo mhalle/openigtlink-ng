@@ -5,6 +5,12 @@ classes that let unmodified PLUS link against our shim when
 `OIGTL_NG_SHIM` is defined, while remaining byte-identical against
 upstream OpenIGTLink when it isn't.
 
+> **End-to-end porting guide:**
+> [`../PORTING_PLUS.md`](../PORTING_PLUS.md) walks through the
+> full PLUS port (build openigtlink-ng → check out PLUS → apply
+> these patches → repoint CMake → build → verify). This README
+> is the patch-level reference.
+
 The motivation and full design discussion live in
 [`../API_COVERAGE.md`](../API_COVERAGE.md) §"Subclass extension
 API (tier 2)"; this README covers how to apply them.
@@ -19,20 +25,19 @@ Update when we re-pin PLUS.
 
 ## Applying
 
-From a PLUS working tree checked out at the pinned SHA:
+From a PLUS working tree (current HEAD or the pinned SHA both
+work):
 
 ```bash
 cd PlusLib
-git apply /path/to/openigtlink-ng/core-cpp/compat/plus-patches/0001-*.patch
-git apply /path/to/openigtlink-ng/core-cpp/compat/plus-patches/0002-*.patch
-git apply /path/to/openigtlink-ng/core-cpp/compat/plus-patches/0003-*.patch
+git apply --ignore-whitespace \
+    /path/to/openigtlink-ng/core-cpp/compat/plus-patches/*.patch
 ```
 
-Or in bulk:
-
-```bash
-git apply /path/to/openigtlink-ng/core-cpp/compat/plus-patches/*.patch
-```
+`--ignore-whitespace` is required because PLUS keeps its source
+files as CRLF (Windows line endings) while these patches are LF.
+Without it, every hunk rejects on `\r` mismatches even though the
+substance matches.
 
 ## What each patch does
 
