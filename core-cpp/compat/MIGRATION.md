@@ -1,5 +1,14 @@
 # Migrating from `libOpenIGTLink` to openigtlink-ng
 
+> **What is changing, and what isn't.** The OpenIGTLink **protocol**
+> is unchanged — bytes on the wire are byte-identical to what
+> upstream's library emits. The **library** under your code is
+> changing: from upstream's `libOpenIGTLink` to openigtlink-ng's
+> `liboigtl`, which re-exposes the same `igtl::` API on top of an
+> independent, audit-hardened codec. You're switching libraries,
+> not protocols. See the parent [README.md](../../README.md) for
+> the full project framing.
+
 openigtlink-ng ships `liboigtl.a` — a single static archive that
 includes a **complete source-level drop-in shim for the upstream
 `igtl::` API** alongside a new modern `oigtl::` API. If you have a
