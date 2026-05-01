@@ -1,64 +1,122 @@
 # openigtlink-ng
 
-Next-generation OpenIGTLink implementation and specification.
+**A modernization of the OpenIGTLink library and API.**
 
-This is a parallel, clean-sheet effort — **not** a fork or branch
-of the existing
+openigtlink-ng is *not* a fork of
 [openigtlink/OpenIGTLink](https://github.com/openigtlink/OpenIGTLink)
-library, which remains the reference v2/v3 implementation in
-security-maintenance mode. This project's goal is wire-compatibility
-with deployed peers, a modernized and security-audited foundation,
-and an additive NG protocol path for new clients.
+and *not* a new protocol. It is a clean-room implementation of the
+existing OpenIGTLink v2/v3 protocol — same wire format, same message
+types, same semantics — with the surrounding library, API, and
+tooling rebuilt under a modern, security-audited design.
 
-## Goals
+If you currently use the upstream `libOpenIGTLink` C++ library and
+think of *that library* as "OpenIGTLink", the distinction this
+project makes is worth keeping in mind:
 
-- Wire-compatible with deployed v2/v3 peers (byte-identical where
-  behavior overlaps)
-- Modern C++17, Python, and TypeScript cores with bounds-checked
-  parsing primitives and differential-fuzzed cross-language parity
-- Schema-driven message codegen — the spec is the source of truth,
-  every core generates from it
-- Conformance corpus as the single authority for protocol correctness
-- Drop-in source-level replacement for existing upstream C++ consumers
-  via a compat shim
-- Opt-in NG protocol (v4) as an additive upgrade negotiated via
-  `NGHELLO`
-- Standards-compliant RTP for video (RFC 6184 / 7798 / 7741)
-- TLS, auth, rate limiting, and session policy designed in from day
-  one
+- **The protocol** — formally described in [`spec/`](spec/), wire
+  format only, language- and library-independent.
+- **An implementation** — upstream's library is one. This project is
+  another. Both speak the same bytes.
+
+## What it is
+
+This repository contains:
+
+- **A specification and testing core for OpenIGTLink v2/v3.** 84
+  machine-readable message schemas under [`spec/schemas/`](spec/schemas/),
+  a meta-schema that validates them, and a conformance corpus of
+  byte-exact wire vectors. The deployed protocol exists; we are
+  writing it down formally for the first time.
+- **A reference implementation.** A deliberately un-optimized,
+  dict-based Python codec ([`corpus-tools/`](corpus-tools/)) used as
+  the conformance oracle. Every other codec in the project is
+  differentially fuzzed against it; when codecs disagree, the
+  reference is consulted first.
+- **A C++ library with two API surfaces** ([`core-cpp/`](core-cpp/)).
+  A modern `oigtl::` API for new code, and a source-compatible
+  `igtl::` shim ([`core-cpp/compat/`](core-cpp/compat/)) that lets
+  existing applications (3D Slicer, PLUS Toolkit, lab tracking
+  servers) recompile against this implementation without source
+  changes.
+- **A complete new Python library** ([`core-py/`](core-py/),
+  `oigtl` package). Typed messages, async + sync TCP and WebSocket
+  transport, idiomatic for research code.
+- **A new TypeScript library** ([`core-ts/`](core-ts/),
+  `@openigtlink/core`). TCP and WebSocket, client and server. Runs
+  in Node ≥20, modern browsers, Bun, and Deno — so a browser can
+  speak OpenIGTLink directly.
+- **A minimal C codec** ([`core-c/`](core-c/)) for embedded targets
+  where heap allocation and v3 metadata are too expensive.
+- **A security harness** ([`security/`](security/)). A differential
+  cross-language fuzzer, libFuzzer + sanitizer targets, and a
+  negative corpus. Keeps all four codecs byte-identical under
+  randomized adversarial input.
+
+## What it doesn't do
+
+- **It doesn't change the protocol.** Bytes on the wire are
+  byte-identical to what upstream's library emits. A peer running
+  `libOpenIGTLink` and a peer running openigtlink-ng cannot tell
+  each other apart. CI verifies this against upstream's own test
+  fixtures on every PR.
+- **It doesn't deprecate upstream.** Upstream remains the reference
+  v2/v3 implementation in security-maintenance mode; this project
+  complements rather than replaces it.
+- **It doesn't require you to rewrite anything.** Existing C++ code
+  linked against `-lOpenIGTLink` recompiles against `-loigtl` with
+  the compat shim — no source edits. The shim covers ~95% of
+  upstream's public API; see
+  [`core-cpp/compat/MIGRATION.md`](core-cpp/compat/MIGRATION.md).
+
+The v4 / "NG" protocol track is a separate, additive design
+negotiated via `NGHELLO`. It is not implemented yet and will be
+opt-in when it is. The v2/v3 layer described above is unaffected.
+
+## Design principles
+
+How the project is built, beyond what it is and what it does:
+
+- **Schema-driven codegen.** The spec is the source of truth. Every
+  codec is generated from [`spec/schemas/`](spec/schemas/); changing
+  a message means changing its schema and regenerating every core.
+  CI gates on drift.
+- **Conformance corpus as the single authority.** When codecs
+  disagree, the corpus decides — not a privileged "main"
+  implementation. The reference Python codec exists to be obviously
+  correct, not fast.
+- **Differential fuzzing across all four codecs.** Randomized and
+  mutated inputs feed every codec on every PR; any disagreement is
+  treated as a bug, full stop. Millions of iterations to date with
+  zero outstanding disagreements on the pinned protocol surface.
+- **Source-level, not binary, compat.** Your C++ code recompiles
+  against headers we control and runs through our hardened parsing
+  path. We do not try to be a binary drop-in for upstream's `.so`,
+  which would force us to mirror upstream's ABI and internals
+  (including bugs). The trade-off is that you recompile; we believe
+  it is the right side of the trade.
+- **Security designed in from day one.** Threat model, bounds-checked
+  parsing primitives, the negative-corpus contract, and the
+  fuzzer/sanitizer infrastructure are present today. TLS, auth,
+  rate limiting, and session policy are roadmapped (see Status); the
+  scaffolding to land them safely is already in place.
 
 ## Repository layout
 
-Monorepo during early development. Subdirectories are organized by
-role; they may split into independent repositories on a future
-`openigtlink-ng` GitHub organization when that structural change is
-warranted.
+Monorepo during early development. Each directory's `README.md`
+covers usage and per-component status. Quick reference:
 
-- [`spec/`](spec/) — protocol specification, 84 machine-readable
-  message schemas, and conformance corpus. The **specification of
-  record**.
-- [`corpus-tools/`](corpus-tools/) — schema validation, reference
-  codec (dict-based, used as the conformance oracle), multi-target
-  codegen, and fuzzing harness.
-- [`core-py/`](core-py/) — typed Python library (`oigtl` package)
-  with async + sync transport (TCP, WebSocket). 84 generated
-  Pydantic message classes with one-call typed dispatch.
-- [`core-ts/`](core-ts/) — typed TypeScript library
-  (`@openigtlink/core` package) with TCP + WebSocket transport
-  (client and server). Runs in Node ≥20, browsers, Bun, and Deno.
-  Zero runtime dependencies.
-- [`core-cpp/`](core-cpp/) — typed C++17 library with TCP transport
-  (client and server), built on ASIO. Includes
-  [`core-cpp/compat/`](core-cpp/compat/) — a source-compatible shim
-  exposing the upstream `igtl::` API so existing consumers (e.g.,
-  3D Slicer, PLUS Toolkit) can link against this implementation
-  unmodified.
-- [`core-c/`](core-c/) — minimal C codec for embedded targets. No
-  heap, no transport, no metadata support. Header pack/unpack plus
-  generated per-message structs.
-- [`security/`](security/) — differential fuzzer, libFuzzer targets,
-  negative corpus, and the infrastructure that keeps all four codecs
-  byte-identical under adversarial input.
+| Directory | Role |
+|---|---|
+| [`spec/`](spec/) | Protocol specification, 84 schemas, conformance corpus. **Specification of record.** |
+| [`corpus-tools/`](corpus-tools/) | Schema validation, reference codec (oracle), multi-target codegen, fuzzing harness. |
+| [`core-py/`](core-py/) | Typed Python library (`oigtl`) — async + sync TCP/WebSocket. |
+| [`core-ts/`](core-ts/) | Typed TypeScript library (`@openigtlink/core`) — TCP + WebSocket, Node + browsers + Bun + Deno, zero deps. |
+| [`core-cpp/`](core-cpp/) | Typed C++17 library — TCP, ASIO. Includes [`compat/`](core-cpp/compat/), the source-level `igtl::` shim. |
+| [`core-c/`](core-c/) | Minimal C codec for embedded targets. No heap, no metadata, no transport. |
+| [`security/`](security/) | Differential fuzzer, libFuzzer targets, negative corpus. |
+
+(Subdirectories may split into independent repositories on a future
+`openigtlink-ng` GitHub organization when that becomes useful.)
 
 ## Status
 
@@ -78,8 +136,12 @@ on the pinned protocol surface), libFuzzer with ASan+UBSan on the
 C++ targets, and CI smoke gates on every PR. See
 [`security/README.md`](security/README.md).
 
-**TLS, auth, rate limiting, and v4 protocol extensions remain
-future work.**
+**Future work.** TLS, authentication, rate limiting, and session
+policy are roadmapped — designed in from the start, not yet
+implemented. Standards-compliant RTP for video (RFC 6184 / 7798 /
+7741) is on the same track. The v4 / NG protocol extensions
+([`spec/protocol/`](spec/protocol/)) are not yet specified beyond
+the `NGHELLO` negotiation hook reserved in v3.
 
 | Layer | Status |
 |---|---|
