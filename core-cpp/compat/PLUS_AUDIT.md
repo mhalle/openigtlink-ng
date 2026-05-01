@@ -1,5 +1,12 @@
 # PLUS Toolkit → shim API-surface audit
 
+> **Looking to actually port PLUS?** Start with
+> [`PORTING_PLUS.md`](PORTING_PLUS.md) — the task-oriented,
+> step-by-step guide. This document is the reference behind it:
+> the surface audit, dependency landscape, and the rationale for
+> what's in scope.
+
+
 **Pinned PLUS SHA:** `474c3f266abc2417f45b14085b2c6b793efea311`
 (PlusToolkit/PlusLib, fetched via sparse checkout of `src/PlusOpenIGTLink/`
 and `src/PlusServer/`.)

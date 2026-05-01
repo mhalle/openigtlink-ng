@@ -177,6 +177,12 @@ and usage.
 - [`spec/CONFORMANCE.md`](spec/CONFORMANCE.md) — how the test
   suite verifies correctness (five layers, from unit tests to
   differential fuzzing to cross-runtime interop).
+- [`core-cpp/compat/MIGRATION.md`](core-cpp/compat/MIGRATION.md) —
+  swapping `libOpenIGTLink` for openigtlink-ng in an existing
+  C++ project. Linker flags, build recipes, FAQ.
+- [`core-cpp/compat/PORTING_PLUS.md`](core-cpp/compat/PORTING_PLUS.md) —
+  end-to-end porting guide for PLUS Toolkit, with verification
+  and troubleshooting.
 - [`CHANGELOG.md`](CHANGELOG.md) — versioning policy and
   change history.
 - Per-core `README.md` — usage and status for each language

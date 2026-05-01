@@ -221,13 +221,13 @@ prefix and let it find `oigtlConfig.cmake`. Tested manually on
 Slicer 5.8; no patches required. A clean integration patch is
 pending; track `#slicer-integration` in the issues tab.
 
-**PLUS** (`PlusLib` links `OpenIGTLink::igtlioDevice`): same
-approach — set `OpenIGTLink_DIR` in the superbuild cache to point
-at `<oigtl-install>/lib/cmake/oigtl`. Caveat: PLUS uses
-`igtl::Socket*` raw pointer returns from `ServerSocket::WaitForConnection`
-in a couple of places; our shim returns `ClientSocket::Pointer`
-(matching upstream's post-2020 API). If you're on an old PLUS
-branch that predates the pointer change, cherry-pick that.
+**PLUS** (`PlusLib`): consumes upstream's `igtl::` API directly
+(no IGTLIO dependency on the link line). Three small patches under
+[`plus-patches/`](plus-patches/) replace PLUS's protected-member
+access with calls to the shim's sanctioned tier-2 API; everything
+else compiles unmodified. The end-to-end recipe — build the shim,
+apply the patches, repoint CMake, build PLUS, verify — is its own
+guide: see [`PORTING_PLUS.md`](PORTING_PLUS.md).
 
 **MITK** (`MITK/Modules/OpenIGTLink`): straightforward —
 MITK's `find_package(OpenIGTLink)` call resolves against
