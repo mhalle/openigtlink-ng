@@ -4,11 +4,12 @@ Typed TypeScript wire codec for the OpenIGTLink protocol — symmetric
 to [`core-cpp`](../core-cpp/) and [`core-py`](../core-py/), generated
 from the same 84 schemas under [`../spec/schemas/`](../spec/schemas/).
 
-> **Reading order:** this README is quick examples and status. For
-> a guided tour of the package's three layers
-> (codec / messages / net), see [`API.md`](API.md). For
-> message-level questions, see
-> [`../spec/MESSAGES.md`](../spec/MESSAGES.md).
+> **Reading order:** this README is codec-level quick examples and
+> status. For a guided tour of the package's three layers (codec /
+> messages / net), see [`API.md`](API.md). For the network surface
+> (TCP / WebSocket clients and servers, in Node and the browser),
+> see [`NET_GUIDE.md`](NET_GUIDE.md). For message-level questions,
+> see [`../spec/MESSAGES.md`](../spec/MESSAGES.md).
 
 ## Status
 
@@ -36,6 +37,30 @@ npm install @openigtlink/core
 ```
 
 ## Usage
+
+### Connect to a server (the typical case)
+
+```ts
+import { Client } from "@openigtlink/core/net";
+import { Transform, Status } from "@openigtlink/core/messages";
+
+const c = await Client.connect("tracker.lab", 18944);
+await c.send(new Transform({
+  matrix: [1, 0, 0, 0, 1, 0, 0, 0, 1, 0, 0, 0],
+}));
+const reply = await c.receive(Status);
+console.log(reply.body.statusMessage);
+await c.close();
+```
+
+`Server`, `WsClient` (browser-safe), `WsServer` (Node), the
+dispatch-loop pattern, and the full configuration surface are
+covered in **[`NET_GUIDE.md`](NET_GUIDE.md)**.
+
+### Codec only — bytes in, bytes out
+
+For callers that already hold wire bytes (file replays, custom
+transports, browser bundles without `/net`):
 
 ```ts
 import { parseWire, verifyWireBytes } from "@openigtlink/core";
