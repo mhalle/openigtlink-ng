@@ -64,19 +64,30 @@ disagreement is resolved explicitly, not silently.
 
 ## Status
 
-**Schemas complete, corpus pending.** All 84 wire message types
-from the v1/v2/v3 protocol are specified under `schemas/` — 20
-data messages, 5 framing structures (header, extended header,
-metadata, unit, message-level), and 59 query/control messages
-(`GET_*`, `STT_*`, `STP_*`, `RTS_*`). Every schema has been audited
-against the upstream reference implementation and is round-trip
-verified by both the reference Python codec (`../corpus-tools/`)
-and the generated C++/Python libraries (`../core-cpp/`,
-`../core-py/`).
+**Schemas complete.** All 84 wire message types from the v1/v2/v3
+protocol are specified under `schemas/` — 22 data messages
+(including the legacy `COLORTABLE` alias for `COLORT`), 4
+framing structures (header, extended header, metadata, unit), and
+58 query/control messages (`GET_*`, `STT_*`, `STP_*`, `RTS_*`).
+Every schema has been audited against the upstream reference
+implementation and is round-trip verified by all four cores
+(reference Python in `../corpus-tools/`, plus the generated
+`../core-py/`, `../core-cpp/`, `../core-ts/`, `../core-c/`).
 
-The conformance corpus under `corpus/` (positive + negative wire
-vectors as standalone files, independent of the upstream test
-headers) is not yet produced — currently both implementations
-consume the upstream test fixtures directly via
-`../corpus-tools/src/oigtl_corpus_tools/codec/test_vectors.py`.
-Generating a standalone corpus is a `corpus-tools` roadmap item.
+**Corpus complete** for the cases that matter day-to-day. Under
+[`corpus/`](corpus/):
+
+- [`upstream-fixtures.json`](corpus/upstream-fixtures.json) — the
+  pinned positive corpus (24 fixtures imported byte-for-byte from
+  upstream's test tree at the SHA recorded in
+  [`ORACLE_VERSION.md`](corpus/ORACLE_VERSION.md)). Every codec's
+  CI verifies these round-trip.
+- [`negative/`](corpus/negative/) — negative fixtures that every
+  codec must reject. Categorised by failure mode (framing,
+  metadata, content, …). Pinned regressions surfaced by the
+  differential fuzzer live here.
+
+The `v3/` and `v4/` subdirectories are reserved placeholders for a
+future generation step that emits per-version positive vectors as
+standalone files independent of the upstream test headers — not a
+gating dependency for any consumer today.

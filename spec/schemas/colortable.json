@@ -48,5 +48,5 @@
     "Upstream C library does NOT validate body_size against the expected table_size before accessing the table region. A conformant implementation MUST verify body_size == 2 + expected_table_bytes before any table access."
   ],
 
-  "see_also": ["IMAGE", "LBMETA", "IMGMETA", "VIDEOMETA"]
+  "see_also": ["COLORTABLE", "IMAGE", "LBMETA", "IMGMETA", "VIDEOMETA"]
 }

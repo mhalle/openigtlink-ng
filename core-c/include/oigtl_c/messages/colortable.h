@@ -2,7 +2,7 @@
  *
  * Regenerate with: uv run oigtl-corpus codegen c
  *
- * COLORTABLE — Legacy wire alias for COLORTABLE. Body layout is identical to the modern `COLORT` type_id; the only difference is the 10-character wire string that predates upstream shortening to 'COLORT'. Kept as a distinct schema so receivers can round-trip pre-shortening traffic without ambiguity.
+ * COLORTABLE — Legacy wire encoding of the color-lookup-table message. Body layout is identical to the modern `COLORT` type_id; only the 12-byte type-id field differs — the legacy form spells the type as 'COLORTABLE' (10 chars), predating upstream's shortening to 'COLORT' (6 chars). Kept as a distinct schema so receivers can round-trip pre-shortening traffic without ambiguity.
  */
 #ifndef OIGTL_C_MESSAGES_COLORTABLE_H
 #define OIGTL_C_MESSAGES_COLORTABLE_H

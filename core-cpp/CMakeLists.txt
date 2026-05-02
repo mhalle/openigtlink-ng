@@ -839,8 +839,9 @@ target_include_directories(oigtl_bench PRIVATE
 #
 # Produces three consumption models on install(DESTINATION):
 #
-#   1. Granular imported targets (oigtl::runtime, oigtl::messages,
-#      oigtl::transport, oigtl::ergo, oigtl::compat, oigtl::oigtl).
+#   1. Granular imported targets (oigtl::oigtl_runtime,
+#      oigtl::oigtl_messages, oigtl::oigtl_transport,
+#      oigtl::oigtl_ergo, oigtl::igtl_compat, oigtl::oigtl).
 #      Use via `find_package(oigtl)` + `target_link_libraries`.
 #
 #   2. Merged archive: liboigtl.a — all five component object files

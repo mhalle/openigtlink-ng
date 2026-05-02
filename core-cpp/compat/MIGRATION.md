@@ -146,7 +146,7 @@ linker `--gc-sections` filters what your binary actually pulls in):
 | Imported target           | What's inside                                |
 |---------------------------|----------------------------------------------|
 | `oigtl::oigtl_runtime`    | codec primitives (crc, header, metadata)     |
-| `oigtl::oigtl_messages`   | typed codecs, all 20+ IGTL message types     |
+| `oigtl::oigtl_messages`   | typed codecs for all 84 IGTL message types   |
 | `oigtl::oigtl_transport`  | async `Connection`, framer, TCP              |
 | `oigtl::oigtl_ergo`       | ergonomic `Client`/`Server`                  |
 | `oigtl::igtl_compat`      | upstream `igtl::` shim (what you want)       |
@@ -368,9 +368,9 @@ while (auto peer = srv->WaitForConnection(1000)) {
 - **Authentication.** An IP-based allow-list trusts the network —
   any device on the allowed range is assumed legitimate. If you
   need "only *my* tracker, not any tracker on the same subnet,"
-  you need a cryptographic identity mechanism. Our forthcoming
-  An encrypted transport (TLS or Noise) is on the roadmap but
-  not yet implemented; until then, a WireGuard-based mesh VPN like
+  you need a cryptographic identity mechanism. An encrypted
+  transport (TLS or Noise) is on the roadmap but not yet
+  implemented; until then, a WireGuard-based mesh VPN like
   Tailscale provides the same guarantee with an external daemon.
 
 - **A properly-configured network firewall.** These knobs are
@@ -411,7 +411,7 @@ If that string is present, you're on ours.
 
 **The wire format is byte-exact.** A server built with oigtl
 accepts connections from an upstream-built client and vice versa.
-CI verifies this on every commit for 25+ message types.
+CI verifies this on every commit for all 84 message types.
 
 The subtle differences are all in local behavior:
 
@@ -579,9 +579,9 @@ Byte-exact on the wire. Mix-and-match tested in CI:
 | oigtl-built     | upstream-built  | ✓ |
 | oigtl-built     | oigtl-built     | ✓ |
 
-For each of the 25+ parity-tested message types, CI compares
-our packed wire bytes against upstream's character-for-character.
-A single mismatch fails the build.
+For every spec-defined message type, CI compares our packed wire
+bytes against upstream's byte-for-byte. A single mismatch fails
+the build.
 
 ### Gotchas
 

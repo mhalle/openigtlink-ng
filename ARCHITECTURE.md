@@ -45,7 +45,7 @@ The specification of record. Two kinds of artifact:
 - **Corpus** (`spec/corpus/`) — byte-exact wire test vectors.
   Positive fixtures (must accept + round-trip byte-identical) and
   negative fixtures (must reject). 24 positive upstream fixtures
-  are frozen from the reference C++ library; 21 negative fixtures
+  are frozen from the reference C++ library; 32 negative fixtures
   pin regressions the differential fuzzer found.
 
 The spec is the contract every other component targets. Changes

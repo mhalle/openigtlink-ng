@@ -81,5 +81,5 @@
     "Upstream C++ library (at pinned SHA 94244fe) iterates `nelem` elements in igtl_point_convert_byte_order without verifying the body is large enough. A conformant implementation MUST reject any POINT message whose body_size is not a multiple of 136."
   ],
 
-  "see_also": ["TRAJECTORY", "TDATA", "QTDATA"]
+  "see_also": ["TRAJ", "TDATA", "QTDATA"]
 }

@@ -12,10 +12,10 @@ Typed Python wire codec for the OpenIGTLink protocol — symmetric to
 
 ## Status
 
-**Complete.** 83 generated typed message classes (each round-trips
-the upstream fixture byte-for-byte) plus a full async+sync
-transport layer (`oigtl.net`) with client, server, resilience,
-and accept-time restrictions. 288 tests passing.
+**Complete.** All 84 generated typed message classes (each
+round-trips the upstream fixture byte-for-byte) plus a full
+async+sync transport layer (`oigtl.net`) with client, server,
+resilience, and accept-time restrictions.
 
 ## Two Python codecs in one project
 
@@ -129,7 +129,7 @@ uv sync --all-extras      # includes [numpy] for full test coverage
 uv run pytest
 ```
 
-All 149 tests should pass in under half a second. Without
+All tests should pass in well under a minute. Without
 `--all-extras` the runtime falls back to `array.array` and the
 semantic helper tests are skipped.
 

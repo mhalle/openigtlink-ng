@@ -39,7 +39,7 @@ npm install @openigtlink/core
 
 ```ts
 import { parseWire, verifyWireBytes } from "@openigtlink/core";
-import { Transform, ImageMessage, Status } from "@openigtlink/core/messages";
+import { Transform, Image, Status } from "@openigtlink/core/messages";
 
 // Construct + pack
 const tx = new Transform({
