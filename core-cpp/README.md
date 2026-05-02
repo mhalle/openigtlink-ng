@@ -62,27 +62,7 @@ core-cpp/
 
 ## Usage
 
-### Codec only
-
-```cpp
-#include "oigtl/messages/register_all.hpp"
-#include "oigtl/runtime/oracle.hpp"
-
-// Option 1 — you know the type_id, just use the struct directly:
-#include "oigtl/messages/transform.hpp"
-auto tx = oigtl::messages::Transform::unpack(body_ptr, body_len);
-std::vector<std::uint8_t> body = tx.pack();
-
-// Option 2 — type-erased verify + round-trip via the registry:
-auto registry = oigtl::messages::default_registry();  // all 84 types
-auto result = oigtl::runtime::oracle::verify_wire_bytes(
-    wire_ptr, wire_len, registry);
-if (!result.ok) {
-    /* result.error describes why */
-}
-```
-
-### TCP Client + Server — the ergonomic API
+### TCP client + server — the typical case
 
 ```cpp
 #include "oigtl/client.hpp"
@@ -107,6 +87,32 @@ oigtl::Server::listen(18944)
 For resilient client configurations (auto-reconnect, offline
 buffer, TCP keepalive), see **[CLIENT_GUIDE.md](CLIENT_GUIDE.md)**
 and the runnable **[examples/resilient_client.cpp](examples/resilient_client.cpp)**.
+
+### Codec only — no transport
+
+If you have your own transport (UDP, IPC, file replay, MQTT
+bridge) and just need bytes-in / bytes-out:
+
+```cpp
+#include "oigtl/messages/register_all.hpp"
+#include "oigtl/runtime/oracle.hpp"
+
+// Option 1 — you know the type_id, just use the struct directly:
+#include "oigtl/messages/transform.hpp"
+auto tx = oigtl::messages::Transform::unpack(body_ptr, body_len);
+std::vector<std::uint8_t> body = tx.pack();
+
+// Option 2 — type-erased verify + round-trip via the registry:
+auto registry = oigtl::messages::default_registry();  // all 84 types
+auto result = oigtl::runtime::oracle::verify_wire_bytes(
+    wire_ptr, wire_len, registry);
+if (!result.ok) {
+    /* result.error describes why */
+}
+```
+
+See [`API.md`](API.md) for a full structural tour of the four
+layers (runtime / messages / transport / facade).
 
 ## Build + test
 

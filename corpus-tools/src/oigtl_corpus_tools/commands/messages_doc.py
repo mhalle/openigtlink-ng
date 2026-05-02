@@ -221,7 +221,26 @@ defined by the OpenIGTLink protocol. For the protocol itself (wire
 format, framing, header layout, CRC, transport), see
 [`protocol/v3.md`](protocol/v3.md). For the schemas this file is
 generated from, see [`schemas/`](schemas/).
-"""
+
+## Most-used types
+
+A typical OpenIGTLink session uses only a handful of message
+types. If you're new to the protocol, jump straight to one of
+these:
+
+- [`TRANSFORM`](#transform) — a 4×4 pose, the workhorse of
+  tracker-to-host streaming.
+- [`STATUS`](#status) — operational status / command outcome.
+- [`STRING`](#string) — a tagged ASCII or UTF-8 payload.
+- [`IMAGE`](#image) — 2D frame or 3D volume with orientation.
+- [`COMMAND`](#command) / [`RTS_COMMAND`](#rts-command) —
+  request/response over the OpenIGTLink session.
+- [`TDATA`](#tdata) / [`QTDATA`](#qtdata) — tracked-tool streams
+  (matrix or quaternion form).
+
+Everything else (POINT, POLYDATA, SENSOR, NDARRAY, the v2/v3
+metadata block, the streaming-control `STT_*` / `STP_*`
+messages…) is in the index below."""
 
 
 def render(schemas: Iterable[LoadedSchema]) -> str:
