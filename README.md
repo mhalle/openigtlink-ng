@@ -180,6 +180,12 @@ and usage.
 - [`spec/MESSAGES.md`](spec/MESSAGES.md) — message reference for
   all 84 types: fields, semantics, version applicability, legacy
   notes. Generated from the schemas; kept in sync by CI.
+- Per-language API tours — guided structural overview of each
+  core's package, sitting between the README's quick examples and
+  per-symbol reference.
+  [`core-py/API.md`](core-py/API.md) ·
+  [`core-cpp/API.md`](core-cpp/API.md) ·
+  [`core-ts/API.md`](core-ts/API.md)
 - [`core-cpp/compat/MIGRATION.md`](core-cpp/compat/MIGRATION.md) —
   swapping `libOpenIGTLink` for openigtlink-ng in an existing
   C++ project. Linker flags, build recipes, FAQ.

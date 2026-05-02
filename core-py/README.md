@@ -4,6 +4,12 @@ Typed Python wire codec for the OpenIGTLink protocol — symmetric to
 [`core-cpp`](../core-cpp/), generated from the same 84 schemas under
 [`../spec/schemas/`](../spec/schemas/).
 
+> **Reading order:** this README is quick examples and status. For
+> a guided tour of the package's structure (codec / messages / net
+> layers), see [`API.md`](API.md). For network usage in detail,
+> see [`NET_GUIDE.md`](NET_GUIDE.md). For message-level questions,
+> see [`../spec/MESSAGES.md`](../spec/MESSAGES.md).
+
 ## Status
 
 **Complete.** 83 generated typed message classes (each round-trips

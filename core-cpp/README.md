@@ -4,6 +4,16 @@ Typed C++17 wire codec for the OpenIGTLink protocol. Generated from
 the schemas under [`../spec/schemas/`](../spec/schemas/) via the
 Python codegen in [`../corpus-tools/`](../corpus-tools/).
 
+> **Reading order:** this README is quick examples and status. For
+> a guided tour of the layered API (`oigtl::runtime::` →
+> `oigtl::messages::` → `oigtl::transport::` → `oigtl::Client/Server`),
+> see [`API.md`](API.md). For resilient-client features
+> (auto-reconnect, offline buffer, TCP keepalive), see
+> [`CLIENT_GUIDE.md`](CLIENT_GUIDE.md). For porting code written
+> against upstream's `igtl::` API, see
+> [`compat/MIGRATION.md`](compat/MIGRATION.md). For message-level
+> questions, see [`../spec/MESSAGES.md`](../spec/MESSAGES.md).
+
 Symmetric to [`../core-py/`](../core-py/): same 84 message types,
 same registry pattern, same drift-checked codegen. Downstream C++
 applications depend on this package; the Python codec in

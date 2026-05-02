@@ -4,6 +4,12 @@ Typed TypeScript wire codec for the OpenIGTLink protocol — symmetric
 to [`core-cpp`](../core-cpp/) and [`core-py`](../core-py/), generated
 from the same 84 schemas under [`../spec/schemas/`](../spec/schemas/).
 
+> **Reading order:** this README is quick examples and status. For
+> a guided tour of the package's three layers
+> (codec / messages / net), see [`API.md`](API.md). For
+> message-level questions, see
+> [`../spec/MESSAGES.md`](../spec/MESSAGES.md).
+
 ## Status
 
 **Complete.** 84 generated typed message classes, each round-trips
