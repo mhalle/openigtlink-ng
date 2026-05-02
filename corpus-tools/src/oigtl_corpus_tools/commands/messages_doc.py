@@ -293,7 +293,7 @@ def _render_message(m: MessageSchema) -> str:
 
     # Rationale
     if m.rationale:
-        parts.append("**Rationale.** " + m.rationale + "\n")
+        parts.append("**Rationale:** " + m.rationale + "\n")
 
     # Fields — rendered as named paragraphs rather than a table.
     # Markdown tables collapse long descriptions into single tall
@@ -301,7 +301,7 @@ def _render_message(m: MessageSchema) -> str:
     # respects the actual reading flow and scales with description
     # length.
     if m.fields:
-        parts.append("**Fields.**\n")
+        parts.append("**Fields:**\n")
         for i, f in enumerate(m.fields):
             parts.append(_render_field(f))
             if i < len(m.fields) - 1:
@@ -313,7 +313,7 @@ def _render_message(m: MessageSchema) -> str:
     # Post-unpack invariant
     if m.post_unpack_invariant:
         parts.append(
-            f"**Post-unpack invariant.** `{m.post_unpack_invariant}` "
+            f"**Post-unpack invariant:** `{m.post_unpack_invariant}` "
             f"— see `corpus-tools/src/oigtl_corpus_tools/codec/policy.py` "
             f"for the cross-codec invariant definition.\n"
         )
@@ -322,20 +322,20 @@ def _render_message(m: MessageSchema) -> str:
     if m.body_size_set:
         legal = ", ".join(str(n) for n in m.body_size_set)
         parts.append(
-            f"**Legal body sizes.** {legal} bytes only. Codecs reject "
+            f"**Legal body sizes:** {legal} bytes only. Codecs reject "
             f"any other length before field access.\n"
         )
 
     # Legacy notes
     if m.legacy_notes:
-        parts.append("**Legacy notes.**\n")
+        parts.append("**Legacy notes:**\n")
         for note in m.legacy_notes:
             parts.append(f"- {note}")
         parts.append("")
 
     # Other notes
     if m.notes:
-        parts.append("**Notes.**\n")
+        parts.append("**Notes:**\n")
         for note in m.notes:
             parts.append(f"- {note}")
         parts.append("")
@@ -345,14 +345,14 @@ def _render_message(m: MessageSchema) -> str:
         links = ", ".join(
             f"[`{ref}`](#{_anchor_for(ref)})" for ref in m.see_also
         )
-        parts.append(f"**See also.** {links}\n")
+        parts.append(f"**See also:** {links}\n")
 
     # Spec reference
     if m.spec_reference:
         section = m.spec_reference.section
         document = m.spec_reference.document
         parts.append(
-            f"**Spec reference.** [{document} §\"{section}\"]"
+            f"**Spec reference:** [{document} §\"{section}\"]"
             f"({document})\n"
         )
 
@@ -375,11 +375,11 @@ def _render_field(f: FieldSchema) -> str:
 
         Description prose…
 
-        *Rationale.* …
+        *Rationale:* …
 
-        *Layout.* `column_major_3x4`.
+        *Layout:* `column_major_3x4`.
 
-        *Legacy.* …
+        *Legacy:* …
 
     Reads top-down as natural prose; scales cleanly with
     description length, unlike a Markdown table cell.
@@ -398,7 +398,7 @@ def _render_field(f: FieldSchema) -> str:
 
     # Rationale, if present.
     if f.rationale:
-        paragraphs.append(f"*Rationale.* {f.rationale}")
+        paragraphs.append(f"*Rationale:* {f.rationale}")
 
     # Single-line attributes bundled into one paragraph.
     attr_bits: list[str] = []
@@ -416,7 +416,7 @@ def _render_field(f: FieldSchema) -> str:
     # Legacy notes, one paragraph each.
     if getattr(f, "legacy_notes", None):
         for note in f.legacy_notes:
-            paragraphs.append(f"*Legacy.* {note}")
+            paragraphs.append(f"*Legacy:* {note}")
 
     # Struct elements — render their nested sub-fields as a sub-list.
     # Used by POINT, TDATA, QTDATA, TRAJ, IMGMETA, LBMETA, POLYDATA, …
