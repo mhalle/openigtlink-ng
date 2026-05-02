@@ -177,6 +177,9 @@ and usage.
 - [`spec/CONFORMANCE.md`](spec/CONFORMANCE.md) — how the test
   suite verifies correctness (five layers, from unit tests to
   differential fuzzing to cross-runtime interop).
+- [`spec/MESSAGES.md`](spec/MESSAGES.md) — message reference for
+  all 84 types: fields, semantics, version applicability, legacy
+  notes. Generated from the schemas; kept in sync by CI.
 - [`core-cpp/compat/MIGRATION.md`](core-cpp/compat/MIGRATION.md) —
   swapping `libOpenIGTLink` for openigtlink-ng in an existing
   C++ project. Linker flags, build recipes, FAQ.

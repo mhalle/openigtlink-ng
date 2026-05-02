@@ -14,6 +14,7 @@ spec/
 ├── protocol/         human-readable specification documents
 │   ├── v3.md         canonical description of the deployed v2/v3 protocol
 │   └── (v4.md)       NG protocol — drafted via RFCs before landing
+├── MESSAGES.md       generated message reference (one section per type)
 ├── schemas/          per-message-type JSON schemas (one file per type)
 │   ├── transform.json
 │   └── ...
@@ -23,6 +24,12 @@ spec/
 │   └── negative/     must-reject inputs
 └── meta-schema.json  JSON Schema that validates the message schemas
 ```
+
+[`MESSAGES.md`](MESSAGES.md) is the human-readable reference for all
+84 types — generated deterministically from the schemas by
+`oigtl-corpus messages-doc` and kept in sync by CI. Read this if
+you want to know what a TRANSFORM looks like; read [`schemas/`](schemas/)
+if you want the machine-readable contract.
 
 ## Schema format
 

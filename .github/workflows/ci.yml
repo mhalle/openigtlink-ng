@@ -192,6 +192,10 @@ jobs:
         working-directory: corpus-tools
         run: uv run oigtl-corpus schema emit-meta --check
 
+      - name: Verify spec/MESSAGES.md is in sync with the schemas
+        working-directory: corpus-tools
+        run: uv run oigtl-corpus messages-doc --check
+
       # Build the C++ TCP-echo fixture so tests/test_cross_runtime_cpp.py
       # has a live core-cpp server to round-trip against. Without this,
       # the test self-skips and a cross-language wire-format regression
