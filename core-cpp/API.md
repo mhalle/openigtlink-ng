@@ -39,9 +39,9 @@ TCP keepalive), see [`CLIENT_GUIDE.md`](CLIENT_GUIDE.md).
 └────────────────────┬─────────────────────────────────┘
                      │ encodes/decodes via
 ┌────────────────────┴─────────────────────────────────┐
-│  oigtl::runtime::          ← reach in only for       │
-│  Pure codec — header, extended header, metadata,        gateways, custom transports,
-│  CRC, byte order, ASCII, dispatch, oracle.              and other niche needs
+│  oigtl::runtime::          ← reach in only when      │
+│  Pure codec — header, extended header, metadata,     │
+│  CRC, byte order, ASCII, dispatch, oracle.           │
 └──────────────────────────────────────────────────────┘
 ```
 

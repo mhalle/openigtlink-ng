@@ -25,8 +25,8 @@ see [`../spec/MESSAGES.md`](../spec/MESSAGES.md).
                      │ encodes/decodes via
 ┌────────────────────┴─────────────────────────────────┐
 │  @openigtlink/core (top-level)   ← reach in only     │
-│  Wire codec — pure, transport-independent              for browser bundles, MQTT
-│  pack/unpack of bytes. Zero dependencies.              bridges, custom transports
+│  Wire codec — pure, transport-independent.           │
+│  pack/unpack of bytes. Zero dependencies.            │
 └──────────────────────────────────────────────────────┘
 ```
 
