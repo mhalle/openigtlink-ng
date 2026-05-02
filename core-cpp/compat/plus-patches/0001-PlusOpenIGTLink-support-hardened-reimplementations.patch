@@ -1,0 +1,331 @@
+From c1e86b4c7a992bf568f4e0004841844e8e436abd Mon Sep 17 00:00:00 2001
+From: openigtlink-ng <ng@openigtlink.localhost>
+Date: Sat, 2 May 2026 16:07:21 -0400
+Subject: [PATCH] PlusOpenIGTLink: support hardened OpenIGTLink
+ reimplementations via __has_include
+MIME-Version: 1.0
+Content-Type: text/plain; charset=UTF-8
+Content-Transfer-Encoding: 8bit
+
+PLUS's three custom igtl::* message classes (PlusClientInfoMessage,
+PlusUsMessage, PlusTrackedFrameMessage) reach into protected
+members of igtl::MessageBase to implement Clone() and to compute
+raw-pointer offsets into the content region. That works against
+the upstream OpenIGTLink C++ library, but a hardened
+reimplementation may want to expose the same capability through a
+sanctioned tier-2 API rather than re-exposing the raw protected
+internals.
+
+Add a single-file helper header (igtlPlusMessageCompat.h) that
+self-detects which library is on the include path via
+__has_include(<igtl/igtlSafeMessageHelpers.h>) and provides two
+macros that PLUS's message files call:
+
+  - IGTL_PLUS_CLONE_RECEIVED_STATE(self, src) — replaces the
+    historical InitBuffer / CopyHeader / AllocateBuffer / CopyBody
+    + v2 metadata-copy sequence with a single-call sanctioned API
+    when the safe helpers are present, or replays the original
+    sequence when they aren't.
+
+  - IGTL_PLUS_CONTENT_BYTES(self) — returns a pointer to the start
+    of the content region. Goes through the sanctioned
+    GetContentPointer accessor when available; falls back to
+    direct m_Content access otherwise.
+
+Both paths produce identical observable behavior; the safe path
+adds bounds checks beneath the hood. Detection is automatic via
+__has_include — no build-system flags, no consumer-visible
+defines.
+
+Side-effect improvement: PlusTrackedFrameMessage::Clone() now
+copies v2/v3 metadata along with header + body. Previously this
+was missing — Clone() returned an instance whose metadata didn't
+follow the original. Strictly additive correctness fix.
+---
+ .../igtlPlusClientInfoMessage.cxx             |  16 +--
+ src/PlusOpenIGTLink/igtlPlusMessageCompat.h   | 124 ++++++++++++++++++
+ .../igtlPlusTrackedFrameMessage.cxx           |  22 ++--
+ src/PlusOpenIGTLink/igtlPlusUsMessage.cxx     |  16 +--
+ 4 files changed, 136 insertions(+), 42 deletions(-)
+ create mode 100644 src/PlusOpenIGTLink/igtlPlusMessageCompat.h
+
+diff --git a/src/PlusOpenIGTLink/igtlPlusClientInfoMessage.cxx b/src/PlusOpenIGTLink/igtlPlusClientInfoMessage.cxx
+index 84e33ec..c9f3840 100644
+--- a/src/PlusOpenIGTLink/igtlPlusClientInfoMessage.cxx
++++ b/src/PlusOpenIGTLink/igtlPlusClientInfoMessage.cxx
+@@ -7,6 +7,7 @@ See License.txt for details.
+ // Local includes
+ #include "PlusConfigure.h"
+ #include "igtlPlusClientInfoMessage.h"
++#include "igtlPlusMessageCompat.h"
+ #include "vtkPlusIgtlMessageFactory.h"
+ 
+ // IGTL includes
+@@ -37,20 +38,7 @@ namespace igtl
+ 
+     igtl::PlusClientInfoMessage::Pointer msg = dynamic_cast<igtl::PlusClientInfoMessage*>(clone.GetPointer());
+ 
+-    int bodySize = this->m_MessageSize - IGTL_HEADER_SIZE;
+-    msg->InitBuffer();
+-    msg->CopyHeader(this);
+-    msg->AllocateBuffer(bodySize);
+-    if (bodySize > 0)
+-    {
+-      msg->CopyBody(this);
+-    }
+-
+-#if OpenIGTLink_HEADER_VERSION >= 2
+-    msg->m_MetaDataHeader = this->m_MetaDataHeader;
+-    msg->m_MetaDataMap = this->m_MetaDataMap;
+-    msg->m_IsExtendedHeaderUnpacked = this->m_IsExtendedHeaderUnpacked;
+-#endif
++    IGTL_PLUS_CLONE_RECEIVED_STATE(*msg, *this);
+ 
+     return clone;
+   }
+diff --git a/src/PlusOpenIGTLink/igtlPlusMessageCompat.h b/src/PlusOpenIGTLink/igtlPlusMessageCompat.h
+new file mode 100644
+index 0000000..b6db67c
+--- /dev/null
++++ b/src/PlusOpenIGTLink/igtlPlusMessageCompat.h
+@@ -0,0 +1,124 @@
++/*=Plus=header=begin======================================================
++Program: Plus
++Copyright (c) Laboratory for Percutaneous Surgery. All rights reserved.
++See License.txt for details.
++=========================================================Plus=header=end*/
++
++// igtlPlusMessageCompat.h — implementation-detail bridge between
++// PLUS's custom igtl::* message classes and whichever build of
++// OpenIGTLink they're linked against.
++//
++// PLUS's custom messages (PlusClientInfoMessage, PlusUsMessage,
++// PlusTrackedFrameMessage) historically reach into protected
++// members of igtl::MessageBase to implement Clone() and to compute
++// raw-pointer offsets into the content region. That works against
++// the upstream OpenIGTLink C++ library, but a hardened
++// reimplementation may want to expose the same capability through
++// a sanctioned, bounds-aware tier-2 API rather than re-exposing
++// the raw protected internals.
++//
++// This header centralises that choice in one place. The macros
++// below expand inside a member function of a class that derives
++// from igtl::MessageBase (so the protected-member access is
++// legal). Detection is automatic via __has_include — no
++// build-system flags, no consumer-visible defines.
++//
++// **Safe path** (taken when <igtl/igtlSafeMessageHelpers.h> is
++// reachable on the include path — the openigtlink-ng compat shim
++// ships it):
++//
++//   - IGTL_PLUS_CLONE_RECEIVED_STATE(self, src) calls the
++//     sanctioned protected method
++//     `MessageBase::CopyReceivedFrom(src)`, which copies header
++//     fields, content, metadata, and v2/v3 extended-header state
++//     in one bounds-checked operation.
++//
++//   - IGTL_PLUS_CONTENT_BYTES(self) calls the sanctioned protected
++//     accessor `MessageBase::GetContentPointer()`, returning a
++//     pointer to the start of the content region.
++//
++// **Upstream path** (taken when the safe-helpers header is not
++// found on the include path — i.e. linking against the original
++// OpenIGTLink C++ library):
++//
++//   - IGTL_PLUS_CLONE_RECEIVED_STATE(self, src) replays the
++//     historical InitBuffer / CopyHeader / AllocateBuffer /
++//     CopyBody sequence, plus the v2+ metadata-copy block.
++//
++//   - IGTL_PLUS_CONTENT_BYTES(self) returns `self.m_Content`
++//     directly, matching the original PLUS code prior to
++//     introducing this helper.
++//
++// Both paths produce identical observable behavior; the safe
++// path adds bounds-checks beneath the hood.
++
++#ifndef __igtlPlusMessageCompat_h
++#define __igtlPlusMessageCompat_h
++
++#include "igtlMessageBase.h"
++#include "igtl_header.h"
++
++// Self-detect which OpenIGTLink build is on the include path.
++// __has_include is C++17 standard; the outer defined() guard
++// makes the test portable to compilers that pre-date C++17.
++#if defined(__has_include)
++#  if __has_include(<igtl/igtlSafeMessageHelpers.h>)
++#    include <igtl/igtlSafeMessageHelpers.h>
++#    define IGTL_PLUS_HAS_SAFE_API 1
++#  endif
++#endif
++
++// ---------------------------------------------------------------
++// Clone-received-state — replaces the historical 5-line sequence
++// with a single sanctioned call when the safe API is present.
++// ---------------------------------------------------------------
++#ifdef IGTL_PLUS_HAS_SAFE_API
++
++#  define IGTL_PLUS_CLONE_RECEIVED_STATE(self, src)               \
++     do { (self).CopyReceivedFrom(src); } while (0)
++
++#else
++
++#  define IGTL_PLUS_CLONE_RECEIVED_STATE(self, src)               \
++     do {                                                         \
++       int igtl_plus_compat_body_size_ =                          \
++         (src).m_MessageSize - IGTL_HEADER_SIZE;                  \
++       (self).InitBuffer();                                       \
++       (self).CopyHeader(&(src));                                 \
++       (self).AllocateBuffer(igtl_plus_compat_body_size_);        \
++       if (igtl_plus_compat_body_size_ > 0) {                     \
++         (self).CopyBody(&(src));                                 \
++       }                                                          \
++       IGTL_PLUS_COMPAT_COPY_V2_METADATA_(self, src);             \
++     } while (0)
++
++#  if OpenIGTLink_HEADER_VERSION >= 2
++#    define IGTL_PLUS_COMPAT_COPY_V2_METADATA_(self, src)         \
++       do {                                                       \
++         (self).m_MetaDataHeader           = (src).m_MetaDataHeader; \
++         (self).m_MetaDataMap              = (src).m_MetaDataMap;    \
++         (self).m_IsExtendedHeaderUnpacked = (src).m_IsExtendedHeaderUnpacked; \
++       } while (0)
++#  else
++#    define IGTL_PLUS_COMPAT_COPY_V2_METADATA_(self, src) ((void)0)
++#  endif
++
++#endif
++
++// ---------------------------------------------------------------
++// Content-bytes accessor — used by PlusTrackedFrameMessage's
++// pack/unpack paths to compute raw pointer offsets into the
++// content region.
++// ---------------------------------------------------------------
++#ifdef IGTL_PLUS_HAS_SAFE_API
++
++#  define IGTL_PLUS_CONTENT_BYTES(self)                           \
++     (reinterpret_cast<unsigned char*>((self).GetContentPointer()))
++
++#else
++
++#  define IGTL_PLUS_CONTENT_BYTES(self)  ((self).m_Content)
++
++#endif
++
++#endif /* __igtlPlusMessageCompat_h */
+diff --git a/src/PlusOpenIGTLink/igtlPlusTrackedFrameMessage.cxx b/src/PlusOpenIGTLink/igtlPlusTrackedFrameMessage.cxx
+index 0dd2536..9b57557 100644
+--- a/src/PlusOpenIGTLink/igtlPlusTrackedFrameMessage.cxx
++++ b/src/PlusOpenIGTLink/igtlPlusTrackedFrameMessage.cxx
+@@ -5,6 +5,7 @@ See License.txt for details.
+ =========================================================Plus=header=end*/
+ 
+ #include "PlusConfigure.h"
++#include "igtlPlusMessageCompat.h"
+ #include "igtlPlusTrackedFrameMessage.h"
+ #include "vtkImageData.h"
+ #include "vtkMatrix4x4.h"
+@@ -35,14 +36,7 @@ namespace igtl
+ 
+     igtl::PlusTrackedFrameMessage::Pointer msg = dynamic_cast<igtl::PlusTrackedFrameMessage*>(clone.GetPointer());
+ 
+-    int bodySize = this->m_MessageSize - IGTL_HEADER_SIZE;
+-    msg->InitBuffer();
+-    msg->CopyHeader(this);
+-    msg->AllocateBuffer(bodySize);
+-    if (bodySize > 0)
+-    {
+-      msg->CopyBody(this);
+-    }
++    IGTL_PLUS_CLONE_RECEIVED_STATE(*msg, *this);
+ 
+     return clone;
+   }
+@@ -135,7 +129,7 @@ namespace igtl
+     AllocateBuffer();
+ 
+     // Copy header
+-    TrackedFrameHeader* header = (TrackedFrameHeader*)(this->m_Content);
++    TrackedFrameHeader* header = reinterpret_cast<TrackedFrameHeader*>(IGTL_PLUS_CONTENT_BYTES(*this));
+     header->m_ScalarType = this->m_MessageHeader.m_ScalarType;
+     header->m_NumberOfComponents = this->m_MessageHeader.m_NumberOfComponents;
+     header->m_ImageType = this->m_MessageHeader.m_ImageType;
+@@ -148,12 +142,12 @@ namespace igtl
+     memcpy(header->m_EmbeddedImageTransform, this->m_MessageHeader.m_EmbeddedImageTransform, sizeof(igtl::Matrix4x4));
+ 
+     // Copy xml data
+-    char* xmlData = (char*)(this->m_Content + header->GetMessageHeaderSize());
++    char* xmlData = reinterpret_cast<char*>(IGTL_PLUS_CONTENT_BYTES(*this) + header->GetMessageHeaderSize());
+     strncpy(xmlData, this->m_TrackedFrameXmlData.c_str(), this->m_TrackedFrameXmlData.size());
+     header->m_XmlDataSizeInBytes = this->m_MessageHeader.m_XmlDataSizeInBytes;
+ 
+     // Copy image data
+-    void* imageData = (void*)(this->m_Content + header->GetMessageHeaderSize() + header->m_XmlDataSizeInBytes);
++    void* imageData = reinterpret_cast<void*>(IGTL_PLUS_CONTENT_BYTES(*this) + header->GetMessageHeaderSize() + header->m_XmlDataSizeInBytes);
+     memcpy(imageData, this->m_TrackedFrame.GetImageData()->GetScalarPointer(), this->m_TrackedFrame.GetImageData()->GetFrameSizeInBytes());
+ 
+     // Set timestamp
+@@ -170,7 +164,7 @@ namespace igtl
+   //----------------------------------------------------------------------------
+   int PlusTrackedFrameMessage::UnpackContent()
+   {
+-    TrackedFrameHeader* header = (TrackedFrameHeader*)(this->m_Content);
++    TrackedFrameHeader* header = reinterpret_cast<TrackedFrameHeader*>(IGTL_PLUS_CONTENT_BYTES(*this));
+ 
+     // Convert header endian
+     header->ConvertEndianness();
+@@ -188,7 +182,7 @@ namespace igtl
+     memcpy(this->m_MessageHeader.m_EmbeddedImageTransform, header->m_EmbeddedImageTransform, sizeof(igtl::Matrix4x4));
+ 
+     // Copy xml data
+-    char* xmlData = (char*)(this->m_Content + header->GetMessageHeaderSize());
++    char* xmlData = reinterpret_cast<char*>(IGTL_PLUS_CONTENT_BYTES(*this) + header->GetMessageHeaderSize());
+     this->m_TrackedFrameXmlData.assign(xmlData, header->m_XmlDataSizeInBytes);
+     if (this->m_TrackedFrame.SetTrackedFrameFromXmlData(this->m_TrackedFrameXmlData) != PLUS_SUCCESS)
+     {
+@@ -197,7 +191,7 @@ namespace igtl
+     }
+ 
+     // Copy image data
+-    void* imageData = (void*)(this->m_Content + header->GetMessageHeaderSize() + header->m_XmlDataSizeInBytes);
++    void* imageData = reinterpret_cast<void*>(IGTL_PLUS_CONTENT_BYTES(*this) + header->GetMessageHeaderSize() + header->m_XmlDataSizeInBytes);
+     FrameSizeType frameSize = { header->m_FrameSize[0], header->m_FrameSize[1], header->m_FrameSize[2] };
+     if (this->m_TrackedFrame.GetImageData()->AllocateFrame(frameSize, PlusCommon::GetVTKScalarPixelTypeFromIGTL(header->m_ScalarType), header->m_NumberOfComponents) != PLUS_SUCCESS)
+     {
+diff --git a/src/PlusOpenIGTLink/igtlPlusUsMessage.cxx b/src/PlusOpenIGTLink/igtlPlusUsMessage.cxx
+index 71e2a5a..067b819 100644
+--- a/src/PlusOpenIGTLink/igtlPlusUsMessage.cxx
++++ b/src/PlusOpenIGTLink/igtlPlusUsMessage.cxx
+@@ -6,6 +6,7 @@ See License.txt for details.
+ 
+ #include "PlusConfigure.h"
+ #include "igsioTrackedFrame.h"
++#include "igtlPlusMessageCompat.h"
+ #include "igtlPlusUsMessage.h"
+ #include "igtl_image.h"
+ #include "igtl_header.h"
+@@ -68,20 +69,7 @@ namespace igtl
+ 
+     igtl::PlusUsMessage::Pointer msg = dynamic_cast<igtl::PlusUsMessage*>(clone.GetPointer());
+ 
+-    int bodySize = this->m_MessageSize - IGTL_HEADER_SIZE;
+-    msg->InitBuffer();
+-    msg->CopyHeader(this);
+-    msg->AllocateBuffer(bodySize);
+-    if (bodySize > 0)
+-    {
+-      msg->CopyBody(this);
+-    }
+-
+-#if OpenIGTLink_HEADER_VERSION >= 2
+-    msg->m_MetaDataHeader = this->m_MetaDataHeader;
+-    msg->m_MetaDataMap = this->m_MetaDataMap;
+-    msg->m_IsExtendedHeaderUnpacked = this->m_IsExtendedHeaderUnpacked;
+-#endif
++    IGTL_PLUS_CLONE_RECEIVED_STATE(*msg, *this);
+ 
+     return clone;
+   }
+-- 
+2.53.0
+

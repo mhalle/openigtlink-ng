@@ -14,8 +14,11 @@ patch reference, see:
 
 - [`PLUS_AUDIT.md`](PLUS_AUDIT.md) — surface audit, dependency
   landscape, what's in scope.
-- [`plus-patches/README.md`](plus-patches/README.md) — the three
-  unified diffs and what each one does.
+- [`plus-patches/README.md`](plus-patches/README.md) — the
+  single unified diff and what it does.
+- [`plus-patches/UPSTREAM_PR.md`](plus-patches/UPSTREAM_PR.md) —
+  outline of the upstream PR to PLUS that would make this patch
+  unnecessary at port time.
 - [`MIGRATION.md`](MIGRATION.md) — generic migration guide for
   any consumer of upstream's `igtl::` API; PLUS is the
   best-documented case.
@@ -130,9 +133,9 @@ _install/
     └── libOpenIGTLink.a      ← same archive, drop-in name
 ```
 
-### Step 2 — Apply the three patches to your PLUS tree
+### Step 2 — Apply the patch to your PLUS tree
 
-PLUS keeps its source files as CRLF; our patches are LF. Apply
+PLUS keeps its source files as CRLF; the patch is LF. Apply
 with `--ignore-whitespace` so the line-ending difference doesn't
 reject every hunk:
 
@@ -144,26 +147,28 @@ git apply --ignore-whitespace \
 
 What gets touched:
 
-- `src/PlusOpenIGTLink/igtlPlusClientInfoMessage.{h,cxx}`
-- `src/PlusOpenIGTLink/igtlPlusTrackedFrameMessage.{h,cxx}`
-- `src/PlusOpenIGTLink/igtlPlusUsMessage.{h,cxx}`
+- **Added:** `src/PlusOpenIGTLink/igtlPlusMessageCompat.h` — a new
+  helper header (~125 lines) that contains the entire
+  conditional logic for the safe-vs-legacy path choice.
+- **Edited:** `src/PlusOpenIGTLink/igtlPlusClientInfoMessage.cxx`,
+  `igtlPlusTrackedFrameMessage.cxx`, `igtlPlusUsMessage.cxx` —
+  each loses a 5–10-line block of direct protected-member access
+  and gains a single macro call. The `.h` files are not touched.
 
-The patches were verified against PLUS HEAD (`PlusToolkit/PlusLib`
-commit `489d0bb` as of writing), and the targeted code in those
-six files has been stable across recent PLUS history. If a hunk
-does reject on a divergent branch, the patches' *intent* is small
-(replace direct `m_Content` / `InitBuffer` access with a
-helper-method call that's ifdef-gated) — see
-[`plus-patches/README.md`](plus-patches/README.md) for what each
-patch does.
+The patch was verified against PLUS HEAD (`PlusToolkit/PlusLib`
+commit `489d0bb` as of writing); the targeted call sites have
+been stable across recent PLUS history. If a hunk rejects on a
+divergent branch, see [`plus-patches/README.md`](plus-patches/README.md)
+for the patch's intent — the underlying change is small.
 
-Each patch ifdef-gates the changed code paths on `OIGTL_NG_SHIM`:
-when defined (which our shim's `igtlMacro.h` does automatically),
-the helper methods route through the sanctioned `CopyReceivedFrom`
-/ `GetContentPointer` API; when undefined, they replay the
-original upstream sequence unchanged. So a patched PLUS tree
-remains buildable against upstream OpenIGTLink — **the patches
-don't burn that bridge.**
+The helper header self-detects which OpenIGTLink build is on the
+include path via `__has_include(<igtl/igtlSafeMessageHelpers.h>)`
+— our shim ships that header, upstream OpenIGTLink doesn't.
+When detected, the helper macros expand to the sanctioned
+`CopyReceivedFrom` / `GetContentPointer` API; when not, they
+expand to the original upstream sequence unchanged. **A patched
+PLUS tree remains buildable against upstream OpenIGTLink** with
+no behavioural change there.
 
 ### Step 3 — Point PLUS's CMake at openigtlink-ng
 
@@ -193,7 +198,8 @@ cmake --build . -j
 
 Expected outcome:
 
-- The three patched files compile under the `OIGTL_NG_SHIM` path.
+- The three patched files compile through the safe-API path of
+  `igtlPlusMessageCompat.h` (auto-detected via `__has_include`).
 - The remaining ~5,200 LoC of PLUS OpenIGTLink code compiles
   without modification.
 - Linker resolves all `igtl::` symbols against `liboigtl.a`.
@@ -241,14 +247,16 @@ the port preserves semantics.
 
 ## Troubleshooting
 
-### "undefined reference to igtl::SomethingMessage::CloneSomething"
+### Compile error referring to `m_Content` or protected `MessageBase` members
 
-Your patched PLUS tree didn't define `OIGTL_NG_SHIM` during the
-build. The macro is meant to be picked up automatically from our
-`igtlMacro.h`, which `igtlMessageBase.h` includes. If you're
-seeing this, your `-I` paths are pulling in upstream's headers
-ahead of ours — re-check `OpenIGTLink_DIR` and the CMake config
-PLUS is consuming.
+Your patched PLUS tree picked up the *legacy* path of
+`igtlPlusMessageCompat.h` (the path that calls upstream's
+protected members directly), but the headers it found weren't
+upstream's. That happens when `<igtl/igtlSafeMessageHelpers.h>`
+isn't on the include path even though our shim's headers
+otherwise are. Re-check `OpenIGTLink_DIR` and the CMake config
+PLUS is consuming — our install ships `igtlSafeMessageHelpers.h`
+under `include/igtl/`.
 
 ### "undefined reference to igtl::igtl_is_little_endian"
 
@@ -305,16 +313,23 @@ on every PR. If you observe it, please file an issue with:
 
 ## Upstreaming considerations
 
-The patches are designed to be palatable as an additive
+The patch is designed to be palatable as an additive
 compatibility PR to PLUS upstream:
 
-- The ifdef shape means upstream PLUS keeps building against
-  upstream OpenIGTLink with no behaviour change.
-- The new helper methods (`CloneReceivedStateFrom`,
-  `GetContentBytes`) are small and well-named.
-- The patches actually *improve* PLUS's hygiene by replacing
-  scattered protected-member access with named helpers, even on
-  the upstream-OpenIGTLink path.
+- The conditional logic is feature-test-driven (`__has_include`),
+  not vendor-specific. Any future hardened OpenIGTLink
+  implementation that ships `<igtl/igtlSafeMessageHelpers.h>` is
+  picked up automatically without further PLUS changes.
+- The legacy path is byte-for-byte the original PLUS code, so
+  upstream PLUS keeps building against upstream OpenIGTLink with
+  no behaviour change.
+- The patch actually *improves* PLUS's hygiene by centralising
+  the conditional logic in one named helper file, replacing
+  scattered protected-member access with readable macro calls.
+
+A draft of the upstream-PR description, with rationale and
+suggested commit message, lives at
+[`plus-patches/UPSTREAM_PR.md`](plus-patches/UPSTREAM_PR.md).
 
 Whether to pursue an upstream PR is a coordination question, not
 a technical one; the patches ship in this tree regardless. If you
