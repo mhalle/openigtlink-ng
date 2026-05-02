@@ -142,13 +142,25 @@ Multi-message container that bundles N child messages into a single wire message
 
 **Fields.**
 
-| Name | Type | Size | Description |
-|---|---|---|---|
-| `ncmessages` | uint16 | — | Number of child messages bundled in this BIND. Determines the length of the `header_entries` array and the number of entries in the name table. 0 is legal but degenerate (empty BIND). |
-| `header_entries` | type=<FieldType.STRUCT: 'struct'> size_bytes=None encoding=None endianness=None null_padded=None length_prefix_type=None description=None fields=[FieldSchema(name='type_id', type=<FieldType.FIXED_STRING: 'fixed_string'>, description="Wire type identifier of the i-th child message (e.g. 'IMAGE', 'TRANSFORM'). Same 12-byte null-padded format as the outer OpenIGTLink header's type field.", rationale=None, introduced_in=None, endianness=None, size_bytes=12, count=None, count_from=None, element_type=None, layout=None, length_prefix_type=None, encoding=<Encoding.ASCII: 'ascii'>, null_padded=True, null_terminated=None, legacy_notes=None, notes=None), FieldSchema(name='body_size', type=<PrimitiveType.UINT64: 'uint64'>, description="Byte size of the i-th child message's body (not including the child's own OpenIGTLink header — it has none; the child is embedded raw). Used to find the boundary between child[i] and child[i+1] in the trailing bodies section.", rationale=None, introduced_in=None, endianness=None, size_bytes=None, count=None, count_from=None, element_type=None, layout=None, length_prefix_type=None, encoding=None, null_padded=None, null_terminated=None, legacy_notes=None, notes=None)] × ncmessages | — | Array of N × 20-byte header entries (type_id[12] + body_size[8]). A sequential reader consumes these first, then uses the body_size values to partition the trailing bodies section into per-child payloads. |
-| `nametable_size` | uint16 | — | Byte length of the name table section that immediately follows. MUST be even (2-byte aligned); a receiver MUST reject an odd value. The name table contains ncmessages null-terminated device-name strings packed together, with a padding byte appended if the total string bytes (including null terminators) is odd. |
-| `name_table` | uint8 × nametable_size | — | Packed device names — ncmessages null-terminated ASCII strings concatenated together, 2-byte-aligned to nametable_size bytes. To extract name[i], walk forward from the start, reading each null-terminated string in sequence. Each name is at most 20 bytes (IGTL_HEADER_NAME_SIZE). An empty name (single null byte) is legal. |
-| `bodies` | uint8 × (remaining) | — | Concatenated child message bodies. Child[i] occupies body_size[i] bytes (from header_entries[i]), followed by a 1-byte padding if body_size[i] is odd. A receiver MUST partition this blob using the header_entries array; without it the boundaries are unrecoverable. The total byte count MUST equal sum(ceil_to_even(header_entries[i].body_size) for i in 0..ncmessages-1). Any excess or shortfall is a malformed message. |
+**`ncmessages`** &nbsp;·&nbsp; `uint16`
+
+Number of child messages bundled in this BIND. Determines the length of the `header_entries` array and the number of entries in the name table. 0 is legal but degenerate (empty BIND).
+
+**`header_entries`** &nbsp;·&nbsp; `type=<FieldType.STRUCT: 'struct'> size_bytes=None encoding=None endianness=None null_padded=None length_prefix_type=None description=None fields=[FieldSchema(name='type_id', type=<FieldType.FIXED_STRING: 'fixed_string'>, description="Wire type identifier of the i-th child message (e.g. 'IMAGE', 'TRANSFORM'). Same 12-byte null-padded format as the outer OpenIGTLink header's type field.", rationale=None, introduced_in=None, endianness=None, size_bytes=12, count=None, count_from=None, element_type=None, layout=None, length_prefix_type=None, encoding=<Encoding.ASCII: 'ascii'>, null_padded=True, null_terminated=None, legacy_notes=None, notes=None), FieldSchema(name='body_size', type=<PrimitiveType.UINT64: 'uint64'>, description="Byte size of the i-th child message's body (not including the child's own OpenIGTLink header — it has none; the child is embedded raw). Used to find the boundary between child[i] and child[i+1] in the trailing bodies section.", rationale=None, introduced_in=None, endianness=None, size_bytes=None, count=None, count_from=None, element_type=None, layout=None, length_prefix_type=None, encoding=None, null_padded=None, null_terminated=None, legacy_notes=None, notes=None)] × ncmessages`
+
+Array of N × 20-byte header entries (type_id[12] + body_size[8]). A sequential reader consumes these first, then uses the body_size values to partition the trailing bodies section into per-child payloads.
+
+**`nametable_size`** &nbsp;·&nbsp; `uint16`
+
+Byte length of the name table section that immediately follows. MUST be even (2-byte aligned); a receiver MUST reject an odd value. The name table contains ncmessages null-terminated device-name strings packed together, with a padding byte appended if the total string bytes (including null terminators) is odd.
+
+**`name_table`** &nbsp;·&nbsp; `uint8 × nametable_size`
+
+Packed device names — ncmessages null-terminated ASCII strings concatenated together, 2-byte-aligned to nametable_size bytes. To extract name[i], walk forward from the start, reading each null-terminated string in sequence. Each name is at most 20 bytes (IGTL_HEADER_NAME_SIZE). An empty name (single null byte) is legal.
+
+**`bodies`** &nbsp;·&nbsp; `uint8 × (remaining)`
+
+Concatenated child message bodies. Child[i] occupies body_size[i] bytes (from header_entries[i]), followed by a 1-byte padding if body_size[i] is odd. A receiver MUST partition this blob using the header_entries array; without it the boundaries are unrecoverable. The total byte count MUST equal sum(ceil_to_even(header_entries[i].body_size) for i in 0..ncmessages-1). Any excess or shortfall is a malformed message.
 
 **Post-unpack invariant.** `bind` — see `corpus-tools/src/oigtl_corpus_tools/codec/policy.py` for the cross-codec invariant definition.
 
@@ -178,9 +190,9 @@ Advertises the list of OpenIGTLink message types that a device accepts. Typicall
 
 **Fields.**
 
-| Name | Type | Size | Description |
-|---|---|---|---|
-| `supported_types` | type=<FieldType.FIXED_STRING: 'fixed_string'> size_bytes=12 encoding=<Encoding.ASCII: 'ascii'> endianness=None null_padded=True length_prefix_type=None description=None fields=None × (remaining) | — | Ordered array of OpenIGTLink message-type identifiers. Each element is a 12-byte ASCII string, null-padded on the right, matching the 12-byte `type` field of the outer message header. The number of entries is derived at parse time as body_size / 12; a body whose size is not a multiple of 12 MUST be rejected. |
+**`supported_types`** &nbsp;·&nbsp; `type=<FieldType.FIXED_STRING: 'fixed_string'> size_bytes=12 encoding=<Encoding.ASCII: 'ascii'> endianness=None null_padded=True length_prefix_type=None description=None fields=None × (remaining)`
+
+Ordered array of OpenIGTLink message-type identifiers. Each element is a 12-byte ASCII string, null-padded on the right, matching the 12-byte `type` field of the outer message header. The number of entries is derived at parse time as body_size / 12; a body whose size is not a multiple of 12 MUST be rejected.
 
 **Legacy notes.**
 
@@ -204,11 +216,17 @@ Color lookup table that maps integer pixel values to display colors. The body is
 
 **Fields.**
 
-| Name | Type | Size | Description |
-|---|---|---|---|
-| `index_type` | int8 | — | Index type — determines the number of table entries: 3 = uint8 (256 entries), 5 = uint16 (65536 entries). These values match the scalar_type codes used elsewhere in the protocol. Receivers MUST reject any value other than 3 or 5. |
-| `map_type` | int8 | — | Map type — determines the bytes per entry: 3 = uint8 (1 byte per entry), 5 = uint16 (2 bytes per entry), 19 = RGB (3 bytes per entry: R, G, B in that order). Receivers MUST reject values not in {3, 5, 19}. |
-| `table` | uint8 × (remaining) | — | Raw color table data — N × S bytes where N is the entry count from index_type (256 or 65536) and S is the bytes per entry from map_type (1, 2, or 3). The schema models this as raw bytes (uint8[]) because the per-entry width depends on map_type. Receivers MUST verify len(table) exactly equals N × S; a mismatch means the body_size is inconsistent with the header and the message MUST be rejected. |
+**`index_type`** &nbsp;·&nbsp; `int8`
+
+Index type — determines the number of table entries: 3 = uint8 (256 entries), 5 = uint16 (65536 entries). These values match the scalar_type codes used elsewhere in the protocol. Receivers MUST reject any value other than 3 or 5.
+
+**`map_type`** &nbsp;·&nbsp; `int8`
+
+Map type — determines the bytes per entry: 3 = uint8 (1 byte per entry), 5 = uint16 (2 bytes per entry), 19 = RGB (3 bytes per entry: R, G, B in that order). Receivers MUST reject values not in {3, 5, 19}.
+
+**`table`** &nbsp;·&nbsp; `uint8 × (remaining)`
+
+Raw color table data — N × S bytes where N is the entry count from index_type (256 or 65536) and S is the bytes per entry from map_type (1, 2, or 3). The schema models this as raw bytes (uint8[]) because the per-entry width depends on map_type. Receivers MUST verify len(table) exactly equals N × S; a mismatch means the body_size is inconsistent with the header and the message MUST be rejected.
 
 **Post-unpack invariant.** `colortable` — see `corpus-tools/src/oigtl_corpus_tools/codec/policy.py` for the cross-codec invariant definition.
 
@@ -237,11 +255,17 @@ Legacy wire alias for COLORTABLE. Body layout is identical to the modern `COLORT
 
 **Fields.**
 
-| Name | Type | Size | Description |
-|---|---|---|---|
-| `index_type` | int8 | — | Index type — 3 = uint8 (256 entries), 5 = uint16 (65536 entries). Same semantics as the modern COLORT schema. |
-| `map_type` | int8 | — | Map type — 3 = uint8 (1 byte/entry), 5 = uint16 (2 bytes/entry), 19 = RGB (3 bytes/entry). |
-| `table` | uint8 × (remaining) | — | Raw color table data. Same rules as COLORT. |
+**`index_type`** &nbsp;·&nbsp; `int8`
+
+Index type — 3 = uint8 (256 entries), 5 = uint16 (65536 entries). Same semantics as the modern COLORT schema.
+
+**`map_type`** &nbsp;·&nbsp; `int8`
+
+Map type — 3 = uint8 (1 byte/entry), 5 = uint16 (2 bytes/entry), 19 = RGB (3 bytes/entry).
+
+**`table`** &nbsp;·&nbsp; `uint8 × (remaining)`
+
+Raw color table data. Same rules as COLORT.
 
 **Post-unpack invariant.** `colortable` — see `corpus-tools/src/oigtl_corpus_tools/codec/policy.py` for the cross-codec invariant definition.
 
@@ -266,13 +290,25 @@ Carries a structured command — typically an XML document — from one peer to 
 
 **Fields.**
 
-| Name | Type | Size | Description |
-|---|---|---|---|
-| `command_id` | uint32 | — | Session-unique identifier chosen by the sender. A receiver echoes this value in any RTS_COMMAND reply so the sender can correlate responses with outstanding requests. Uniqueness and wraparound policy are the sender's responsibility; the protocol imposes no requirement beyond 'unique within a connection's lifetime'. |
-| `command_name` | fixed_string | 128 B | Symbolic command name, null-padded to 128 bytes. Used by the receiver to dispatch without parsing the command payload. Sender SHOULD choose a name that is stable across versions of the same command. An empty name (all null bytes) is legal but discouraged. |
-| `encoding` | uint16 | — | IANA MIBenum code for the character encoding of the `command` bytes (e.g. 3 = US-ASCII, 106 = UTF-8, 4 = ISO-8859-1). See https://www.iana.org/assignments/character-sets. Receivers MUST reject values not in the IANA table and SHOULD treat 3 (US-ASCII) as the interoperable default when not otherwise constrained. |
-| `length` | uint32 | — | Byte length of the trailing `command` field. Receivers MUST verify `body_size >= 138 + length` before any access to the command region; upstream C++ does not (see U-9). When length is zero, the `command` field occupies no body bytes and the message carries only the symbolic name / ID. |
-| `command` | uint8 × length | — | Command payload — exactly `length` bytes, interpreted per `encoding`. Typically XML, but the protocol treats the bytes as opaque and applies no structure check. The payload MUST NOT be null-terminated on the wire (a trailing null would be included in `length`); receivers that need a C string SHOULD copy and null-terminate into a fresh buffer. |
+**`command_id`** &nbsp;·&nbsp; `uint32`
+
+Session-unique identifier chosen by the sender. A receiver echoes this value in any RTS_COMMAND reply so the sender can correlate responses with outstanding requests. Uniqueness and wraparound policy are the sender's responsibility; the protocol imposes no requirement beyond 'unique within a connection's lifetime'.
+
+**`command_name`** &nbsp;·&nbsp; `fixed_string` &nbsp;·&nbsp; 128 B
+
+Symbolic command name, null-padded to 128 bytes. Used by the receiver to dispatch without parsing the command payload. Sender SHOULD choose a name that is stable across versions of the same command. An empty name (all null bytes) is legal but discouraged.
+
+**`encoding`** &nbsp;·&nbsp; `uint16`
+
+IANA MIBenum code for the character encoding of the `command` bytes (e.g. 3 = US-ASCII, 106 = UTF-8, 4 = ISO-8859-1). See https://www.iana.org/assignments/character-sets. Receivers MUST reject values not in the IANA table and SHOULD treat 3 (US-ASCII) as the interoperable default when not otherwise constrained.
+
+**`length`** &nbsp;·&nbsp; `uint32`
+
+Byte length of the trailing `command` field. Receivers MUST verify `body_size >= 138 + length` before any access to the command region; upstream C++ does not (see U-9). When length is zero, the `command` field occupies no body bytes and the message carries only the symbolic name / ID.
+
+**`command`** &nbsp;·&nbsp; `uint8 × length`
+
+Command payload — exactly `length` bytes, interpreted per `encoding`. Typically XML, but the protocol treats the bytes as opaque and applies no structure check. The payload MUST NOT be null-terminated on the wire (a trailing null would be included in `length`); receivers that need a C string SHOULD copy and null-terminate into a fresh buffer.
 
 **Legacy notes.**
 
@@ -300,18 +336,45 @@ Delivers image pixel data — 2D frames or 3D volumes — together with orientat
 
 **Fields.**
 
-| Name | Type | Size | Description |
-|---|---|---|---|
-| `header_version` | uint16 | — | IMAGE header format version, currently 1. This is the per-message-type format version, not the OpenIGTLink protocol version. Receivers MUST reject headers whose `header_version` they do not implement; upstream C++ UnpackContent returns 0 (failure) on mismatch. |
-| `num_components` | uint8 | — | Number of scalar components per pixel (e.g. 1 for grayscale, 3 for RGB, 3 for vector displacement fields). Must be > 0. Senders typically set 1 (scalar) or 3 (vector). |
-| `scalar_type` | uint8 | — | Pixel scalar type code: 2=int8, 3=uint8, 4=int16, 5=uint16, 6=int32, 7=uint32, 10=float32, 11=float64. Receivers MUST reject unknown values rather than silently treating them as 0-byte scalars — the latter is how upstream C `igtl_image_get_data_size` silently under-reports payload size for float types (see U-7). |
-| `endian` | uint8 | — | Byte order of the pixel data only (not the header, which is always big-endian / network order): 1=big, 2=little. Allows a sender to ship already-native-layout pixels to a known-matching receiver without swapping, at the cost of the receiver having to detect and conditionally swap. |
-| `coord` | uint8 | — | Coordinate-system convention for the matrix and origin: 1=RAS (right/anterior/superior, Slicer-style), 2=LPS (left/posterior/superior, DICOM-style). Receivers MUST accept both and convert as needed; unknown values SHOULD be treated as RAS for forward compatibility. |
-| `size` | uint16 × 3 | — | Entire volume extent in voxels: (Sx, Sy, Sz). For a 2D image, Sz=1. This is the total logical volume; the actual pixels carried in this message are bounded by `subvol_offset` + `subvol_size`. |
-| `matrix` | float32 × 12 | — | Orientation and origin, laid out as four float32[3] groups in row order: matrix[0..2] = norm_i * pixel_size_i, matrix[3..5] = norm_j * pixel_size_j, matrix[6..8] = norm_k * pixel_size_k, matrix[9..11] = origin (coordinates of the volume's reference point in millimeters, per `coord` convention). The matrix fills the upper 3x4 of a 4x4 homogeneous transform; the bottom row is always (0, 0, 0, 1) and is not transmitted. |
-| `subvol_offset` | uint16 × 3 | — | Starting voxel of the sub-region carried by this message within the full volume: (Ox, Oy, Oz). (0, 0, 0) means 'start at the origin voxel'. For a full-volume transfer, offset is (0,0,0) and subvol_size equals size. |
-| `subvol_size` | uint16 × 3 | — | Extent of the sub-region carried by this message: (Wx, Wy, Wz). The trailing `pixels` array MUST contain exactly num_components * Wx * Wy * Wz * sizeof(scalar_type) bytes. Receivers MUST verify subvol_offset + subvol_size <= size (componentwise) and MUST reject the message on overflow; unchecked arithmetic on attacker-controlled subvol_size caused the legacy library to miscompute payload length in 32-bit intermediate form (see U-8). |
-| `pixels` | uint8 × (remaining) | — | Raw pixel payload — num_components * subvol_size[0] * subvol_size[1] * subvol_size[2] scalars of `scalar_type`, laid out in i-fastest order, in the byte order declared by `endian`. Receivers MUST verify len(pixels) equals the product formula above (in 64-bit arithmetic); any deviation is a malformed message and MUST be rejected. When splitting a volume across messages, senders SHOULD keep each message under ~1 MiB body so receivers can buffer safely. |
+**`header_version`** &nbsp;·&nbsp; `uint16`
+
+IMAGE header format version, currently 1. This is the per-message-type format version, not the OpenIGTLink protocol version. Receivers MUST reject headers whose `header_version` they do not implement; upstream C++ UnpackContent returns 0 (failure) on mismatch.
+
+**`num_components`** &nbsp;·&nbsp; `uint8`
+
+Number of scalar components per pixel (e.g. 1 for grayscale, 3 for RGB, 3 for vector displacement fields). Must be > 0. Senders typically set 1 (scalar) or 3 (vector).
+
+**`scalar_type`** &nbsp;·&nbsp; `uint8`
+
+Pixel scalar type code: 2=int8, 3=uint8, 4=int16, 5=uint16, 6=int32, 7=uint32, 10=float32, 11=float64. Receivers MUST reject unknown values rather than silently treating them as 0-byte scalars — the latter is how upstream C `igtl_image_get_data_size` silently under-reports payload size for float types (see U-7).
+
+**`endian`** &nbsp;·&nbsp; `uint8`
+
+Byte order of the pixel data only (not the header, which is always big-endian / network order): 1=big, 2=little. Allows a sender to ship already-native-layout pixels to a known-matching receiver without swapping, at the cost of the receiver having to detect and conditionally swap.
+
+**`coord`** &nbsp;·&nbsp; `uint8`
+
+Coordinate-system convention for the matrix and origin: 1=RAS (right/anterior/superior, Slicer-style), 2=LPS (left/posterior/superior, DICOM-style). Receivers MUST accept both and convert as needed; unknown values SHOULD be treated as RAS for forward compatibility.
+
+**`size`** &nbsp;·&nbsp; `uint16 × 3`
+
+Entire volume extent in voxels: (Sx, Sy, Sz). For a 2D image, Sz=1. This is the total logical volume; the actual pixels carried in this message are bounded by `subvol_offset` + `subvol_size`.
+
+**`matrix`** &nbsp;·&nbsp; `float32 × 12`
+
+Orientation and origin, laid out as four float32[3] groups in row order: matrix[0..2] = norm_i * pixel_size_i, matrix[3..5] = norm_j * pixel_size_j, matrix[6..8] = norm_k * pixel_size_k, matrix[9..11] = origin (coordinates of the volume's reference point in millimeters, per `coord` convention). The matrix fills the upper 3x4 of a 4x4 homogeneous transform; the bottom row is always (0, 0, 0, 1) and is not transmitted.
+
+**`subvol_offset`** &nbsp;·&nbsp; `uint16 × 3`
+
+Starting voxel of the sub-region carried by this message within the full volume: (Ox, Oy, Oz). (0, 0, 0) means 'start at the origin voxel'. For a full-volume transfer, offset is (0,0,0) and subvol_size equals size.
+
+**`subvol_size`** &nbsp;·&nbsp; `uint16 × 3`
+
+Extent of the sub-region carried by this message: (Wx, Wy, Wz). The trailing `pixels` array MUST contain exactly num_components * Wx * Wy * Wz * sizeof(scalar_type) bytes. Receivers MUST verify subvol_offset + subvol_size <= size (componentwise) and MUST reject the message on overflow; unchecked arithmetic on attacker-controlled subvol_size caused the legacy library to miscompute payload length in 32-bit intermediate form (see U-8).
+
+**`pixels`** &nbsp;·&nbsp; `uint8 × (remaining)`
+
+Raw pixel payload — num_components * subvol_size[0] * subvol_size[1] * subvol_size[2] scalars of `scalar_type`, laid out in i-fastest order, in the byte order declared by `endian`. Receivers MUST verify len(pixels) equals the product formula above (in 64-bit arithmetic); any deviation is a malformed message and MUST be rejected. When splitting a volume across messages, senders SHOULD keep each message under ~1 MiB body so receivers can buffer safely.
 
 **Post-unpack invariant.** `image` — see `corpus-tools/src/oigtl_corpus_tools/codec/policy.py` for the cross-codec invariant definition.
 
@@ -341,9 +404,9 @@ Advertises the set of IMAGE volumes available on a server. Each element describe
 
 **Fields.**
 
-| Name | Type | Size | Description |
-|---|---|---|---|
-| `images` | type=<FieldType.STRUCT: 'struct'> size_bytes=None encoding=None endianness=None null_padded=None length_prefix_type=None description=None fields=[FieldSchema(name='name', type=<FieldType.FIXED_STRING: 'fixed_string'>, description='Human-readable image name or description, null-padded to 64 bytes.', rationale=None, introduced_in=None, endianness=None, size_bytes=64, count=None, count_from=None, element_type=None, layout=None, length_prefix_type=None, encoding=<Encoding.ASCII: 'ascii'>, null_padded=True, null_terminated=None, legacy_notes=None, notes=None), FieldSchema(name='device_name', type=<FieldType.FIXED_STRING: 'fixed_string'>, description='Device-name suffix used to retrieve this IMAGE via GET_IMAGE. Forms the authoritative key for this metadata entry.', rationale=None, introduced_in=None, endianness=None, size_bytes=20, count=None, count_from=None, element_type=None, layout=None, length_prefix_type=None, encoding=<Encoding.ASCII: 'ascii'>, null_padded=True, null_terminated=None, legacy_notes=None, notes=None), FieldSchema(name='modality', type=<FieldType.FIXED_STRING: 'fixed_string'>, description="Imaging modality — e.g. 'CT', 'MR', 'US', 'XA'. Free-form ASCII; no enforced vocabulary. Implementations SHOULD use DICOM-standard modality codes where applicable.", rationale=None, introduced_in=None, endianness=None, size_bytes=32, count=None, count_from=None, element_type=None, layout=None, length_prefix_type=None, encoding=<Encoding.ASCII: 'ascii'>, null_padded=True, null_terminated=None, legacy_notes=None, notes=None), FieldSchema(name='patient_name', type=<FieldType.FIXED_STRING: 'fixed_string'>, description='Patient name, null-padded to 64 bytes. This is PHI; implementations SHOULD treat the field as sensitive and MAY omit or redact it depending on deployment policy.', rationale=None, introduced_in=None, endianness=None, size_bytes=64, count=None, count_from=None, element_type=None, layout=None, length_prefix_type=None, encoding=<Encoding.ASCII: 'ascii'>, null_padded=True, null_terminated=None, legacy_notes=None, notes=None), FieldSchema(name='patient_id', type=<FieldType.FIXED_STRING: 'fixed_string'>, description='Patient identifier (e.g. MRN), null-padded to 64 bytes. Also PHI; same treatment guidance as patient_name.', rationale=None, introduced_in=None, endianness=None, size_bytes=64, count=None, count_from=None, element_type=None, layout=None, length_prefix_type=None, encoding=<Encoding.ASCII: 'ascii'>, null_padded=True, null_terminated=None, legacy_notes=None, notes=None), FieldSchema(name='timestamp', type=<PrimitiveType.UINT64: 'uint64'>, description="Scan time as a uint64 in the same encoding as the OpenIGTLink header timestamp (upper 32 bits = seconds since Unix epoch, lower 32 bits = fraction-of-second). 0 means 'unspecified'.", rationale=None, introduced_in=None, endianness=None, size_bytes=None, count=None, count_from=None, element_type=None, layout=None, length_prefix_type=None, encoding=None, null_padded=None, null_terminated=None, legacy_notes=None, notes=None), FieldSchema(name='size', type=<FieldType.ARRAY: 'array'>, description='Entire image volume size in voxels: (Sx, Sy, Sz). Matches the dimensions the corresponding IMAGE message will report.', rationale=None, introduced_in=None, endianness=None, size_bytes=None, count=3, count_from=None, element_type=<PrimitiveType.UINT16: 'uint16'>, layout=None, length_prefix_type=None, encoding=None, null_padded=None, null_terminated=None, legacy_notes=None, notes=None), FieldSchema(name='scalar_type', type=<PrimitiveType.UINT8: 'uint8'>, description="Pixel scalar type, matching IMAGE's scalar_type codes: 2=int8, 3=uint8, 4=int16, 5=uint16, 6=int32, 7=uint32, 10=float32, 11=float64. Receivers MUST accept unknown values without rejection.", rationale=None, introduced_in=None, endianness=None, size_bytes=None, count=None, count_from=None, element_type=None, layout=None, length_prefix_type=None, encoding=None, null_padded=None, null_terminated=None, legacy_notes=None, notes=None), FieldSchema(name='reserved', type=<PrimitiveType.UINT8: 'uint8'>, description='Reserved; senders SHOULD write 0 and receivers MUST ignore.', rationale=None, introduced_in=None, endianness=None, size_bytes=None, count=None, count_from=None, element_type=None, layout=None, length_prefix_type=None, encoding=None, null_padded=None, null_terminated=None, legacy_notes=None, notes=None)] × (remaining) | — | Array of 260-byte IMGMETA elements. Element count is derived as body_size / 260; a body whose size is not a multiple of 260 is malformed and MUST be rejected. |
+**`images`** &nbsp;·&nbsp; `type=<FieldType.STRUCT: 'struct'> size_bytes=None encoding=None endianness=None null_padded=None length_prefix_type=None description=None fields=[FieldSchema(name='name', type=<FieldType.FIXED_STRING: 'fixed_string'>, description='Human-readable image name or description, null-padded to 64 bytes.', rationale=None, introduced_in=None, endianness=None, size_bytes=64, count=None, count_from=None, element_type=None, layout=None, length_prefix_type=None, encoding=<Encoding.ASCII: 'ascii'>, null_padded=True, null_terminated=None, legacy_notes=None, notes=None), FieldSchema(name='device_name', type=<FieldType.FIXED_STRING: 'fixed_string'>, description='Device-name suffix used to retrieve this IMAGE via GET_IMAGE. Forms the authoritative key for this metadata entry.', rationale=None, introduced_in=None, endianness=None, size_bytes=20, count=None, count_from=None, element_type=None, layout=None, length_prefix_type=None, encoding=<Encoding.ASCII: 'ascii'>, null_padded=True, null_terminated=None, legacy_notes=None, notes=None), FieldSchema(name='modality', type=<FieldType.FIXED_STRING: 'fixed_string'>, description="Imaging modality — e.g. 'CT', 'MR', 'US', 'XA'. Free-form ASCII; no enforced vocabulary. Implementations SHOULD use DICOM-standard modality codes where applicable.", rationale=None, introduced_in=None, endianness=None, size_bytes=32, count=None, count_from=None, element_type=None, layout=None, length_prefix_type=None, encoding=<Encoding.ASCII: 'ascii'>, null_padded=True, null_terminated=None, legacy_notes=None, notes=None), FieldSchema(name='patient_name', type=<FieldType.FIXED_STRING: 'fixed_string'>, description='Patient name, null-padded to 64 bytes. This is PHI; implementations SHOULD treat the field as sensitive and MAY omit or redact it depending on deployment policy.', rationale=None, introduced_in=None, endianness=None, size_bytes=64, count=None, count_from=None, element_type=None, layout=None, length_prefix_type=None, encoding=<Encoding.ASCII: 'ascii'>, null_padded=True, null_terminated=None, legacy_notes=None, notes=None), FieldSchema(name='patient_id', type=<FieldType.FIXED_STRING: 'fixed_string'>, description='Patient identifier (e.g. MRN), null-padded to 64 bytes. Also PHI; same treatment guidance as patient_name.', rationale=None, introduced_in=None, endianness=None, size_bytes=64, count=None, count_from=None, element_type=None, layout=None, length_prefix_type=None, encoding=<Encoding.ASCII: 'ascii'>, null_padded=True, null_terminated=None, legacy_notes=None, notes=None), FieldSchema(name='timestamp', type=<PrimitiveType.UINT64: 'uint64'>, description="Scan time as a uint64 in the same encoding as the OpenIGTLink header timestamp (upper 32 bits = seconds since Unix epoch, lower 32 bits = fraction-of-second). 0 means 'unspecified'.", rationale=None, introduced_in=None, endianness=None, size_bytes=None, count=None, count_from=None, element_type=None, layout=None, length_prefix_type=None, encoding=None, null_padded=None, null_terminated=None, legacy_notes=None, notes=None), FieldSchema(name='size', type=<FieldType.ARRAY: 'array'>, description='Entire image volume size in voxels: (Sx, Sy, Sz). Matches the dimensions the corresponding IMAGE message will report.', rationale=None, introduced_in=None, endianness=None, size_bytes=None, count=3, count_from=None, element_type=<PrimitiveType.UINT16: 'uint16'>, layout=None, length_prefix_type=None, encoding=None, null_padded=None, null_terminated=None, legacy_notes=None, notes=None), FieldSchema(name='scalar_type', type=<PrimitiveType.UINT8: 'uint8'>, description="Pixel scalar type, matching IMAGE's scalar_type codes: 2=int8, 3=uint8, 4=int16, 5=uint16, 6=int32, 7=uint32, 10=float32, 11=float64. Receivers MUST accept unknown values without rejection.", rationale=None, introduced_in=None, endianness=None, size_bytes=None, count=None, count_from=None, element_type=None, layout=None, length_prefix_type=None, encoding=None, null_padded=None, null_terminated=None, legacy_notes=None, notes=None), FieldSchema(name='reserved', type=<PrimitiveType.UINT8: 'uint8'>, description='Reserved; senders SHOULD write 0 and receivers MUST ignore.', rationale=None, introduced_in=None, endianness=None, size_bytes=None, count=None, count_from=None, element_type=None, layout=None, length_prefix_type=None, encoding=None, null_padded=None, null_terminated=None, legacy_notes=None, notes=None)] × (remaining)`
+
+Array of 260-byte IMGMETA elements. Element count is derived as body_size / 260; a body whose size is not a multiple of 260 is malformed and MUST be rejected.
 
 **Legacy notes.**
 
@@ -367,9 +430,9 @@ Advertises the set of label-map regions available as IMAGE messages on a server.
 
 **Fields.**
 
-| Name | Type | Size | Description |
-|---|---|---|---|
-| `labels` | type=<FieldType.STRUCT: 'struct'> size_bytes=None encoding=None endianness=None null_padded=None length_prefix_type=None description=None fields=[FieldSchema(name='name', type=<FieldType.FIXED_STRING: 'fixed_string'>, description="Human-readable label name or description (e.g. 'Liver'). Null-padded to 64 bytes.", rationale=None, introduced_in=None, endianness=None, size_bytes=64, count=None, count_from=None, element_type=None, layout=None, length_prefix_type=None, encoding=<Encoding.ASCII: 'ascii'>, null_padded=True, null_terminated=None, legacy_notes=None, notes=None), FieldSchema(name='device_name', type=<FieldType.FIXED_STRING: 'fixed_string'>, description='Device-name suffix of the IMAGE message carrying the label-map pixels. A client retrieves that IMAGE via GET_IMAGE using this name.', rationale=None, introduced_in=None, endianness=None, size_bytes=20, count=None, count_from=None, element_type=None, layout=None, length_prefix_type=None, encoding=<Encoding.ASCII: 'ascii'>, null_padded=True, null_terminated=None, legacy_notes=None, notes=None), FieldSchema(name='label', type=<PrimitiveType.UINT8: 'uint8'>, description="Integer pixel value in the referenced IMAGE that corresponds to this label. Values are intended to be distinct within a single LBMETA element's referenced IMAGE, but that is not enforced at the wire level.", rationale=None, introduced_in=None, endianness=None, size_bytes=None, count=None, count_from=None, element_type=None, layout=None, length_prefix_type=None, encoding=None, null_padded=None, null_terminated=None, legacy_notes=None, notes=None), FieldSchema(name='reserved', type=<PrimitiveType.UINT8: 'uint8'>, description='Reserved; senders SHOULD write 0 and receivers MUST ignore.', rationale=None, introduced_in=None, endianness=None, size_bytes=None, count=None, count_from=None, element_type=None, layout=None, length_prefix_type=None, encoding=None, null_padded=None, null_terminated=None, legacy_notes=None, notes=None), FieldSchema(name='rgba', type=<FieldType.ARRAY: 'array'>, description="Suggested rendering color as RGBA bytes. (0, 0, 0, 0) is legal and interpreted as 'no color preference'.", rationale=None, introduced_in=None, endianness=None, size_bytes=None, count=4, count_from=None, element_type=<PrimitiveType.UINT8: 'uint8'>, layout=None, length_prefix_type=None, encoding=None, null_padded=None, null_terminated=None, legacy_notes=None, notes=None), FieldSchema(name='size', type=<FieldType.ARRAY: 'array'>, description="Extent of the label-map IMAGE in voxels: (Sx, Sy, Sz). Matches the referenced IMAGE's overall size.", rationale=None, introduced_in=None, endianness=None, size_bytes=None, count=3, count_from=None, element_type=<PrimitiveType.UINT16: 'uint16'>, layout=None, length_prefix_type=None, encoding=None, null_padded=None, null_terminated=None, legacy_notes=None, notes=None), FieldSchema(name='owner', type=<FieldType.FIXED_STRING: 'fixed_string'>, description="Optional device-name suffix of the IMAGE that this label is a segmentation of (the 'anatomy' image the label-map was derived from). May be empty (all null bytes) when not applicable.", rationale=None, introduced_in=None, endianness=None, size_bytes=20, count=None, count_from=None, element_type=None, layout=None, length_prefix_type=None, encoding=<Encoding.ASCII: 'ascii'>, null_padded=True, null_terminated=None, legacy_notes=None, notes=None)] × (remaining) | — | Array of 116-byte LBMETA elements. Element count is derived as body_size / 116; a body whose size is not a multiple of 116 is malformed and MUST be rejected. |
+**`labels`** &nbsp;·&nbsp; `type=<FieldType.STRUCT: 'struct'> size_bytes=None encoding=None endianness=None null_padded=None length_prefix_type=None description=None fields=[FieldSchema(name='name', type=<FieldType.FIXED_STRING: 'fixed_string'>, description="Human-readable label name or description (e.g. 'Liver'). Null-padded to 64 bytes.", rationale=None, introduced_in=None, endianness=None, size_bytes=64, count=None, count_from=None, element_type=None, layout=None, length_prefix_type=None, encoding=<Encoding.ASCII: 'ascii'>, null_padded=True, null_terminated=None, legacy_notes=None, notes=None), FieldSchema(name='device_name', type=<FieldType.FIXED_STRING: 'fixed_string'>, description='Device-name suffix of the IMAGE message carrying the label-map pixels. A client retrieves that IMAGE via GET_IMAGE using this name.', rationale=None, introduced_in=None, endianness=None, size_bytes=20, count=None, count_from=None, element_type=None, layout=None, length_prefix_type=None, encoding=<Encoding.ASCII: 'ascii'>, null_padded=True, null_terminated=None, legacy_notes=None, notes=None), FieldSchema(name='label', type=<PrimitiveType.UINT8: 'uint8'>, description="Integer pixel value in the referenced IMAGE that corresponds to this label. Values are intended to be distinct within a single LBMETA element's referenced IMAGE, but that is not enforced at the wire level.", rationale=None, introduced_in=None, endianness=None, size_bytes=None, count=None, count_from=None, element_type=None, layout=None, length_prefix_type=None, encoding=None, null_padded=None, null_terminated=None, legacy_notes=None, notes=None), FieldSchema(name='reserved', type=<PrimitiveType.UINT8: 'uint8'>, description='Reserved; senders SHOULD write 0 and receivers MUST ignore.', rationale=None, introduced_in=None, endianness=None, size_bytes=None, count=None, count_from=None, element_type=None, layout=None, length_prefix_type=None, encoding=None, null_padded=None, null_terminated=None, legacy_notes=None, notes=None), FieldSchema(name='rgba', type=<FieldType.ARRAY: 'array'>, description="Suggested rendering color as RGBA bytes. (0, 0, 0, 0) is legal and interpreted as 'no color preference'.", rationale=None, introduced_in=None, endianness=None, size_bytes=None, count=4, count_from=None, element_type=<PrimitiveType.UINT8: 'uint8'>, layout=None, length_prefix_type=None, encoding=None, null_padded=None, null_terminated=None, legacy_notes=None, notes=None), FieldSchema(name='size', type=<FieldType.ARRAY: 'array'>, description="Extent of the label-map IMAGE in voxels: (Sx, Sy, Sz). Matches the referenced IMAGE's overall size.", rationale=None, introduced_in=None, endianness=None, size_bytes=None, count=3, count_from=None, element_type=<PrimitiveType.UINT16: 'uint16'>, layout=None, length_prefix_type=None, encoding=None, null_padded=None, null_terminated=None, legacy_notes=None, notes=None), FieldSchema(name='owner', type=<FieldType.FIXED_STRING: 'fixed_string'>, description="Optional device-name suffix of the IMAGE that this label is a segmentation of (the 'anatomy' image the label-map was derived from). May be empty (all null bytes) when not applicable.", rationale=None, introduced_in=None, endianness=None, size_bytes=20, count=None, count_from=None, element_type=None, layout=None, length_prefix_type=None, encoding=<Encoding.ASCII: 'ascii'>, null_padded=True, null_terminated=None, legacy_notes=None, notes=None)] × (remaining)`
+
+Array of 116-byte LBMETA elements. Element count is derived as body_size / 116; a body whose size is not a multiple of 116 is malformed and MUST be rejected.
 
 **Legacy notes.**
 
@@ -393,12 +456,21 @@ Variable-rank N-dimensional numerical array. The body carries a 2-byte fixed hea
 
 **Fields.**
 
-| Name | Type | Size | Description |
-|---|---|---|---|
-| `scalar_type` | uint8 | — | Scalar type code: 2=int8, 3=uint8, 4=int16, 5=uint16, 6=int32, 7=uint32, 10=float32, 11=float64, 13=complex (two float64 per element, 16 bytes). Receivers MUST reject unknown values; the upstream default branch returns bytes_per_element=0 for unknown types, which silently computes a data_size of 0. |
-| `dim` | uint8 | — | Number of dimensions (rank). Must be >= 1 for a meaningful array. dim=0 is legal on the wire (0 size entries, data section is empty) but degenerate. Determines the length of the following `size` array. |
-| `size` | uint16 × dim | — | Per-axis extent: size[i] is the number of elements along the i-th axis. The total element count is the product of all size entries. Receivers MUST compute this product in 64-bit arithmetic (worst case: 255 axes of size 65535 each would overflow any smaller type) and MUST impose an implementation-defined ceiling before allocating. |
-| `data` | uint8 × (remaining) | — | Raw array data — product(size[0..dim-1]) elements of `scalar_type`, stored in row-major order with the byte order determined by the OpenIGTLink convention (network / big-endian). The byte count MUST equal product(size) * bytes_per_scalar(scalar_type); receivers MUST verify this before accessing the data. The schema models the data as raw bytes (uint8[]) because the per-element width is determined dynamically by `scalar_type`. |
+**`scalar_type`** &nbsp;·&nbsp; `uint8`
+
+Scalar type code: 2=int8, 3=uint8, 4=int16, 5=uint16, 6=int32, 7=uint32, 10=float32, 11=float64, 13=complex (two float64 per element, 16 bytes). Receivers MUST reject unknown values; the upstream default branch returns bytes_per_element=0 for unknown types, which silently computes a data_size of 0.
+
+**`dim`** &nbsp;·&nbsp; `uint8`
+
+Number of dimensions (rank). Must be >= 1 for a meaningful array. dim=0 is legal on the wire (0 size entries, data section is empty) but degenerate. Determines the length of the following `size` array.
+
+**`size`** &nbsp;·&nbsp; `uint16 × dim`
+
+Per-axis extent: size[i] is the number of elements along the i-th axis. The total element count is the product of all size entries. Receivers MUST compute this product in 64-bit arithmetic (worst case: 255 axes of size 65535 each would overflow any smaller type) and MUST impose an implementation-defined ceiling before allocating.
+
+**`data`** &nbsp;·&nbsp; `uint8 × (remaining)`
+
+Raw array data — product(size[0..dim-1]) elements of `scalar_type`, stored in row-major order with the byte order determined by the OpenIGTLink convention (network / big-endian). The byte count MUST equal product(size) * bytes_per_scalar(scalar_type); receivers MUST verify this before accessing the data. The schema models the data as raw bytes (uint8[]) because the per-element width is determined dynamically by `scalar_type`.
 
 **Post-unpack invariant.** `ndarray` — see `corpus-tools/src/oigtl_corpus_tools/codec/policy.py` for the cross-codec invariant definition.
 
@@ -426,9 +498,9 @@ List of 3D annotated points: landmarks, fiducials, surgical targets, and similar
 
 **Fields.**
 
-| Name | Type | Size | Description |
-|---|---|---|---|
-| `points` | type=<FieldType.STRUCT: 'struct'> size_bytes=None encoding=None endianness=None null_padded=None length_prefix_type=None description=None fields=[FieldSchema(name='name', type=<FieldType.FIXED_STRING: 'fixed_string'>, description='Human-readable point name or description, null-padded to 64 bytes.', rationale=None, introduced_in=None, endianness=None, size_bytes=64, count=None, count_from=None, element_type=None, layout=None, length_prefix_type=None, encoding=<Encoding.ASCII: 'ascii'>, null_padded=True, null_terminated=None, legacy_notes=None, notes=None), FieldSchema(name='group_name', type=<FieldType.FIXED_STRING: 'fixed_string'>, description="Group tag: 'Fiducial', 'Landmark', 'Labeled Point', or any application-specific string. Used to partition points into semantic sets.", rationale=None, introduced_in=None, endianness=None, size_bytes=32, count=None, count_from=None, element_type=None, layout=None, length_prefix_type=None, encoding=<Encoding.ASCII: 'ascii'>, null_padded=True, null_terminated=None, legacy_notes=None, notes=None), FieldSchema(name='rgba', type=<FieldType.ARRAY: 'array'>, description='Suggested rendering color as RGBA bytes.', rationale=None, introduced_in=None, endianness=None, size_bytes=None, count=4, count_from=None, element_type=<PrimitiveType.UINT8: 'uint8'>, layout=None, length_prefix_type=None, encoding=None, null_padded=None, null_terminated=None, legacy_notes=None, notes=None), FieldSchema(name='position', type=<FieldType.ARRAY: 'array'>, description="Point coordinates (x, y, z) in the session's reference frame.", rationale=None, introduced_in=None, endianness=None, size_bytes=None, count=3, count_from=None, element_type=<PrimitiveType.FLOAT32: 'float32'>, layout=None, length_prefix_type=None, encoding=None, null_padded=None, null_terminated=None, legacy_notes=None, notes=None), FieldSchema(name='radius', type=<PrimitiveType.FLOAT32: 'float32'>, description="Rendering radius of the point (e.g. for a sphere glyph). A value of 0 means 'use renderer default' or 'point has no meaningful size'.", rationale=None, introduced_in=None, endianness=None, size_bytes=None, count=None, count_from=None, element_type=None, layout=None, length_prefix_type=None, encoding=None, null_padded=None, null_terminated=None, legacy_notes=None, notes=None), FieldSchema(name='owner', type=<FieldType.FIXED_STRING: 'fixed_string'>, description='Optional device-name suffix of the IMAGE that this point is anchored to. May be empty (all null bytes) for points not tied to a specific image.', rationale=None, introduced_in=None, endianness=None, size_bytes=20, count=None, count_from=None, element_type=None, layout=None, length_prefix_type=None, encoding=<Encoding.ASCII: 'ascii'>, null_padded=True, null_terminated=None, legacy_notes=None, notes=None)] × (remaining) | — | Array of 136-byte POINT elements. Element count is derived as body_size / 136; a body whose size is not a multiple of 136 is malformed and MUST be rejected. |
+**`points`** &nbsp;·&nbsp; `type=<FieldType.STRUCT: 'struct'> size_bytes=None encoding=None endianness=None null_padded=None length_prefix_type=None description=None fields=[FieldSchema(name='name', type=<FieldType.FIXED_STRING: 'fixed_string'>, description='Human-readable point name or description, null-padded to 64 bytes.', rationale=None, introduced_in=None, endianness=None, size_bytes=64, count=None, count_from=None, element_type=None, layout=None, length_prefix_type=None, encoding=<Encoding.ASCII: 'ascii'>, null_padded=True, null_terminated=None, legacy_notes=None, notes=None), FieldSchema(name='group_name', type=<FieldType.FIXED_STRING: 'fixed_string'>, description="Group tag: 'Fiducial', 'Landmark', 'Labeled Point', or any application-specific string. Used to partition points into semantic sets.", rationale=None, introduced_in=None, endianness=None, size_bytes=32, count=None, count_from=None, element_type=None, layout=None, length_prefix_type=None, encoding=<Encoding.ASCII: 'ascii'>, null_padded=True, null_terminated=None, legacy_notes=None, notes=None), FieldSchema(name='rgba', type=<FieldType.ARRAY: 'array'>, description='Suggested rendering color as RGBA bytes.', rationale=None, introduced_in=None, endianness=None, size_bytes=None, count=4, count_from=None, element_type=<PrimitiveType.UINT8: 'uint8'>, layout=None, length_prefix_type=None, encoding=None, null_padded=None, null_terminated=None, legacy_notes=None, notes=None), FieldSchema(name='position', type=<FieldType.ARRAY: 'array'>, description="Point coordinates (x, y, z) in the session's reference frame.", rationale=None, introduced_in=None, endianness=None, size_bytes=None, count=3, count_from=None, element_type=<PrimitiveType.FLOAT32: 'float32'>, layout=None, length_prefix_type=None, encoding=None, null_padded=None, null_terminated=None, legacy_notes=None, notes=None), FieldSchema(name='radius', type=<PrimitiveType.FLOAT32: 'float32'>, description="Rendering radius of the point (e.g. for a sphere glyph). A value of 0 means 'use renderer default' or 'point has no meaningful size'.", rationale=None, introduced_in=None, endianness=None, size_bytes=None, count=None, count_from=None, element_type=None, layout=None, length_prefix_type=None, encoding=None, null_padded=None, null_terminated=None, legacy_notes=None, notes=None), FieldSchema(name='owner', type=<FieldType.FIXED_STRING: 'fixed_string'>, description='Optional device-name suffix of the IMAGE that this point is anchored to. May be empty (all null bytes) for points not tied to a specific image.', rationale=None, introduced_in=None, endianness=None, size_bytes=20, count=None, count_from=None, element_type=None, layout=None, length_prefix_type=None, encoding=<Encoding.ASCII: 'ascii'>, null_padded=True, null_terminated=None, legacy_notes=None, notes=None)] × (remaining)`
+
+Array of 136-byte POINT elements. Element count is derived as body_size / 136; a body whose size is not a multiple of 136 is malformed and MUST be rejected.
 
 **Legacy notes.**
 
@@ -452,25 +524,73 @@ Polygonal mesh — points, topology (vertices, lines, polygons, triangle strips)
 
 **Fields.**
 
-| Name | Type | Size | Description |
-|---|---|---|---|
-| `npoints` | uint32 | — | Number of 3D points. Each point occupies 3 × float32 = 12 bytes in the points section. |
-| `nvertices` | uint32 | — | Number of vertex primitives in the vertices topology section. This is the number of VTK-style 'cells' of type vertex, not the number of uint32 values in the section (which is given by size_vertices / 4). |
-| `size_vertices` | uint32 | — | Byte size of the vertices topology section. MUST be a multiple of 4 (each entry is a uint32). The section contains VTK-style connectivity: sequences of (N, i1, i2, ..., iN) where N is the point count per cell and i1..iN are 0-based point indices. |
-| `nlines` | uint32 | — | Number of line primitives. |
-| `size_lines` | uint32 | — | Byte size of the lines topology section. MUST be a multiple of 4. |
-| `npolygons` | uint32 | — | Number of polygon primitives. |
-| `size_polygons` | uint32 | — | Byte size of the polygons topology section. MUST be a multiple of 4. |
-| `ntriangle_strips` | uint32 | — | Number of triangle-strip primitives. |
-| `size_triangle_strips` | uint32 | — | Byte size of the triangle strips topology section. MUST be a multiple of 4. |
-| `nattributes` | uint32 | — | Number of per-point or per-cell attribute arrays. Determines the length of the `attribute_headers` array and the number of entries in the trailing attribute name table and data arrays. |
-| `points` | type=<FieldType.STRUCT: 'struct'> size_bytes=None encoding=None endianness=None null_padded=None length_prefix_type=None description=None fields=[FieldSchema(name='x', type=<PrimitiveType.FLOAT32: 'float32'>, description='X coordinate in millimeters.', rationale=None, introduced_in=None, endianness=None, size_bytes=None, count=None, count_from=None, element_type=None, layout=None, length_prefix_type=None, encoding=None, null_padded=None, null_terminated=None, legacy_notes=None, notes=None), FieldSchema(name='y', type=<PrimitiveType.FLOAT32: 'float32'>, description='Y coordinate in millimeters.', rationale=None, introduced_in=None, endianness=None, size_bytes=None, count=None, count_from=None, element_type=None, layout=None, length_prefix_type=None, encoding=None, null_padded=None, null_terminated=None, legacy_notes=None, notes=None), FieldSchema(name='z', type=<PrimitiveType.FLOAT32: 'float32'>, description='Z coordinate in millimeters.', rationale=None, introduced_in=None, endianness=None, size_bytes=None, count=None, count_from=None, element_type=None, layout=None, length_prefix_type=None, encoding=None, null_padded=None, null_terminated=None, legacy_notes=None, notes=None)] × npoints | — | Array of npoints × 12-byte (x, y, z) coordinates. Point indices in the topology sections are 0-based offsets into this array. |
-| `vertices` | uint8 × size_vertices | — | Vertices topology section — size_vertices raw bytes of VTK-style uint32 connectivity data: sequences of (N, i1, i2, ..., iN). Modeled as raw bytes because the per-cell structure (variable-length runs) cannot be expressed as a uniform array. Receivers MUST interpret as uint32[] in network byte order after verifying size_vertices % 4 == 0. |
-| `lines` | uint8 × size_lines | — | Lines topology section — size_lines raw bytes. Same encoding as vertices. |
-| `polygons` | uint8 × size_polygons | — | Polygons topology section — size_polygons raw bytes. Same encoding as vertices. |
-| `triangle_strips` | uint8 × size_triangle_strips | — | Triangle strips topology section — size_triangle_strips raw bytes. Same encoding as vertices. |
-| `attribute_headers` | type=<FieldType.STRUCT: 'struct'> size_bytes=None encoding=None endianness=None null_padded=None length_prefix_type=None description=None fields=[FieldSchema(name='type', type=<PrimitiveType.UINT8: 'uint8'>, description='Attribute type: 0x00=POINT_DATA/Scalars, 0x01=POINT_DATA/Vectors, 0x02=POINT_DATA/Normals, 0x03=POINT_DATA/Tensors, 0x04=RGBA, 0x05=Texture Coordinates. Add 0x10 for CELL_DATA variants (0x10=CELL_DATA/Scalars, etc.). Receivers MUST accept unknown values gracefully.', rationale=None, introduced_in=None, endianness=None, size_bytes=None, count=None, count_from=None, element_type=None, layout=None, length_prefix_type=None, encoding=None, null_padded=None, null_terminated=None, legacy_notes=None, notes=None), FieldSchema(name='ncomponents', type=<PrimitiveType.UINT8: 'uint8'>, description='Number of scalar components per tuple. 1 for Scalars, 3 for Vectors/Normals, 9 for Tensors. For Scalars, this is the user-specified component count from the sender. For other types, the sender SHOULD write the canonical value but receivers MUST derive the actual component count from `type` if they conflict.', rationale=None, introduced_in=None, endianness=None, size_bytes=None, count=None, count_from=None, element_type=None, layout=None, length_prefix_type=None, encoding=None, null_padded=None, null_terminated=None, legacy_notes=None, notes=None), FieldSchema(name='n', type=<PrimitiveType.UINT32: 'uint32'>, description='Number of tuples in this attribute array. The data section for this attribute contains n × ncomponents × sizeof(float32) bytes. For POINT_DATA types, n should equal npoints; for CELL_DATA types, n should equal the relevant cell count.', rationale=None, introduced_in=None, endianness=None, size_bytes=None, count=None, count_from=None, element_type=None, layout=None, length_prefix_type=None, encoding=None, null_padded=None, null_terminated=None, legacy_notes=None, notes=None)] × nattributes | — | Array of nattributes × 6-byte attribute headers. Each entry declares the type, component count, and tuple count for one attribute array. The corresponding names and data follow in the trailing sections. |
-| `attribute_data` | uint8 × (remaining) | — | Attribute name table + attribute data arrays, concatenated. The name table comes first: nattributes null-terminated ASCII strings (max 255 chars each), packed together, with a padding byte if the total byte count is odd. Then, for each attribute i in order, n[i] × ncomponents[i] × sizeof(float32) bytes of float32 data in network byte order. Receivers MUST parse using the attribute_headers array to determine boundaries; without it, the blob is not self-describing. |
+**`npoints`** &nbsp;·&nbsp; `uint32`
+
+Number of 3D points. Each point occupies 3 × float32 = 12 bytes in the points section.
+
+**`nvertices`** &nbsp;·&nbsp; `uint32`
+
+Number of vertex primitives in the vertices topology section. This is the number of VTK-style 'cells' of type vertex, not the number of uint32 values in the section (which is given by size_vertices / 4).
+
+**`size_vertices`** &nbsp;·&nbsp; `uint32`
+
+Byte size of the vertices topology section. MUST be a multiple of 4 (each entry is a uint32). The section contains VTK-style connectivity: sequences of (N, i1, i2, ..., iN) where N is the point count per cell and i1..iN are 0-based point indices.
+
+**`nlines`** &nbsp;·&nbsp; `uint32`
+
+Number of line primitives.
+
+**`size_lines`** &nbsp;·&nbsp; `uint32`
+
+Byte size of the lines topology section. MUST be a multiple of 4.
+
+**`npolygons`** &nbsp;·&nbsp; `uint32`
+
+Number of polygon primitives.
+
+**`size_polygons`** &nbsp;·&nbsp; `uint32`
+
+Byte size of the polygons topology section. MUST be a multiple of 4.
+
+**`ntriangle_strips`** &nbsp;·&nbsp; `uint32`
+
+Number of triangle-strip primitives.
+
+**`size_triangle_strips`** &nbsp;·&nbsp; `uint32`
+
+Byte size of the triangle strips topology section. MUST be a multiple of 4.
+
+**`nattributes`** &nbsp;·&nbsp; `uint32`
+
+Number of per-point or per-cell attribute arrays. Determines the length of the `attribute_headers` array and the number of entries in the trailing attribute name table and data arrays.
+
+**`points`** &nbsp;·&nbsp; `type=<FieldType.STRUCT: 'struct'> size_bytes=None encoding=None endianness=None null_padded=None length_prefix_type=None description=None fields=[FieldSchema(name='x', type=<PrimitiveType.FLOAT32: 'float32'>, description='X coordinate in millimeters.', rationale=None, introduced_in=None, endianness=None, size_bytes=None, count=None, count_from=None, element_type=None, layout=None, length_prefix_type=None, encoding=None, null_padded=None, null_terminated=None, legacy_notes=None, notes=None), FieldSchema(name='y', type=<PrimitiveType.FLOAT32: 'float32'>, description='Y coordinate in millimeters.', rationale=None, introduced_in=None, endianness=None, size_bytes=None, count=None, count_from=None, element_type=None, layout=None, length_prefix_type=None, encoding=None, null_padded=None, null_terminated=None, legacy_notes=None, notes=None), FieldSchema(name='z', type=<PrimitiveType.FLOAT32: 'float32'>, description='Z coordinate in millimeters.', rationale=None, introduced_in=None, endianness=None, size_bytes=None, count=None, count_from=None, element_type=None, layout=None, length_prefix_type=None, encoding=None, null_padded=None, null_terminated=None, legacy_notes=None, notes=None)] × npoints`
+
+Array of npoints × 12-byte (x, y, z) coordinates. Point indices in the topology sections are 0-based offsets into this array.
+
+**`vertices`** &nbsp;·&nbsp; `uint8 × size_vertices`
+
+Vertices topology section — size_vertices raw bytes of VTK-style uint32 connectivity data: sequences of (N, i1, i2, ..., iN). Modeled as raw bytes because the per-cell structure (variable-length runs) cannot be expressed as a uniform array. Receivers MUST interpret as uint32[] in network byte order after verifying size_vertices % 4 == 0.
+
+**`lines`** &nbsp;·&nbsp; `uint8 × size_lines`
+
+Lines topology section — size_lines raw bytes. Same encoding as vertices.
+
+**`polygons`** &nbsp;·&nbsp; `uint8 × size_polygons`
+
+Polygons topology section — size_polygons raw bytes. Same encoding as vertices.
+
+**`triangle_strips`** &nbsp;·&nbsp; `uint8 × size_triangle_strips`
+
+Triangle strips topology section — size_triangle_strips raw bytes. Same encoding as vertices.
+
+**`attribute_headers`** &nbsp;·&nbsp; `type=<FieldType.STRUCT: 'struct'> size_bytes=None encoding=None endianness=None null_padded=None length_prefix_type=None description=None fields=[FieldSchema(name='type', type=<PrimitiveType.UINT8: 'uint8'>, description='Attribute type: 0x00=POINT_DATA/Scalars, 0x01=POINT_DATA/Vectors, 0x02=POINT_DATA/Normals, 0x03=POINT_DATA/Tensors, 0x04=RGBA, 0x05=Texture Coordinates. Add 0x10 for CELL_DATA variants (0x10=CELL_DATA/Scalars, etc.). Receivers MUST accept unknown values gracefully.', rationale=None, introduced_in=None, endianness=None, size_bytes=None, count=None, count_from=None, element_type=None, layout=None, length_prefix_type=None, encoding=None, null_padded=None, null_terminated=None, legacy_notes=None, notes=None), FieldSchema(name='ncomponents', type=<PrimitiveType.UINT8: 'uint8'>, description='Number of scalar components per tuple. 1 for Scalars, 3 for Vectors/Normals, 9 for Tensors. For Scalars, this is the user-specified component count from the sender. For other types, the sender SHOULD write the canonical value but receivers MUST derive the actual component count from `type` if they conflict.', rationale=None, introduced_in=None, endianness=None, size_bytes=None, count=None, count_from=None, element_type=None, layout=None, length_prefix_type=None, encoding=None, null_padded=None, null_terminated=None, legacy_notes=None, notes=None), FieldSchema(name='n', type=<PrimitiveType.UINT32: 'uint32'>, description='Number of tuples in this attribute array. The data section for this attribute contains n × ncomponents × sizeof(float32) bytes. For POINT_DATA types, n should equal npoints; for CELL_DATA types, n should equal the relevant cell count.', rationale=None, introduced_in=None, endianness=None, size_bytes=None, count=None, count_from=None, element_type=None, layout=None, length_prefix_type=None, encoding=None, null_padded=None, null_terminated=None, legacy_notes=None, notes=None)] × nattributes`
+
+Array of nattributes × 6-byte attribute headers. Each entry declares the type, component count, and tuple count for one attribute array. The corresponding names and data follow in the trailing sections.
+
+**`attribute_data`** &nbsp;·&nbsp; `uint8 × (remaining)`
+
+Attribute name table + attribute data arrays, concatenated. The name table comes first: nattributes null-terminated ASCII strings (max 255 chars each), packed together, with a padding byte if the total byte count is odd. Then, for each attribute i in order, n[i] × ncomponents[i] × sizeof(float32) bytes of float32 data in network byte order. Receivers MUST parse using the attribute_headers array to determine boundaries; without it, the blob is not self-describing.
 
 **Post-unpack invariant.** `polydata` — see `corpus-tools/src/oigtl_corpus_tools/codec/policy.py` for the cross-codec invariant definition.
 
@@ -501,10 +621,13 @@ Polygonal mesh — points, topology (vertices, lines, polygons, triangle strips)
 
 **Fields.**
 
-| Name | Type | Size | Description |
-|---|---|---|---|
-| `position` | float32 × 3 | — | Position coordinates (x, y, z) in millimeters. Always present regardless of body size. |
-| `quaternion` | float32 × (remaining) | — | Orientation quaternion. The number of elements depends on body_size: 0 elements (body=12, position only — no orientation), 3 elements (body=24, compressed quaternion: (qx, qy, qz) with qw reconstructed as sqrt(1 - qx² - qy² - qz²)), or 4 elements (body=28, full quaternion: (qx, qy, qz, qw)). Any other count (1, 2, 5+) is malformed and MUST be rejected. Receivers MUST normalize the reconstructed or received quaternion before use. |
+**`position`** &nbsp;·&nbsp; `float32 × 3`
+
+Position coordinates (x, y, z) in millimeters. Always present regardless of body size.
+
+**`quaternion`** &nbsp;·&nbsp; `float32 × (remaining)`
+
+Orientation quaternion. The number of elements depends on body_size: 0 elements (body=12, position only — no orientation), 3 elements (body=24, compressed quaternion: (qx, qy, qz) with qw reconstructed as sqrt(1 - qx² - qy² - qz²)), or 4 elements (body=28, full quaternion: (qx, qy, qz, qw)). Any other count (1, 2, 5+) is malformed and MUST be rejected. Receivers MUST normalize the reconstructed or received quaternion before use.
 
 **Legal body sizes.** 12, 24, 28 bytes only. Codecs reject any other length before field access.
 
@@ -532,9 +655,9 @@ Stream of tracked-tool poses using position + quaternion representation. Each el
 
 **Fields.**
 
-| Name | Type | Size | Description |
-|---|---|---|---|
-| `tools` | type=<FieldType.STRUCT: 'struct'> size_bytes=None encoding=None endianness=None null_padded=None length_prefix_type=None description=None fields=[FieldSchema(name='name', type=<FieldType.FIXED_STRING: 'fixed_string'>, description='Instrument or tracker name, null-padded to 20 bytes.', rationale=None, introduced_in=None, endianness=None, size_bytes=20, count=None, count_from=None, element_type=None, layout=None, length_prefix_type=None, encoding=<Encoding.ASCII: 'ascii'>, null_padded=True, null_terminated=None, legacy_notes=None, notes=None), FieldSchema(name='type', type=<PrimitiveType.UINT8: 'uint8'>, description='Tool kind: 1 = tracker reference, 2 = 6D instrument, 3 = 3D instrument (tip only), 4 = 5D instrument (tip + handle). Receivers MUST accept unknown values without rejection.', rationale=None, introduced_in=None, endianness=None, size_bytes=None, count=None, count_from=None, element_type=None, layout=None, length_prefix_type=None, encoding=None, null_padded=None, null_terminated=None, legacy_notes=None, notes=None), FieldSchema(name='reserved', type=<PrimitiveType.UINT8: 'uint8'>, description='Reserved; senders SHOULD write 0 and receivers MUST ignore.', rationale=None, introduced_in=None, endianness=None, size_bytes=None, count=None, count_from=None, element_type=None, layout=None, length_prefix_type=None, encoding=None, null_padded=None, null_terminated=None, legacy_notes=None, notes=None), FieldSchema(name='position', type=<FieldType.ARRAY: 'array'>, description="Tool position (x, y, z) in the session's reference frame.", rationale=None, introduced_in=None, endianness=None, size_bytes=None, count=3, count_from=None, element_type=<PrimitiveType.FLOAT32: 'float32'>, layout=None, length_prefix_type=None, encoding=None, null_padded=None, null_terminated=None, legacy_notes=None, notes=None), FieldSchema(name='quaternion', type=<FieldType.ARRAY: 'array'>, description='Tool orientation as a quaternion (qx, qy, qz, w). Unit-magnitude is expected; implementations SHOULD tolerate small deviations from unit magnitude.', rationale=None, introduced_in=None, endianness=None, size_bytes=None, count=4, count_from=None, element_type=<PrimitiveType.FLOAT32: 'float32'>, layout=None, length_prefix_type=None, encoding=None, null_padded=None, null_terminated=None, legacy_notes=None, notes=None)] × (remaining) | — | Array of 50-byte QTDATA elements. Element count is derived as body_size / 50; a body whose size is not a multiple of 50 is malformed and MUST be rejected (see U-7 in protocol/v3.md). |
+**`tools`** &nbsp;·&nbsp; `type=<FieldType.STRUCT: 'struct'> size_bytes=None encoding=None endianness=None null_padded=None length_prefix_type=None description=None fields=[FieldSchema(name='name', type=<FieldType.FIXED_STRING: 'fixed_string'>, description='Instrument or tracker name, null-padded to 20 bytes.', rationale=None, introduced_in=None, endianness=None, size_bytes=20, count=None, count_from=None, element_type=None, layout=None, length_prefix_type=None, encoding=<Encoding.ASCII: 'ascii'>, null_padded=True, null_terminated=None, legacy_notes=None, notes=None), FieldSchema(name='type', type=<PrimitiveType.UINT8: 'uint8'>, description='Tool kind: 1 = tracker reference, 2 = 6D instrument, 3 = 3D instrument (tip only), 4 = 5D instrument (tip + handle). Receivers MUST accept unknown values without rejection.', rationale=None, introduced_in=None, endianness=None, size_bytes=None, count=None, count_from=None, element_type=None, layout=None, length_prefix_type=None, encoding=None, null_padded=None, null_terminated=None, legacy_notes=None, notes=None), FieldSchema(name='reserved', type=<PrimitiveType.UINT8: 'uint8'>, description='Reserved; senders SHOULD write 0 and receivers MUST ignore.', rationale=None, introduced_in=None, endianness=None, size_bytes=None, count=None, count_from=None, element_type=None, layout=None, length_prefix_type=None, encoding=None, null_padded=None, null_terminated=None, legacy_notes=None, notes=None), FieldSchema(name='position', type=<FieldType.ARRAY: 'array'>, description="Tool position (x, y, z) in the session's reference frame.", rationale=None, introduced_in=None, endianness=None, size_bytes=None, count=3, count_from=None, element_type=<PrimitiveType.FLOAT32: 'float32'>, layout=None, length_prefix_type=None, encoding=None, null_padded=None, null_terminated=None, legacy_notes=None, notes=None), FieldSchema(name='quaternion', type=<FieldType.ARRAY: 'array'>, description='Tool orientation as a quaternion (qx, qy, qz, w). Unit-magnitude is expected; implementations SHOULD tolerate small deviations from unit magnitude.', rationale=None, introduced_in=None, endianness=None, size_bytes=None, count=4, count_from=None, element_type=<PrimitiveType.FLOAT32: 'float32'>, layout=None, length_prefix_type=None, encoding=None, null_padded=None, null_terminated=None, legacy_notes=None, notes=None)] × (remaining)`
+
+Array of 50-byte QTDATA elements. Element count is derived as body_size / 50; a body whose size is not a multiple of 50 is malformed and MUST be rejected (see U-7 in protocol/v3.md).
 
 **Legacy notes.**
 
@@ -558,10 +681,13 @@ Position + full quaternion orientation in 28 bytes fixed. Wire-level equivalent 
 
 **Fields.**
 
-| Name | Type | Size | Description |
-|---|---|---|---|
-| `position` | float32 × 3 | — | Position coordinates (x, y, z) in millimeters. |
-| `quaternion` | float32 × 4 | — | Orientation as quaternion (qx, qy, qz, qw). The sender SHOULD normalize before transmission; the receiver MUST normalize before use. |
+**`position`** &nbsp;·&nbsp; `float32 × 3`
+
+Position coordinates (x, y, z) in millimeters.
+
+**`quaternion`** &nbsp;·&nbsp; `float32 × 4`
+
+Orientation as quaternion (qx, qy, qz, qw). The sender SHOULD normalize before transmission; the receiver MUST normalize before use.
 
 **Legacy notes.**
 
@@ -585,14 +711,23 @@ Reports a vector of scalar sensor readings with an attached SI unit-of-measure d
 
 **Fields.**
 
-| Name | Type | Size | Description |
-|---|---|---|---|
-| `larray` | uint8 | — | Number of float64 sensor values that follow. Range 0..255. Caps the maximum body size at 10 + 255*8 = 2050 bytes. |
-| `status` | uint8 | — | Reserved sensor-status byte. No standardized values; receivers SHOULD ignore unrecognized values and MUST NOT reject a message based on its content. |
-| `unit` | uint64 | — | Bit-packed SI-unit descriptor encoding a decimal prefix and up to six (SI-base or SI-derived) unit codes with signed exponents. See the unit-packing section of protocol/v3.md for the bit layout. A unit value of 0 is treated as 'unspecified'. Treated at the wire level as a single big-endian uint64; the bit layout is the codec's concern, not the parser's. |
-| `data` | float64 × larray | — | Array of `larray` big-endian IEEE-754 float64 sensor readings. Units are given by the preceding `unit` field; the readings are numerically meaningful only in that unit. |
+**`larray`** &nbsp;·&nbsp; `uint8`
 
-  - **`unit` legacy.** The unit field's internal layout is defined by igtl_unit_pack / igtl_unit_unpack in the reference library (igtl_unit.h). Prefix in the high bits, then 6 * 4-bit unit codes, then 6 * 4-bit signed exponents (range -7..7). Conformant implementations MUST preserve the uint64 on the wire exactly; decoding the substructure is optional and can be deferred to a helper.
+Number of float64 sensor values that follow. Range 0..255. Caps the maximum body size at 10 + 255*8 = 2050 bytes.
+
+**`status`** &nbsp;·&nbsp; `uint8`
+
+Reserved sensor-status byte. No standardized values; receivers SHOULD ignore unrecognized values and MUST NOT reject a message based on its content.
+
+**`unit`** &nbsp;·&nbsp; `uint64`
+
+Bit-packed SI-unit descriptor encoding a decimal prefix and up to six (SI-base or SI-derived) unit codes with signed exponents. See the unit-packing section of protocol/v3.md for the bit layout. A unit value of 0 is treated as 'unspecified'. Treated at the wire level as a single big-endian uint64; the bit layout is the codec's concern, not the parser's.
+
+*Legacy.* The unit field's internal layout is defined by igtl_unit_pack / igtl_unit_unpack in the reference library (igtl_unit.h). Prefix in the high bits, then 6 * 4-bit unit codes, then 6 * 4-bit signed exponents (range -7..7). Conformant implementations MUST preserve the uint64 on the wire exactly; decoding the substructure is optional and can be deferred to a helper.
+
+**`data`** &nbsp;·&nbsp; `float64 × larray`
+
+Array of `larray` big-endian IEEE-754 float64 sensor readings. Units are given by the preceding `unit` field; the readings are numerically meaningful only in that unit.
 
 **Legacy notes.**
 
@@ -615,16 +750,25 @@ Reports the operational status of a device or the outcome of a request. Carries 
 
 **Fields.**
 
-| Name | Type | Size | Description |
-|---|---|---|---|
-| `code` | uint16 | — | Status code. See the STATUS code table in protocol/v3.md. 0 = invalid, 1 = OK, 2 = unknown error, and values up to 19 for specific failure modes. Receivers MUST accept unknown code values rather than rejecting the message, so the set can grow without breaking compatibility. |
-| `subcode` | int64 | — | Device-specific subcode providing additional detail about the status condition. Not centrally standardized; interpretation is defined by the sending device's documentation. |
-| `error_name` | fixed_string | 20 B | Short human-readable name for the error condition, null-padded to 20 bytes. Optional: implementations may leave this empty (all zeros). MUST NOT be relied upon for machine dispatch — use `code` and `subcode` for that. |
-| `status_message` | trailing_string | — | Free-text human-readable status message. Occupies all remaining bytes of the body after the 30-byte fixed header. The final byte on the wire MUST be 0x00; the string value is the bytes before that terminator (which may be empty). Total body size = 30 + len(status_message) + 1. |
+**`code`** &nbsp;·&nbsp; `uint16`
 
-  - **`error_name` legacy.** Upstream C++ library (at pinned SHA 94244fe) writes this field with strncpy(dst, src, 20) without guaranteeing null termination if the input is 20 or more characters. A conformant implementation MUST either reserve byte 19 as a hard null terminator (accepting a 19-character effective limit) or treat the field as fixed 20 bytes without any null-termination expectation. Receivers MUST defensively null-terminate before using the field as a C string.
+Status code. See the STATUS code table in protocol/v3.md. 0 = invalid, 1 = OK, 2 = unknown error, and values up to 19 for specific failure modes. Receivers MUST accept unknown code values rather than rejecting the message, so the set can grow without breaking compatibility.
 
-  - **`status_message` legacy.** Upstream C++ library (at pinned SHA 94244fe) will silently discard the status_message on unpack if the trailing null is missing, but still produces garbage from an undersized body. Conformant receivers MUST reject messages whose body_size < 31 and MUST reject messages whose last content byte is non-null.
+**`subcode`** &nbsp;·&nbsp; `int64`
+
+Device-specific subcode providing additional detail about the status condition. Not centrally standardized; interpretation is defined by the sending device's documentation.
+
+**`error_name`** &nbsp;·&nbsp; `fixed_string` &nbsp;·&nbsp; 20 B
+
+Short human-readable name for the error condition, null-padded to 20 bytes. Optional: implementations may leave this empty (all zeros). MUST NOT be relied upon for machine dispatch — use `code` and `subcode` for that.
+
+*Legacy.* Upstream C++ library (at pinned SHA 94244fe) writes this field with strncpy(dst, src, 20) without guaranteeing null termination if the input is 20 or more characters. A conformant implementation MUST either reserve byte 19 as a hard null terminator (accepting a 19-character effective limit) or treat the field as fixed 20 bytes without any null-termination expectation. Receivers MUST defensively null-terminate before using the field as a C string.
+
+**`status_message`** &nbsp;·&nbsp; `trailing_string`
+
+Free-text human-readable status message. Occupies all remaining bytes of the body after the 30-byte fixed header. The final byte on the wire MUST be 0x00; the string value is the bytes before that terminator (which may be empty). Total body size = 30 + len(status_message) + 1.
+
+*Legacy.* Upstream C++ library (at pinned SHA 94244fe) will silently discard the status_message on unpack if the trailing null is missing, but still produces garbage from an undersized body. Conformant receivers MUST reject messages whose body_size < 31 and MUST reject messages whose last content byte is non-null.
 
 **Legacy notes.**
 
@@ -646,12 +790,15 @@ Carries a character string with an explicit character-encoding hint. The payload
 
 **Fields.**
 
-| Name | Type | Size | Description |
-|---|---|---|---|
-| `encoding` | uint16 | — | Character encoding as an IANA MIBenum value. Typical: 3 (US-ASCII), 106 (UTF-8). See the IANA character-sets registry at https://www.iana.org/assignments/character-sets. Receivers MUST accept unknown encoding values without rejection; if the value is not recognized, the payload MAY be treated as opaque bytes. |
-| `value` | length_prefixed_string | — | String payload: a big-endian uint16 length, immediately followed by that many bytes of string data. Interpretation of the bytes is governed by the preceding `encoding` field; at the wire level the field is opaque. The 16-bit length caps the maximum string size at 65535 bytes. No terminator byte. |
+**`encoding`** &nbsp;·&nbsp; `uint16`
 
-  - **`value` legacy.** Upstream C++ library (at pinned SHA 94244fe) unpacks this field with m_String.append(ptr, header->length) on line 135 of igtlStringMessage.cxx without bounds-checking `length` against the actual body size available. A conformant implementation MUST reject any STRING message where body_size < 4 + length; otherwise an attacker-controlled length value causes OOB reads up to 65535 bytes past the buffer.
+Character encoding as an IANA MIBenum value. Typical: 3 (US-ASCII), 106 (UTF-8). See the IANA character-sets registry at https://www.iana.org/assignments/character-sets. Receivers MUST accept unknown encoding values without rejection; if the value is not recognized, the payload MAY be treated as opaque bytes.
+
+**`value`** &nbsp;·&nbsp; `length_prefixed_string`
+
+String payload: a big-endian uint16 length, immediately followed by that many bytes of string data. Interpretation of the bytes is governed by the preceding `encoding` field; at the wire level the field is opaque. The 16-bit length caps the maximum string size at 65535 bytes. No terminator byte.
+
+*Legacy.* Upstream C++ library (at pinned SHA 94244fe) unpacks this field with m_String.append(ptr, header->length) on line 135 of igtlStringMessage.cxx without bounds-checking `length` against the actual body size available. A conformant implementation MUST reject any STRING message where body_size < 4 + length; otherwise an attacker-controlled length value causes OOB reads up to 65535 bytes past the buffer.
 
 **Legacy notes.**
 
@@ -674,9 +821,9 @@ Stream of tracked-tool poses using a 3×4 transformation matrix per tool. Each e
 
 **Fields.**
 
-| Name | Type | Size | Description |
-|---|---|---|---|
-| `tools` | type=<FieldType.STRUCT: 'struct'> size_bytes=None encoding=None endianness=None null_padded=None length_prefix_type=None description=None fields=[FieldSchema(name='name', type=<FieldType.FIXED_STRING: 'fixed_string'>, description='Instrument or tracker name, null-padded to 20 bytes.', rationale=None, introduced_in=None, endianness=None, size_bytes=20, count=None, count_from=None, element_type=None, layout=None, length_prefix_type=None, encoding=<Encoding.ASCII: 'ascii'>, null_padded=True, null_terminated=None, legacy_notes=None, notes=None), FieldSchema(name='type', type=<PrimitiveType.UINT8: 'uint8'>, description='Tool kind: 1 = tracker reference, 2 = 6D instrument, 3 = 3D instrument (tip only), 4 = 5D instrument (tip + handle). Receivers MUST accept unknown values without rejection.', rationale=None, introduced_in=None, endianness=None, size_bytes=None, count=None, count_from=None, element_type=None, layout=None, length_prefix_type=None, encoding=None, null_padded=None, null_terminated=None, legacy_notes=None, notes=None), FieldSchema(name='reserved', type=<PrimitiveType.UINT8: 'uint8'>, description='Reserved; senders SHOULD write 0 and receivers MUST ignore.', rationale=None, introduced_in=None, endianness=None, size_bytes=None, count=None, count_from=None, element_type=None, layout=None, length_prefix_type=None, encoding=None, null_padded=None, null_terminated=None, legacy_notes=None, notes=None), FieldSchema(name='transform', type=<FieldType.ARRAY: 'array'>, description="Upper-3×4 of a 4×4 homogeneous transformation matrix, 12 floats in column-major order. Wire order: R11, R21, R31, R12, R22, R32, R13, R23, R33, TX, TY, TZ. Same encoding as TRANSFORM's body — see TRANSFORM's legacy_notes for the column-major interop trap.", rationale=None, introduced_in=None, endianness=None, size_bytes=None, count=12, count_from=None, element_type=<PrimitiveType.FLOAT32: 'float32'>, layout='column_major_3x4', length_prefix_type=None, encoding=None, null_padded=None, null_terminated=None, legacy_notes=None, notes=None)] × (remaining) | — | Array of 70-byte TDATA elements. Element count is derived as body_size / 70; a body whose size is not a multiple of 70 is malformed and MUST be rejected. |
+**`tools`** &nbsp;·&nbsp; `type=<FieldType.STRUCT: 'struct'> size_bytes=None encoding=None endianness=None null_padded=None length_prefix_type=None description=None fields=[FieldSchema(name='name', type=<FieldType.FIXED_STRING: 'fixed_string'>, description='Instrument or tracker name, null-padded to 20 bytes.', rationale=None, introduced_in=None, endianness=None, size_bytes=20, count=None, count_from=None, element_type=None, layout=None, length_prefix_type=None, encoding=<Encoding.ASCII: 'ascii'>, null_padded=True, null_terminated=None, legacy_notes=None, notes=None), FieldSchema(name='type', type=<PrimitiveType.UINT8: 'uint8'>, description='Tool kind: 1 = tracker reference, 2 = 6D instrument, 3 = 3D instrument (tip only), 4 = 5D instrument (tip + handle). Receivers MUST accept unknown values without rejection.', rationale=None, introduced_in=None, endianness=None, size_bytes=None, count=None, count_from=None, element_type=None, layout=None, length_prefix_type=None, encoding=None, null_padded=None, null_terminated=None, legacy_notes=None, notes=None), FieldSchema(name='reserved', type=<PrimitiveType.UINT8: 'uint8'>, description='Reserved; senders SHOULD write 0 and receivers MUST ignore.', rationale=None, introduced_in=None, endianness=None, size_bytes=None, count=None, count_from=None, element_type=None, layout=None, length_prefix_type=None, encoding=None, null_padded=None, null_terminated=None, legacy_notes=None, notes=None), FieldSchema(name='transform', type=<FieldType.ARRAY: 'array'>, description="Upper-3×4 of a 4×4 homogeneous transformation matrix, 12 floats in column-major order. Wire order: R11, R21, R31, R12, R22, R32, R13, R23, R33, TX, TY, TZ. Same encoding as TRANSFORM's body — see TRANSFORM's legacy_notes for the column-major interop trap.", rationale=None, introduced_in=None, endianness=None, size_bytes=None, count=12, count_from=None, element_type=<PrimitiveType.FLOAT32: 'float32'>, layout='column_major_3x4', length_prefix_type=None, encoding=None, null_padded=None, null_terminated=None, legacy_notes=None, notes=None)] × (remaining)`
+
+Array of 70-byte TDATA elements. Element count is derived as body_size / 70; a body whose size is not a multiple of 70 is malformed and MUST be rejected.
 
 **Legacy notes.**
 
@@ -700,9 +847,9 @@ List of 3D trajectories — planned or executed paths from an entry point to a t
 
 **Fields.**
 
-| Name | Type | Size | Description |
-|---|---|---|---|
-| `trajectories` | type=<FieldType.STRUCT: 'struct'> size_bytes=None encoding=None endianness=None null_padded=None length_prefix_type=None description=None fields=[FieldSchema(name='name', type=<FieldType.FIXED_STRING: 'fixed_string'>, description='Human-readable trajectory name or description, null-padded to 64 bytes.', rationale=None, introduced_in=None, endianness=None, size_bytes=64, count=None, count_from=None, element_type=None, layout=None, length_prefix_type=None, encoding=<Encoding.ASCII: 'ascii'>, null_padded=True, null_terminated=None, legacy_notes=None, notes=None), FieldSchema(name='group_name', type=<FieldType.FIXED_STRING: 'fixed_string'>, description="Group tag (e.g. 'Trajectory', 'Planned Path', or any application-specific string).", rationale=None, introduced_in=None, endianness=None, size_bytes=32, count=None, count_from=None, element_type=None, layout=None, length_prefix_type=None, encoding=<Encoding.ASCII: 'ascii'>, null_padded=True, null_terminated=None, legacy_notes=None, notes=None), FieldSchema(name='type', type=<PrimitiveType.INT8: 'int8'>, description="Which endpoints are populated: 1 = entry-only (target_pos ignored), 2 = target-only (entry_pos ignored), 3 = entry-and-target. Receivers MUST accept unknown values without rejection and SHOULD treat them as equivalent to 'entry-and-target'.", rationale=None, introduced_in=None, endianness=None, size_bytes=None, count=None, count_from=None, element_type=None, layout=None, length_prefix_type=None, encoding=None, null_padded=None, null_terminated=None, legacy_notes=None, notes=None), FieldSchema(name='reserved', type=<PrimitiveType.INT8: 'int8'>, description='Reserved; senders SHOULD write 0 and receivers MUST ignore.', rationale=None, introduced_in=None, endianness=None, size_bytes=None, count=None, count_from=None, element_type=None, layout=None, length_prefix_type=None, encoding=None, null_padded=None, null_terminated=None, legacy_notes=None, notes=None), FieldSchema(name='rgba', type=<FieldType.ARRAY: 'array'>, description='Suggested rendering color as RGBA bytes.', rationale=None, introduced_in=None, endianness=None, size_bytes=None, count=4, count_from=None, element_type=<PrimitiveType.UINT8: 'uint8'>, layout=None, length_prefix_type=None, encoding=None, null_padded=None, null_terminated=None, legacy_notes=None, notes=None), FieldSchema(name='entry_pos', type=<FieldType.ARRAY: 'array'>, description='Entry-point coordinates (x, y, z). Meaningful when `type` indicates entry is defined; undefined otherwise.', rationale=None, introduced_in=None, endianness=None, size_bytes=None, count=3, count_from=None, element_type=<PrimitiveType.FLOAT32: 'float32'>, layout=None, length_prefix_type=None, encoding=None, null_padded=None, null_terminated=None, legacy_notes=None, notes=None), FieldSchema(name='target_pos', type=<FieldType.ARRAY: 'array'>, description='Target-point coordinates (x, y, z). Meaningful when `type` indicates target is defined; undefined otherwise.', rationale=None, introduced_in=None, endianness=None, size_bytes=None, count=3, count_from=None, element_type=<PrimitiveType.FLOAT32: 'float32'>, layout=None, length_prefix_type=None, encoding=None, null_padded=None, null_terminated=None, legacy_notes=None, notes=None), FieldSchema(name='radius', type=<PrimitiveType.FLOAT32: 'float32'>, description="Rendering radius of the trajectory (e.g. for a tube or cylinder glyph). A value of 0 means 'use renderer default' or 'no meaningful radius'.", rationale=None, introduced_in=None, endianness=None, size_bytes=None, count=None, count_from=None, element_type=None, layout=None, length_prefix_type=None, encoding=None, null_padded=None, null_terminated=None, legacy_notes=None, notes=None), FieldSchema(name='owner_name', type=<FieldType.FIXED_STRING: 'fixed_string'>, description='Optional device-name suffix of the IMAGE this trajectory is anchored to. May be empty (all null bytes).', rationale=None, introduced_in=None, endianness=None, size_bytes=20, count=None, count_from=None, element_type=None, layout=None, length_prefix_type=None, encoding=<Encoding.ASCII: 'ascii'>, null_padded=True, null_terminated=None, legacy_notes=None, notes=None)] × (remaining) | — | Array of 150-byte TRAJECTORY elements. Element count is derived as body_size / 150; a body whose size is not a multiple of 150 is malformed and MUST be rejected. |
+**`trajectories`** &nbsp;·&nbsp; `type=<FieldType.STRUCT: 'struct'> size_bytes=None encoding=None endianness=None null_padded=None length_prefix_type=None description=None fields=[FieldSchema(name='name', type=<FieldType.FIXED_STRING: 'fixed_string'>, description='Human-readable trajectory name or description, null-padded to 64 bytes.', rationale=None, introduced_in=None, endianness=None, size_bytes=64, count=None, count_from=None, element_type=None, layout=None, length_prefix_type=None, encoding=<Encoding.ASCII: 'ascii'>, null_padded=True, null_terminated=None, legacy_notes=None, notes=None), FieldSchema(name='group_name', type=<FieldType.FIXED_STRING: 'fixed_string'>, description="Group tag (e.g. 'Trajectory', 'Planned Path', or any application-specific string).", rationale=None, introduced_in=None, endianness=None, size_bytes=32, count=None, count_from=None, element_type=None, layout=None, length_prefix_type=None, encoding=<Encoding.ASCII: 'ascii'>, null_padded=True, null_terminated=None, legacy_notes=None, notes=None), FieldSchema(name='type', type=<PrimitiveType.INT8: 'int8'>, description="Which endpoints are populated: 1 = entry-only (target_pos ignored), 2 = target-only (entry_pos ignored), 3 = entry-and-target. Receivers MUST accept unknown values without rejection and SHOULD treat them as equivalent to 'entry-and-target'.", rationale=None, introduced_in=None, endianness=None, size_bytes=None, count=None, count_from=None, element_type=None, layout=None, length_prefix_type=None, encoding=None, null_padded=None, null_terminated=None, legacy_notes=None, notes=None), FieldSchema(name='reserved', type=<PrimitiveType.INT8: 'int8'>, description='Reserved; senders SHOULD write 0 and receivers MUST ignore.', rationale=None, introduced_in=None, endianness=None, size_bytes=None, count=None, count_from=None, element_type=None, layout=None, length_prefix_type=None, encoding=None, null_padded=None, null_terminated=None, legacy_notes=None, notes=None), FieldSchema(name='rgba', type=<FieldType.ARRAY: 'array'>, description='Suggested rendering color as RGBA bytes.', rationale=None, introduced_in=None, endianness=None, size_bytes=None, count=4, count_from=None, element_type=<PrimitiveType.UINT8: 'uint8'>, layout=None, length_prefix_type=None, encoding=None, null_padded=None, null_terminated=None, legacy_notes=None, notes=None), FieldSchema(name='entry_pos', type=<FieldType.ARRAY: 'array'>, description='Entry-point coordinates (x, y, z). Meaningful when `type` indicates entry is defined; undefined otherwise.', rationale=None, introduced_in=None, endianness=None, size_bytes=None, count=3, count_from=None, element_type=<PrimitiveType.FLOAT32: 'float32'>, layout=None, length_prefix_type=None, encoding=None, null_padded=None, null_terminated=None, legacy_notes=None, notes=None), FieldSchema(name='target_pos', type=<FieldType.ARRAY: 'array'>, description='Target-point coordinates (x, y, z). Meaningful when `type` indicates target is defined; undefined otherwise.', rationale=None, introduced_in=None, endianness=None, size_bytes=None, count=3, count_from=None, element_type=<PrimitiveType.FLOAT32: 'float32'>, layout=None, length_prefix_type=None, encoding=None, null_padded=None, null_terminated=None, legacy_notes=None, notes=None), FieldSchema(name='radius', type=<PrimitiveType.FLOAT32: 'float32'>, description="Rendering radius of the trajectory (e.g. for a tube or cylinder glyph). A value of 0 means 'use renderer default' or 'no meaningful radius'.", rationale=None, introduced_in=None, endianness=None, size_bytes=None, count=None, count_from=None, element_type=None, layout=None, length_prefix_type=None, encoding=None, null_padded=None, null_terminated=None, legacy_notes=None, notes=None), FieldSchema(name='owner_name', type=<FieldType.FIXED_STRING: 'fixed_string'>, description='Optional device-name suffix of the IMAGE this trajectory is anchored to. May be empty (all null bytes).', rationale=None, introduced_in=None, endianness=None, size_bytes=20, count=None, count_from=None, element_type=None, layout=None, length_prefix_type=None, encoding=<Encoding.ASCII: 'ascii'>, null_padded=True, null_terminated=None, legacy_notes=None, notes=None)] × (remaining)`
+
+Array of 150-byte TRAJECTORY elements. Element count is derived as body_size / 150; a body whose size is not a multiple of 150 is malformed and MUST be rejected.
 
 **Legacy notes.**
 
@@ -727,13 +874,15 @@ List of 3D trajectories — planned or executed paths from an entry point to a t
 
 **Fields.**
 
-| Name | Type | Size | Description |
-|---|---|---|---|
-| `matrix` | float32 × 12 | 48 B | Twelve 32-bit floats in column-major order, encoding the upper 3x4 of a 4x4 homogeneous transformation matrix. Wire order is R11, R21, R31, R12, R22, R32, R13, R23, R33, TX, TY, TZ — that is, three rotation-matrix columns followed by the translation column. |
+**`matrix`** &nbsp;·&nbsp; `float32 × 12` &nbsp;·&nbsp; 48 B
 
-  - **`matrix` rationale.** Column-major ordering chosen in v1 for alignment with graphics-convention matrix storage. The 3x4 convention (rather than 4x3) makes translation the final three floats, which some hand-decoded test traces rely on.
-  - **`matrix` layout:** `column_major_3x4`.
-  - **`matrix` legacy.** v1: wire order is column-major. At least one independent implementation (openigtlink-rust prior to v0.4.0) initially encoded row-major and produced bytes incompatible with the C++ reference. This is the single most common interop bug for new implementations and is pinned by the conformance corpus.
+Twelve 32-bit floats in column-major order, encoding the upper 3x4 of a 4x4 homogeneous transformation matrix. Wire order is R11, R21, R31, R12, R22, R32, R13, R23, R33, TX, TY, TZ — that is, three rotation-matrix columns followed by the translation column.
+
+*Rationale.* Column-major ordering chosen in v1 for alignment with graphics-convention matrix storage. The 3x4 convention (rather than 4x3) makes translation the final three floats, which some hand-decoded test traces rely on.
+
+*Layout:* `column_major_3x4`.
+
+*Legacy.* v1: wire order is column-major. At least one independent implementation (openigtlink-rust prior to v0.4.0) initially encoded row-major and produced bytes incompatible with the C++ reference. This is the single most common interop bug for new implementations and is pinned by the conformance corpus.
 
 **Legacy notes.**
 
@@ -756,18 +905,45 @@ Compressed video frame with in-band orientation. The body is a 76-byte frame hea
 
 **Fields.**
 
-| Name | Type | Size | Description |
-|---|---|---|---|
-| `header_version` | uint16 | — | VIDEO header format version, currently 1. Distinct from the OpenIGTLink protocol version. Receivers MUST reject values they do not implement. |
-| `endian` | uint8 | — | Byte order of the decoded pixel data: 1=big, 2=little. Applies to the pixel interpretation after codec decompression, not to the compressed frame payload itself (which is opaque bytes). |
-| `codec` | fixed_string | 4 B | FourCC codec identifier: 'I420' (uncompressed YUV 4:2:0), 'H264' (H.264/AVC), 'VP90' (VP9), 'X265' (H.265/HEVC via x265), 'O265' (H.265/HEVC via OpenHEVC), 'AV10' (AV1). Receivers MUST reject unknown codec values with STATUS rather than attempting to interpret the frame data. |
-| `frame_type` | uint16 | — | Codec-specific frame type indicator (e.g. I-frame, P-frame, B-frame). Semantics depend on the codec identified by `codec`; the protocol treats this as an opaque hint. 0 is a safe default for codecs that don't distinguish frame types. |
-| `coord` | uint8 | — | Coordinate-system convention: 1=RAS, 2=LPS. Same semantics as IMAGE's `coord` field. |
-| `size` | uint16 × 3 | — | Full video frame dimensions in pixels: (Sx, Sy, Sz). For 2D video, Sz=1. |
-| `matrix` | float32 × 12 | — | Frame-plane orientation and origin. Same layout as IMAGE: four float32[3] groups — norm_i·pixel_size_i, norm_j·pixel_size_j, norm_k·pixel_size_k, origin (mm). |
-| `subvol_offset` | uint16 × 3 | — | Sub-region offset within the full frame: (Ox, Oy, Oz). Same semantics as IMAGE's subvol_offset. |
-| `subvol_size` | uint16 × 3 | — | Sub-region extent: (Wx, Wy, Wz). Unlike IMAGE, the trailing frame_data byte count is NOT derivable from subvol_size because the data is codec-compressed. Receivers determine frame_data length from body_size - 76. |
-| `frame_data` | uint8 × (remaining) | — | Codec-compressed frame payload. Byte count = body_size - 76. The receiver must decompress this using the codec identified by the `codec` field. For 'I420' (uncompressed), the byte count has a fixed relationship to subvol_size; for all other codecs it does not. |
+**`header_version`** &nbsp;·&nbsp; `uint16`
+
+VIDEO header format version, currently 1. Distinct from the OpenIGTLink protocol version. Receivers MUST reject values they do not implement.
+
+**`endian`** &nbsp;·&nbsp; `uint8`
+
+Byte order of the decoded pixel data: 1=big, 2=little. Applies to the pixel interpretation after codec decompression, not to the compressed frame payload itself (which is opaque bytes).
+
+**`codec`** &nbsp;·&nbsp; `fixed_string` &nbsp;·&nbsp; 4 B
+
+FourCC codec identifier: 'I420' (uncompressed YUV 4:2:0), 'H264' (H.264/AVC), 'VP90' (VP9), 'X265' (H.265/HEVC via x265), 'O265' (H.265/HEVC via OpenHEVC), 'AV10' (AV1). Receivers MUST reject unknown codec values with STATUS rather than attempting to interpret the frame data.
+
+**`frame_type`** &nbsp;·&nbsp; `uint16`
+
+Codec-specific frame type indicator (e.g. I-frame, P-frame, B-frame). Semantics depend on the codec identified by `codec`; the protocol treats this as an opaque hint. 0 is a safe default for codecs that don't distinguish frame types.
+
+**`coord`** &nbsp;·&nbsp; `uint8`
+
+Coordinate-system convention: 1=RAS, 2=LPS. Same semantics as IMAGE's `coord` field.
+
+**`size`** &nbsp;·&nbsp; `uint16 × 3`
+
+Full video frame dimensions in pixels: (Sx, Sy, Sz). For 2D video, Sz=1.
+
+**`matrix`** &nbsp;·&nbsp; `float32 × 12`
+
+Frame-plane orientation and origin. Same layout as IMAGE: four float32[3] groups — norm_i·pixel_size_i, norm_j·pixel_size_j, norm_k·pixel_size_k, origin (mm).
+
+**`subvol_offset`** &nbsp;·&nbsp; `uint16 × 3`
+
+Sub-region offset within the full frame: (Ox, Oy, Oz). Same semantics as IMAGE's subvol_offset.
+
+**`subvol_size`** &nbsp;·&nbsp; `uint16 × 3`
+
+Sub-region extent: (Wx, Wy, Wz). Unlike IMAGE, the trailing frame_data byte count is NOT derivable from subvol_size because the data is codec-compressed. Receivers determine frame_data length from body_size - 76.
+
+**`frame_data`** &nbsp;·&nbsp; `uint8 × (remaining)`
+
+Codec-compressed frame payload. Byte count = body_size - 76. The receiver must decompress this using the codec identified by the `codec` field. For 'I420' (uncompressed), the byte count has a fixed relationship to subvol_size; for all other codecs it does not.
 
 **Legacy notes.**
 
@@ -794,9 +970,9 @@ Advertises the set of VIDEO sources available on a server. Each element describe
 
 **Fields.**
 
-| Name | Type | Size | Description |
-|---|---|---|---|
-| `videos` | type=<FieldType.STRUCT: 'struct'> size_bytes=None encoding=None endianness=None null_padded=None length_prefix_type=None description=None fields=[FieldSchema(name='name', type=<FieldType.FIXED_STRING: 'fixed_string'>, description='Human-readable video stream name or description, null-padded to 64 bytes.', rationale=None, introduced_in=None, endianness=None, size_bytes=64, count=None, count_from=None, element_type=None, layout=None, length_prefix_type=None, encoding=<Encoding.ASCII: 'ascii'>, null_padded=True, null_terminated=None, legacy_notes=None, notes=None), FieldSchema(name='device_name', type=<FieldType.FIXED_STRING: 'fixed_string'>, description='Device-name suffix used to retrieve this VIDEO via GET_VIDEO (and associated COLORT). Note the 64-byte width, wider than the 20-byte device_name suffix used by IMGMETA and LBMETA. Forms the authoritative key for this metadata entry.', rationale=None, introduced_in=None, endianness=None, size_bytes=64, count=None, count_from=None, element_type=None, layout=None, length_prefix_type=None, encoding=<Encoding.ASCII: 'ascii'>, null_padded=True, null_terminated=None, legacy_notes=None, notes=None), FieldSchema(name='patient_name', type=<FieldType.FIXED_STRING: 'fixed_string'>, description='Patient name, null-padded to 64 bytes. This is PHI; implementations SHOULD treat the field as sensitive and MAY omit or redact it depending on deployment policy.', rationale=None, introduced_in=None, endianness=None, size_bytes=64, count=None, count_from=None, element_type=None, layout=None, length_prefix_type=None, encoding=<Encoding.ASCII: 'ascii'>, null_padded=True, null_terminated=None, legacy_notes=None, notes=None), FieldSchema(name='patient_id', type=<FieldType.FIXED_STRING: 'fixed_string'>, description='Patient identifier (e.g. MRN), null-padded to 64 bytes. Also PHI; same treatment guidance as patient_name.', rationale=None, introduced_in=None, endianness=None, size_bytes=64, count=None, count_from=None, element_type=None, layout=None, length_prefix_type=None, encoding=<Encoding.ASCII: 'ascii'>, null_padded=True, null_terminated=None, legacy_notes=None, notes=None), FieldSchema(name='zoom_level', type=<PrimitiveType.INT16: 'int16'>, description='Camera zoom level as a signed 16-bit integer. Units and reference-point semantics are device-specific; consumers SHOULD treat this as an opaque device-reported value unless they have prior calibration knowledge of the source.', rationale=None, introduced_in=None, endianness=None, size_bytes=None, count=None, count_from=None, element_type=None, layout=None, length_prefix_type=None, encoding=None, null_padded=None, null_terminated=None, legacy_notes=None, notes=None), FieldSchema(name='focal_length', type=<PrimitiveType.FLOAT64: 'float64'>, description='Camera focal length in millimeters.', rationale=None, introduced_in=None, endianness=None, size_bytes=None, count=None, count_from=None, element_type=None, layout=None, length_prefix_type=None, encoding=None, null_padded=None, null_terminated=None, legacy_notes=None, notes=None), FieldSchema(name='size', type=<FieldType.ARRAY: 'array'>, description='Video frame dimensions in pixels: (Ri, Rj, Rk). For a 2D video source, Rk is typically 1; three-axis sizes are preserved here for consistency with IMAGE.', rationale=None, introduced_in=None, endianness=None, size_bytes=None, count=3, count_from=None, element_type=<PrimitiveType.UINT16: 'uint16'>, layout=None, length_prefix_type=None, encoding=None, null_padded=None, null_terminated=None, legacy_notes=None, notes=None), FieldSchema(name='matrix', type=<FieldType.ARRAY: 'array'>, description='Frame-plane orientation and origin, laid out as four float32[3] groups in row order: (TX,TY,TZ) = norm_i * pixel_size_i, (SX,SY,SZ) = norm_j * pixel_size_j, (NX,NY,NZ) = norm_k * pixel_size_k, (PX,PY,PZ) = origin (center of the frame in millimeters). Same convention as IMGMETA-adjacent IMAGE orientation, minus the scalar-type-dependent encoding variant.', rationale=None, introduced_in=None, endianness=None, size_bytes=None, count=12, count_from=None, element_type=<PrimitiveType.FLOAT32: 'float32'>, layout=None, length_prefix_type=None, encoding=None, null_padded=None, null_terminated=None, legacy_notes=None, notes=None), FieldSchema(name='scalar_type', type=<PrimitiveType.UINT8: 'uint8'>, description="Pixel scalar type, matching VIDEO's scalar_type codes (and IMAGE's): 2=int8, 3=uint8, 4=int16, 5=uint16, 6=int32, 7=uint32, 10=float32, 11=float64. Receivers MUST accept unknown values without rejection.", rationale=None, introduced_in=None, endianness=None, size_bytes=None, count=None, count_from=None, element_type=None, layout=None, length_prefix_type=None, encoding=None, null_padded=None, null_terminated=None, legacy_notes=None, notes=None), FieldSchema(name='reserved', type=<PrimitiveType.UINT8: 'uint8'>, description='Reserved; senders SHOULD write 0 and receivers MUST ignore.', rationale=None, introduced_in=None, endianness=None, size_bytes=None, count=None, count_from=None, element_type=None, layout=None, length_prefix_type=None, encoding=None, null_padded=None, null_terminated=None, legacy_notes=None, notes=None)] × (remaining) | — | Array of 322-byte VIDEOMETA elements. Element count is derived as body_size / 322; a body whose size is not a multiple of 322 is malformed and MUST be rejected. |
+**`videos`** &nbsp;·&nbsp; `type=<FieldType.STRUCT: 'struct'> size_bytes=None encoding=None endianness=None null_padded=None length_prefix_type=None description=None fields=[FieldSchema(name='name', type=<FieldType.FIXED_STRING: 'fixed_string'>, description='Human-readable video stream name or description, null-padded to 64 bytes.', rationale=None, introduced_in=None, endianness=None, size_bytes=64, count=None, count_from=None, element_type=None, layout=None, length_prefix_type=None, encoding=<Encoding.ASCII: 'ascii'>, null_padded=True, null_terminated=None, legacy_notes=None, notes=None), FieldSchema(name='device_name', type=<FieldType.FIXED_STRING: 'fixed_string'>, description='Device-name suffix used to retrieve this VIDEO via GET_VIDEO (and associated COLORT). Note the 64-byte width, wider than the 20-byte device_name suffix used by IMGMETA and LBMETA. Forms the authoritative key for this metadata entry.', rationale=None, introduced_in=None, endianness=None, size_bytes=64, count=None, count_from=None, element_type=None, layout=None, length_prefix_type=None, encoding=<Encoding.ASCII: 'ascii'>, null_padded=True, null_terminated=None, legacy_notes=None, notes=None), FieldSchema(name='patient_name', type=<FieldType.FIXED_STRING: 'fixed_string'>, description='Patient name, null-padded to 64 bytes. This is PHI; implementations SHOULD treat the field as sensitive and MAY omit or redact it depending on deployment policy.', rationale=None, introduced_in=None, endianness=None, size_bytes=64, count=None, count_from=None, element_type=None, layout=None, length_prefix_type=None, encoding=<Encoding.ASCII: 'ascii'>, null_padded=True, null_terminated=None, legacy_notes=None, notes=None), FieldSchema(name='patient_id', type=<FieldType.FIXED_STRING: 'fixed_string'>, description='Patient identifier (e.g. MRN), null-padded to 64 bytes. Also PHI; same treatment guidance as patient_name.', rationale=None, introduced_in=None, endianness=None, size_bytes=64, count=None, count_from=None, element_type=None, layout=None, length_prefix_type=None, encoding=<Encoding.ASCII: 'ascii'>, null_padded=True, null_terminated=None, legacy_notes=None, notes=None), FieldSchema(name='zoom_level', type=<PrimitiveType.INT16: 'int16'>, description='Camera zoom level as a signed 16-bit integer. Units and reference-point semantics are device-specific; consumers SHOULD treat this as an opaque device-reported value unless they have prior calibration knowledge of the source.', rationale=None, introduced_in=None, endianness=None, size_bytes=None, count=None, count_from=None, element_type=None, layout=None, length_prefix_type=None, encoding=None, null_padded=None, null_terminated=None, legacy_notes=None, notes=None), FieldSchema(name='focal_length', type=<PrimitiveType.FLOAT64: 'float64'>, description='Camera focal length in millimeters.', rationale=None, introduced_in=None, endianness=None, size_bytes=None, count=None, count_from=None, element_type=None, layout=None, length_prefix_type=None, encoding=None, null_padded=None, null_terminated=None, legacy_notes=None, notes=None), FieldSchema(name='size', type=<FieldType.ARRAY: 'array'>, description='Video frame dimensions in pixels: (Ri, Rj, Rk). For a 2D video source, Rk is typically 1; three-axis sizes are preserved here for consistency with IMAGE.', rationale=None, introduced_in=None, endianness=None, size_bytes=None, count=3, count_from=None, element_type=<PrimitiveType.UINT16: 'uint16'>, layout=None, length_prefix_type=None, encoding=None, null_padded=None, null_terminated=None, legacy_notes=None, notes=None), FieldSchema(name='matrix', type=<FieldType.ARRAY: 'array'>, description='Frame-plane orientation and origin, laid out as four float32[3] groups in row order: (TX,TY,TZ) = norm_i * pixel_size_i, (SX,SY,SZ) = norm_j * pixel_size_j, (NX,NY,NZ) = norm_k * pixel_size_k, (PX,PY,PZ) = origin (center of the frame in millimeters). Same convention as IMGMETA-adjacent IMAGE orientation, minus the scalar-type-dependent encoding variant.', rationale=None, introduced_in=None, endianness=None, size_bytes=None, count=12, count_from=None, element_type=<PrimitiveType.FLOAT32: 'float32'>, layout=None, length_prefix_type=None, encoding=None, null_padded=None, null_terminated=None, legacy_notes=None, notes=None), FieldSchema(name='scalar_type', type=<PrimitiveType.UINT8: 'uint8'>, description="Pixel scalar type, matching VIDEO's scalar_type codes (and IMAGE's): 2=int8, 3=uint8, 4=int16, 5=uint16, 6=int32, 7=uint32, 10=float32, 11=float64. Receivers MUST accept unknown values without rejection.", rationale=None, introduced_in=None, endianness=None, size_bytes=None, count=None, count_from=None, element_type=None, layout=None, length_prefix_type=None, encoding=None, null_padded=None, null_terminated=None, legacy_notes=None, notes=None), FieldSchema(name='reserved', type=<PrimitiveType.UINT8: 'uint8'>, description='Reserved; senders SHOULD write 0 and receivers MUST ignore.', rationale=None, introduced_in=None, endianness=None, size_bytes=None, count=None, count_from=None, element_type=None, layout=None, length_prefix_type=None, encoding=None, null_padded=None, null_terminated=None, legacy_notes=None, notes=None)] × (remaining)`
+
+Array of 322-byte VIDEOMETA elements. Element count is derived as body_size / 322; a body whose size is not a multiple of 322 is malformed and MUST be rejected.
 
 **Legacy notes.**
 
@@ -825,12 +1001,21 @@ Request specific child messages from a BIND server. When body_size is 0, the ser
 
 **Fields.**
 
-| Name | Type | Size | Description |
-|---|---|---|---|
-| `ncmessages` | uint16 | — | Number of child message types being requested. When the outer body_size is 0, this field is absent (the entire GET_BIND body is empty, meaning 'request all'). |
-| `type_ids` | type=<FieldType.FIXED_STRING: 'fixed_string'> size_bytes=12 encoding=<Encoding.ASCII: 'ascii'> endianness=None null_padded=True length_prefix_type=None description=None fields=None × ncmessages | — | Array of N × 12-byte type_id strings identifying which child message types to include in the response. Unlike the BIND header_entries, there are no body_size fields here (this is a request, not a container). |
-| `nametable_size` | uint16 | — | Byte length of the name table. MUST be even. |
-| `name_table` | uint8 × nametable_size | — | Packed device names — ncmessages null-terminated ASCII strings, 2-byte-aligned. |
+**`ncmessages`** &nbsp;·&nbsp; `uint16`
+
+Number of child message types being requested. When the outer body_size is 0, this field is absent (the entire GET_BIND body is empty, meaning 'request all').
+
+**`type_ids`** &nbsp;·&nbsp; `type=<FieldType.FIXED_STRING: 'fixed_string'> size_bytes=12 encoding=<Encoding.ASCII: 'ascii'> endianness=None null_padded=True length_prefix_type=None description=None fields=None × ncmessages`
+
+Array of N × 12-byte type_id strings identifying which child message types to include in the response. Unlike the BIND header_entries, there are no body_size fields here (this is a request, not a container).
+
+**`nametable_size`** &nbsp;·&nbsp; `uint16`
+
+Byte length of the name table. MUST be even.
+
+**`name_table`** &nbsp;·&nbsp; `uint8 × nametable_size`
+
+Packed device names — ncmessages null-terminated ASCII strings, 2-byte-aligned.
 
 **Legacy notes.**
 
@@ -1031,13 +1216,25 @@ Start streaming BIND messages. Prepends a uint64 time resolution to the GET_BIND
 
 **Fields.**
 
-| Name | Type | Size | Description |
-|---|---|---|---|
-| `resolution` | uint64 | — | Minimum time between consecutive BIND messages, encoded in the OpenIGTLink timestamp format (upper 32 bits = seconds, lower 32 bits = fraction). 0 means 'as fast as possible'. |
-| `ncmessages` | uint16 | — | Number of child message types being requested. When the body after the resolution field is empty (body_size=8), this and all following fields are absent, meaning 'stream all available children'. |
-| `type_ids` | type=<FieldType.FIXED_STRING: 'fixed_string'> size_bytes=12 encoding=<Encoding.ASCII: 'ascii'> endianness=None null_padded=True length_prefix_type=None description=None fields=None × ncmessages | — | Array of N × 12-byte type_id strings identifying which child types to include. |
-| `nametable_size` | uint16 | — | Byte length of the name table. MUST be even. |
-| `name_table` | uint8 × nametable_size | — | Packed device names — ncmessages null-terminated ASCII strings, 2-byte-aligned. |
+**`resolution`** &nbsp;·&nbsp; `uint64`
+
+Minimum time between consecutive BIND messages, encoded in the OpenIGTLink timestamp format (upper 32 bits = seconds, lower 32 bits = fraction). 0 means 'as fast as possible'.
+
+**`ncmessages`** &nbsp;·&nbsp; `uint16`
+
+Number of child message types being requested. When the body after the resolution field is empty (body_size=8), this and all following fields are absent, meaning 'stream all available children'.
+
+**`type_ids`** &nbsp;·&nbsp; `type=<FieldType.FIXED_STRING: 'fixed_string'> size_bytes=12 encoding=<Encoding.ASCII: 'ascii'> endianness=None null_padded=True length_prefix_type=None description=None fields=None × ncmessages`
+
+Array of N × 12-byte type_id strings identifying which child types to include.
+
+**`nametable_size`** &nbsp;·&nbsp; `uint16`
+
+Byte length of the name table. MUST be even.
+
+**`name_table`** &nbsp;·&nbsp; `uint8 × nametable_size`
+
+Packed device names — ncmessages null-terminated ASCII strings, 2-byte-aligned.
 
 **See also.** [`BIND`](#bind), [`GET_BIND`](#get-bind), [`STP_BIND`](#stp-bind), [`RTS_BIND`](#rts-bind)
 
@@ -1091,10 +1288,13 @@ Start streaming QTDATA (quaternion tracking data) messages at a specified update
 
 **Fields.**
 
-| Name | Type | Size | Description |
-|---|---|---|---|
-| `resolution` | int32 | — | Minimum time between consecutive QTDATA messages, in milliseconds. 0 means 'as fast as possible'. |
-| `coord_name` | fixed_string | 32 B | Name of the coordinate system for reported tracking data. Null-padded to 32 bytes. Empty string means 'server default'. |
+**`resolution`** &nbsp;·&nbsp; `int32`
+
+Minimum time between consecutive QTDATA messages, in milliseconds. 0 means 'as fast as possible'.
+
+**`coord_name`** &nbsp;·&nbsp; `fixed_string` &nbsp;·&nbsp; 32 B
+
+Name of the coordinate system for reported tracking data. Null-padded to 32 bytes. Empty string means 'server default'.
 
 **See also.** [`QTDATA`](#qtdata), [`STP_QTDATA`](#stp-qtdata), [`RTS_QTDATA`](#rts-qtdata)
 
@@ -1118,10 +1318,13 @@ Start streaming TDATA (tracking data) messages at a specified update interval, i
 
 **Fields.**
 
-| Name | Type | Size | Description |
-|---|---|---|---|
-| `resolution` | int32 | — | Minimum time between consecutive TDATA messages, in milliseconds. 0 means 'as fast as possible'. If 50 is specified, the maximum update rate is 20 Hz. The server MAY send slower than the requested rate but SHOULD NOT send faster. |
-| `coord_name` | fixed_string | 32 B | Name of the coordinate system for reported tracking data (e.g. 'Tracker', 'Patient'). Null-padded to 32 bytes. An empty string (all nulls) means 'server default'. |
+**`resolution`** &nbsp;·&nbsp; `int32`
+
+Minimum time between consecutive TDATA messages, in milliseconds. 0 means 'as fast as possible'. If 50 is specified, the maximum update rate is 20 Hz. The server MAY send slower than the requested rate but SHOULD NOT send faster.
+
+**`coord_name`** &nbsp;·&nbsp; `fixed_string` &nbsp;·&nbsp; 32 B
+
+Name of the coordinate system for reported tracking data (e.g. 'Tracker', 'Patient'). Null-padded to 32 bytes. An empty string (all nulls) means 'server default'.
 
 **See also.** [`TDATA`](#tdata), [`STP_TDATA`](#stp-tdata), [`RTS_TDATA`](#rts-tdata)
 
@@ -1145,10 +1348,13 @@ Start streaming VIDEO frames with a specified codec and update interval. The ser
 
 **Fields.**
 
-| Name | Type | Size | Description |
-|---|---|---|---|
-| `codec` | fixed_string | 4 B | Requested FourCC codec: 'I420' (uncompressed YUV), 'H264', 'VP90' (VP9), 'X265', 'O265' (OpenHEVC), 'AV10' (AV1). All four bytes significant. The server SHOULD honor the request or reject with an error status. |
-| `time_interval` | uint32 | — | Minimum time between consecutive VIDEO frames, in milliseconds. 0 means 'as fast as possible'. |
+**`codec`** &nbsp;·&nbsp; `fixed_string` &nbsp;·&nbsp; 4 B
+
+Requested FourCC codec: 'I420' (uncompressed YUV), 'H264', 'VP90' (VP9), 'X265', 'O265' (OpenHEVC), 'AV10' (AV1). All four bytes significant. The server SHOULD honor the request or reject with an error status.
+
+**`time_interval`** &nbsp;·&nbsp; `uint32`
+
+Minimum time between consecutive VIDEO frames, in milliseconds. 0 means 'as fast as possible'.
 
 **Legacy notes.**
 
@@ -1280,9 +1486,9 @@ Server's return status for a BIND query (GET/STT/STP). A single int8: 0 = succes
 
 **Fields.**
 
-| Name | Type | Size | Description |
-|---|---|---|---|
-| `status` | int8 | — | 0 = success (the requested operation completed). 1 = error (the request was rejected or failed). Other values are reserved; receivers SHOULD treat any non-zero value as error. |
+**`status`** &nbsp;·&nbsp; `int8`
+
+0 = success (the requested operation completed). 1 = error (the request was rejected or failed). Other values are reserved; receivers SHOULD treat any non-zero value as error.
 
 **See also.** [`BIND`](#bind)
 
@@ -1296,9 +1502,9 @@ Server's return status for a CAPABILITY query (GET/STT/STP). Per Documents/Proto
 
 **Fields.**
 
-| Name | Type | Size | Description |
-|---|---|---|---|
-| `status` | int8 | — | 0 = success (the requested operation completed). 1 = error (request rejected or failed). Other values are reserved; receivers SHOULD treat any non-zero value as error. |
+**`status`** &nbsp;·&nbsp; `int8`
+
+0 = success (the requested operation completed). 1 = error (request rejected or failed). Other values are reserved; receivers SHOULD treat any non-zero value as error.
 
 **See also.** [`CAPABILITY`](#capability)
 
@@ -1312,13 +1518,25 @@ Reply to a COMMAND message. Reuses the COMMAND body layout — the command_id ec
 
 **Fields.**
 
-| Name | Type | Size | Description |
-|---|---|---|---|
-| `command_id` | uint32 | — | Echoed command ID from the original COMMAND message. The sender uses this to match the reply to its outstanding request. |
-| `command_name` | fixed_string | 128 B | On success: echoes the original command name. On error: carries an error name or description string. Null-padded to 128 bytes. |
-| `encoding` | uint16 | — | IANA MIBenum code for the character encoding of the `command` payload (same as COMMAND). |
-| `length` | uint32 | — | Byte length of the trailing `command` field. |
-| `command` | uint8 × length | — | Reply payload — result data or error diagnostic, exactly `length` bytes. Typically XML. Interpreted per `encoding`. |
+**`command_id`** &nbsp;·&nbsp; `uint32`
+
+Echoed command ID from the original COMMAND message. The sender uses this to match the reply to its outstanding request.
+
+**`command_name`** &nbsp;·&nbsp; `fixed_string` &nbsp;·&nbsp; 128 B
+
+On success: echoes the original command name. On error: carries an error name or description string. Null-padded to 128 bytes.
+
+**`encoding`** &nbsp;·&nbsp; `uint16`
+
+IANA MIBenum code for the character encoding of the `command` payload (same as COMMAND).
+
+**`length`** &nbsp;·&nbsp; `uint32`
+
+Byte length of the trailing `command` field.
+
+**`command`** &nbsp;·&nbsp; `uint8 × length`
+
+Reply payload — result data or error diagnostic, exactly `length` bytes. Typically XML. Interpreted per `encoding`.
 
 **See also.** [`COMMAND`](#command)
 
@@ -1332,9 +1550,9 @@ Server's return status for a IMAGE query (GET/STT/STP). A single int8: 0 = succe
 
 **Fields.**
 
-| Name | Type | Size | Description |
-|---|---|---|---|
-| `status` | int8 | — | 0 = success (the requested operation completed). 1 = error (the request was rejected or failed). Other values are reserved; receivers SHOULD treat any non-zero value as error. |
+**`status`** &nbsp;·&nbsp; `int8`
+
+0 = success (the requested operation completed). 1 = error (the request was rejected or failed). Other values are reserved; receivers SHOULD treat any non-zero value as error.
 
 **See also.** [`IMAGE`](#image)
 
@@ -1348,9 +1566,9 @@ Server's return status for a IMGMETA query (GET/STT/STP). Per Documents/Protocol
 
 **Fields.**
 
-| Name | Type | Size | Description |
-|---|---|---|---|
-| `status` | int8 | — | 0 = success (the requested operation completed). 1 = error (request rejected or failed). Other values are reserved; receivers SHOULD treat any non-zero value as error. |
+**`status`** &nbsp;·&nbsp; `int8`
+
+0 = success (the requested operation completed). 1 = error (request rejected or failed). Other values are reserved; receivers SHOULD treat any non-zero value as error.
 
 **See also.** [`IMGMETA`](#imgmeta)
 
@@ -1364,9 +1582,9 @@ Server's return status for a LBMETA query (GET/STT/STP). Per Documents/Protocol/
 
 **Fields.**
 
-| Name | Type | Size | Description |
-|---|---|---|---|
-| `status` | int8 | — | 0 = success (the requested operation completed). 1 = error (request rejected or failed). Other values are reserved; receivers SHOULD treat any non-zero value as error. |
+**`status`** &nbsp;·&nbsp; `int8`
+
+0 = success (the requested operation completed). 1 = error (request rejected or failed). Other values are reserved; receivers SHOULD treat any non-zero value as error.
 
 **See also.** [`LBMETA`](#lbmeta)
 
@@ -1380,9 +1598,9 @@ Server's return status for a NDARRAY query (GET/STT/STP). Per Documents/Protocol
 
 **Fields.**
 
-| Name | Type | Size | Description |
-|---|---|---|---|
-| `status` | int8 | — | 0 = success (the requested operation completed). 1 = error (request rejected or failed). Other values are reserved; receivers SHOULD treat any non-zero value as error. |
+**`status`** &nbsp;·&nbsp; `int8`
+
+0 = success (the requested operation completed). 1 = error (request rejected or failed). Other values are reserved; receivers SHOULD treat any non-zero value as error.
 
 **See also.** [`NDARRAY`](#ndarray)
 
@@ -1396,9 +1614,9 @@ Server's return status for a POINT query (GET/STT/STP). Per Documents/Protocol/q
 
 **Fields.**
 
-| Name | Type | Size | Description |
-|---|---|---|---|
-| `status` | int8 | — | 0 = success (the requested operation completed). 1 = error (request rejected or failed). Other values are reserved; receivers SHOULD treat any non-zero value as error. |
+**`status`** &nbsp;·&nbsp; `int8`
+
+0 = success (the requested operation completed). 1 = error (request rejected or failed). Other values are reserved; receivers SHOULD treat any non-zero value as error.
 
 **See also.** [`POINT`](#point)
 
@@ -1412,9 +1630,9 @@ Server's return status for a POLYDATA query (GET/STT/STP). A single int8: 0 = su
 
 **Fields.**
 
-| Name | Type | Size | Description |
-|---|---|---|---|
-| `status` | int8 | — | 0 = success (the requested operation completed). 1 = error (the request was rejected or failed). Other values are reserved; receivers SHOULD treat any non-zero value as error. |
+**`status`** &nbsp;·&nbsp; `int8`
+
+0 = success (the requested operation completed). 1 = error (the request was rejected or failed). Other values are reserved; receivers SHOULD treat any non-zero value as error.
 
 **See also.** [`POLYDATA`](#polydata)
 
@@ -1428,9 +1646,9 @@ Server's return status for a POSITION query (GET/STT/STP). A single int8: 0 = su
 
 **Fields.**
 
-| Name | Type | Size | Description |
-|---|---|---|---|
-| `status` | int8 | — | 0 = success (the requested operation completed). 1 = error (the request was rejected or failed). Other values are reserved; receivers SHOULD treat any non-zero value as error. |
+**`status`** &nbsp;·&nbsp; `int8`
+
+0 = success (the requested operation completed). 1 = error (the request was rejected or failed). Other values are reserved; receivers SHOULD treat any non-zero value as error.
 
 **See also.** [`POSITION`](#position)
 
@@ -1444,9 +1662,9 @@ Server's return status for a QTDATA query (GET/STT/STP). A single int8: 0 = succ
 
 **Fields.**
 
-| Name | Type | Size | Description |
-|---|---|---|---|
-| `status` | int8 | — | 0 = success (the requested operation completed). 1 = error (the request was rejected or failed). Other values are reserved; receivers SHOULD treat any non-zero value as error. |
+**`status`** &nbsp;·&nbsp; `int8`
+
+0 = success (the requested operation completed). 1 = error (the request was rejected or failed). Other values are reserved; receivers SHOULD treat any non-zero value as error.
 
 **See also.** [`QTDATA`](#qtdata)
 
@@ -1460,9 +1678,9 @@ Server's return status for a QTRANS query (GET/STT/STP). Per Documents/Protocol/
 
 **Fields.**
 
-| Name | Type | Size | Description |
-|---|---|---|---|
-| `status` | int8 | — | 0 = success (the requested operation completed). 1 = error (request rejected or failed). Other values are reserved; receivers SHOULD treat any non-zero value as error. |
+**`status`** &nbsp;·&nbsp; `int8`
+
+0 = success (the requested operation completed). 1 = error (request rejected or failed). Other values are reserved; receivers SHOULD treat any non-zero value as error.
 
 **See also.** [`QTRANS`](#qtrans)
 
@@ -1476,9 +1694,9 @@ Server's return status for a SENSOR query (GET/STT/STP). A single int8: 0 = succ
 
 **Fields.**
 
-| Name | Type | Size | Description |
-|---|---|---|---|
-| `status` | int8 | — | 0 = success (the requested operation completed). 1 = error (the request was rejected or failed). Other values are reserved; receivers SHOULD treat any non-zero value as error. |
+**`status`** &nbsp;·&nbsp; `int8`
+
+0 = success (the requested operation completed). 1 = error (the request was rejected or failed). Other values are reserved; receivers SHOULD treat any non-zero value as error.
 
 **See also.** [`SENSOR`](#sensor)
 
@@ -1492,9 +1710,9 @@ Server's return status for a STATUS query (GET/STT/STP). Per Documents/Protocol/
 
 **Fields.**
 
-| Name | Type | Size | Description |
-|---|---|---|---|
-| `status` | int8 | — | 0 = success (the requested operation completed). 1 = error (request rejected or failed). Other values are reserved; receivers SHOULD treat any non-zero value as error. |
+**`status`** &nbsp;·&nbsp; `int8`
+
+0 = success (the requested operation completed). 1 = error (request rejected or failed). Other values are reserved; receivers SHOULD treat any non-zero value as error.
 
 **See also.** [`STATUS`](#status)
 
@@ -1508,9 +1726,9 @@ Server's return status for a STRING query (GET/STT/STP). Per Documents/Protocol/
 
 **Fields.**
 
-| Name | Type | Size | Description |
-|---|---|---|---|
-| `status` | int8 | — | 0 = success (the requested operation completed). 1 = error (request rejected or failed). Other values are reserved; receivers SHOULD treat any non-zero value as error. |
+**`status`** &nbsp;·&nbsp; `int8`
+
+0 = success (the requested operation completed). 1 = error (request rejected or failed). Other values are reserved; receivers SHOULD treat any non-zero value as error.
 
 **See also.** [`STRING`](#string)
 
@@ -1524,9 +1742,9 @@ Server's return status for a TDATA query (GET/STT/STP). A single int8: 0 = succe
 
 **Fields.**
 
-| Name | Type | Size | Description |
-|---|---|---|---|
-| `status` | int8 | — | 0 = success (the requested operation completed). 1 = error (the request was rejected or failed). Other values are reserved; receivers SHOULD treat any non-zero value as error. |
+**`status`** &nbsp;·&nbsp; `int8`
+
+0 = success (the requested operation completed). 1 = error (the request was rejected or failed). Other values are reserved; receivers SHOULD treat any non-zero value as error.
 
 **See also.** [`TDATA`](#tdata)
 
@@ -1540,9 +1758,9 @@ Server's return status for a TRAJECTORY query (GET/STT/STP). Per Documents/Proto
 
 **Fields.**
 
-| Name | Type | Size | Description |
-|---|---|---|---|
-| `status` | int8 | — | 0 = success (the requested operation completed). 1 = error (request rejected or failed). Other values are reserved; receivers SHOULD treat any non-zero value as error. |
+**`status`** &nbsp;·&nbsp; `int8`
+
+0 = success (the requested operation completed). 1 = error (request rejected or failed). Other values are reserved; receivers SHOULD treat any non-zero value as error.
 
 **See also.** [`TRAJECTORY`](#trajectory)
 
@@ -1556,9 +1774,9 @@ Server's return status for a TRANSFORM query (GET/STT/STP). A single int8: 0 = s
 
 **Fields.**
 
-| Name | Type | Size | Description |
-|---|---|---|---|
-| `status` | int8 | — | 0 = success (the requested operation completed). 1 = error (the request was rejected or failed). Other values are reserved; receivers SHOULD treat any non-zero value as error. |
+**`status`** &nbsp;·&nbsp; `int8`
+
+0 = success (the requested operation completed). 1 = error (the request was rejected or failed). Other values are reserved; receivers SHOULD treat any non-zero value as error.
 
 **See also.** [`TRANSFORM`](#transform)
 
@@ -1574,12 +1792,21 @@ The v3 extended header, located at the start of the message body. Carries sizes 
 
 **Fields.**
 
-| Name | Type | Size | Description |
-|---|---|---|---|
-| `ext_header_size` | uint16 | — | Total size of this extended header in bytes. Currently 12 for the base fields; future revisions may extend it. Receivers MUST skip any bytes beyond offset 12 up to ext_header_size without error, to allow forward-compatible extension. |
-| `metadata_header_size` | uint16 | — | Byte size of the metadata index section (the key-size / encoding / value-size table). 0 means no metadata. Located at body offset (body_size - metadata_header_size - metadata_size). |
-| `metadata_size` | uint32 | — | Byte size of the metadata body section (the actual key/value bytes). 0 means no metadata. Located at body offset (body_size - metadata_size). |
-| `message_id` | uint32 | — | Sender-assigned message identifier. Opaque to the protocol — the sender uses it for internal tracking (e.g. correlating responses). 0 is a legal value meaning 'unspecified'. |
+**`ext_header_size`** &nbsp;·&nbsp; `uint16`
+
+Total size of this extended header in bytes. Currently 12 for the base fields; future revisions may extend it. Receivers MUST skip any bytes beyond offset 12 up to ext_header_size without error, to allow forward-compatible extension.
+
+**`metadata_header_size`** &nbsp;·&nbsp; `uint16`
+
+Byte size of the metadata index section (the key-size / encoding / value-size table). 0 means no metadata. Located at body offset (body_size - metadata_header_size - metadata_size).
+
+**`metadata_size`** &nbsp;·&nbsp; `uint32`
+
+Byte size of the metadata body section (the actual key/value bytes). 0 means no metadata. Located at body offset (body_size - metadata_size).
+
+**`message_id`** &nbsp;·&nbsp; `uint32`
+
+Sender-assigned message identifier. Opaque to the protocol — the sender uses it for internal tracking (e.g. correlating responses). 0 is a legal value meaning 'unspecified'.
 
 **Legacy notes.**
 
@@ -1598,14 +1825,29 @@ The 58-byte fixed header that precedes every OpenIGTLink message on the wire. Th
 
 **Fields.**
 
-| Name | Type | Size | Description |
-|---|---|---|---|
-| `version` | uint16 | — | Protocol version: 1, 2, or 3. Determines whether the body contains an extended header (v3) or metadata block (v2/v3). Receivers MUST reject unknown version values. |
-| `type` | fixed_string | 12 B | Message type identifier — the 12-byte ASCII string that dispatches to a body schema (e.g. 'TRANSFORM', 'IMAGE', 'GET_TDATA'). Case-sensitive. Implementations MUST treat this as fixed-width bytes and null-terminate before any use as a C string. |
-| `device_name` | fixed_string | 20 B | Device name identifying the source or target of this message. Empty (all nulls) means 'default' or 'all'. Used by GET_* messages to specify which device to query, and by data messages to identify the sender. |
-| `timestamp` | uint64 | — | Message timestamp: upper 32 bits = seconds since Unix epoch (1970-01-01T00:00:00Z), lower 32 bits = fraction of second (0x00000000 = 0.0, 0x80000000 = 0.5, 0xFFFFFFFF ≈ 1.0). A value of 0 means 'unspecified'. Implementations SHOULD use NTP-synchronized clocks where available. |
-| `body_size` | uint64 | — | Total byte size of the body that follows this header. In v3, body_size includes the extended header and metadata block. In v1/v2, body_size is the content size plus any trailing metadata. The receiver allocates body_size bytes for the body buffer. Implementations MUST impose an implementation-defined ceiling on body_size before allocating. |
-| `crc` | uint64 | — | CRC-64 of the entire body (body_size bytes). Polynomial is ECMA-182 (same as xz/lzma). Implementations MUST verify CRC before acting on any body content — a mismatch is a hard rejection with no partial parsing. |
+**`version`** &nbsp;·&nbsp; `uint16`
+
+Protocol version: 1, 2, or 3. Determines whether the body contains an extended header (v3) or metadata block (v2/v3). Receivers MUST reject unknown version values.
+
+**`type`** &nbsp;·&nbsp; `fixed_string` &nbsp;·&nbsp; 12 B
+
+Message type identifier — the 12-byte ASCII string that dispatches to a body schema (e.g. 'TRANSFORM', 'IMAGE', 'GET_TDATA'). Case-sensitive. Implementations MUST treat this as fixed-width bytes and null-terminate before any use as a C string.
+
+**`device_name`** &nbsp;·&nbsp; `fixed_string` &nbsp;·&nbsp; 20 B
+
+Device name identifying the source or target of this message. Empty (all nulls) means 'default' or 'all'. Used by GET_* messages to specify which device to query, and by data messages to identify the sender.
+
+**`timestamp`** &nbsp;·&nbsp; `uint64`
+
+Message timestamp: upper 32 bits = seconds since Unix epoch (1970-01-01T00:00:00Z), lower 32 bits = fraction of second (0x00000000 = 0.0, 0x80000000 = 0.5, 0xFFFFFFFF ≈ 1.0). A value of 0 means 'unspecified'. Implementations SHOULD use NTP-synchronized clocks where available.
+
+**`body_size`** &nbsp;·&nbsp; `uint64`
+
+Total byte size of the body that follows this header. In v3, body_size includes the extended header and metadata block. In v1/v2, body_size is the content size plus any trailing metadata. The receiver allocates body_size bytes for the body buffer. Implementations MUST impose an implementation-defined ceiling on body_size before allocating.
+
+**`crc`** &nbsp;·&nbsp; `uint64`
+
+CRC-64 of the entire body (body_size bytes). Polynomial is ECMA-182 (same as xz/lzma). Implementations MUST verify CRC before acting on any body content — a mismatch is a hard rejection with no partial parsing.
 
 **Legacy notes.**
 
@@ -1624,11 +1866,17 @@ The metadata block that carries arbitrary key/value pairs, present in v2 and v3 
 
 **Fields.**
 
-| Name | Type | Size | Description |
-|---|---|---|---|
-| `count` | uint16 | — | Number of key/value entries in the metadata block. 0 means no metadata (the rest of the block is empty). This is the first field of the metadata index section. |
-| `index_entries` | type=<FieldType.STRUCT: 'struct'> size_bytes=None encoding=None endianness=None null_padded=None length_prefix_type=None description=None fields=[FieldSchema(name='key_size', type=<PrimitiveType.UINT16: 'uint16'>, description='Byte length of the key string. MUST be > 0.', rationale=None, introduced_in=None, endianness=None, size_bytes=None, count=None, count_from=None, element_type=None, layout=None, length_prefix_type=None, encoding=None, null_padded=None, null_terminated=None, legacy_notes=None, notes=None), FieldSchema(name='value_encoding', type=<PrimitiveType.UINT16: 'uint16'>, description='IANA MIBenum character encoding for the value (3=US-ASCII, 106=UTF-8). Keys are always UTF-8 regardless of this field.', rationale=None, introduced_in=None, endianness=None, size_bytes=None, count=None, count_from=None, element_type=None, layout=None, length_prefix_type=None, encoding=None, null_padded=None, null_terminated=None, legacy_notes=None, notes=None), FieldSchema(name='value_size', type=<PrimitiveType.UINT32: 'uint32'>, description='Byte length of the value.', rationale=None, introduced_in=None, endianness=None, size_bytes=None, count=None, count_from=None, element_type=None, layout=None, length_prefix_type=None, encoding=None, null_padded=None, null_terminated=None, legacy_notes=None, notes=None)] × count | — | Index table — count × 8-byte entries, each declaring one key/value pair's sizes and encoding. The index is read first; then key/value bytes are read sequentially from the metadata body section in the same order. |
-| `body` | uint8 × (remaining) | — | Packed key/value byte runs, no separators or padding. For each entry i in index order: key_size[i] bytes of key (UTF-8, no null terminator), then value_size[i] bytes of value (encoded per value_encoding[i]). Total byte count MUST equal sum(key_size[i] + value_size[i]). Receivers MUST validate this sum against the declared metadata_size before accessing any key/value data. |
+**`count`** &nbsp;·&nbsp; `uint16`
+
+Number of key/value entries in the metadata block. 0 means no metadata (the rest of the block is empty). This is the first field of the metadata index section.
+
+**`index_entries`** &nbsp;·&nbsp; `type=<FieldType.STRUCT: 'struct'> size_bytes=None encoding=None endianness=None null_padded=None length_prefix_type=None description=None fields=[FieldSchema(name='key_size', type=<PrimitiveType.UINT16: 'uint16'>, description='Byte length of the key string. MUST be > 0.', rationale=None, introduced_in=None, endianness=None, size_bytes=None, count=None, count_from=None, element_type=None, layout=None, length_prefix_type=None, encoding=None, null_padded=None, null_terminated=None, legacy_notes=None, notes=None), FieldSchema(name='value_encoding', type=<PrimitiveType.UINT16: 'uint16'>, description='IANA MIBenum character encoding for the value (3=US-ASCII, 106=UTF-8). Keys are always UTF-8 regardless of this field.', rationale=None, introduced_in=None, endianness=None, size_bytes=None, count=None, count_from=None, element_type=None, layout=None, length_prefix_type=None, encoding=None, null_padded=None, null_terminated=None, legacy_notes=None, notes=None), FieldSchema(name='value_size', type=<PrimitiveType.UINT32: 'uint32'>, description='Byte length of the value.', rationale=None, introduced_in=None, endianness=None, size_bytes=None, count=None, count_from=None, element_type=None, layout=None, length_prefix_type=None, encoding=None, null_padded=None, null_terminated=None, legacy_notes=None, notes=None)] × count`
+
+Index table — count × 8-byte entries, each declaring one key/value pair's sizes and encoding. The index is read first; then key/value bytes are read sequentially from the metadata body section in the same order.
+
+**`body`** &nbsp;·&nbsp; `uint8 × (remaining)`
+
+Packed key/value byte runs, no separators or padding. For each entry i in index order: key_size[i] bytes of key (UTF-8, no null terminator), then value_size[i] bytes of value (encoded per value_encoding[i]). Total byte count MUST equal sum(key_size[i] + value_size[i]). Receivers MUST validate this sum against the declared metadata_size before accessing any key/value data.
 
 **Legacy notes.**
 
@@ -1649,9 +1897,9 @@ Physical unit encoding — a 8-byte (uint64) packed representation of an SI unit
 
 **Fields.**
 
-| Name | Type | Size | Description |
-|---|---|---|---|
-| `packed` | uint64 | — | Packed unit representation. Bit layout (MSB to LSB): bits [63:60] = prefix (4 bits, e.g. 0x0=none, 0x3=kilo, 0xB=milli), then 6 × (unit[6 bits] + exponent[4 bits]) pairs occupying bits [59:0]. Each unit code is an SI base unit (0x01=meter, 0x02=gram, 0x03=second, 0x04=ampere, 0x05=kelvin, 0x06=mole, 0x07=candela) or derived unit (0x08=radian through 0x1B=sievert). Each exponent is a 4-bit value encoded via a specific lookup (NOT two's-complement signed): 0x0..0x7 → +0..+7, 0xA..0xF → -6..-1 (specifically 0xF=-1, 0xE=-2, 0xD=-3, 0xC=-4, 0xB=-5, 0xA=-6); 0x8 and 0x9 are reserved and MUST NOT be used. Representable exponent range is therefore [-6, +7]. Unused unit/exponent slots MUST be zeroed. The packed value 0x0000000000000000 means 'dimensionless' or 'unspecified'. |
+**`packed`** &nbsp;·&nbsp; `uint64`
+
+Packed unit representation. Bit layout (MSB to LSB): bits [63:60] = prefix (4 bits, e.g. 0x0=none, 0x3=kilo, 0xB=milli), then 6 × (unit[6 bits] + exponent[4 bits]) pairs occupying bits [59:0]. Each unit code is an SI base unit (0x01=meter, 0x02=gram, 0x03=second, 0x04=ampere, 0x05=kelvin, 0x06=mole, 0x07=candela) or derived unit (0x08=radian through 0x1B=sievert). Each exponent is a 4-bit value encoded via a specific lookup (NOT two's-complement signed): 0x0..0x7 → +0..+7, 0xA..0xF → -6..-1 (specifically 0xF=-1, 0xE=-2, 0xD=-3, 0xC=-4, 0xB=-5, 0xA=-6); 0x8 and 0x9 are reserved and MUST NOT be used. Representable exponent range is therefore [-6, +7]. Unused unit/exponent slots MUST be zeroed. The packed value 0x0000000000000000 means 'dimensionless' or 'unspecified'.
 
 **Legacy notes.**
 

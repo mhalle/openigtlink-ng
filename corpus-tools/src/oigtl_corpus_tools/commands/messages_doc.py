@@ -294,16 +294,20 @@ def _render_message(m: MessageSchema) -> str:
     if m.rationale:
         parts.append("**Rationale.** " + m.rationale + "\n")
 
-    # Fields
+    # Fields — rendered as named paragraphs rather than a table.
+    # Markdown tables collapse long descriptions into single tall
+    # rows that are unreadable on GitHub; natural prose per field
+    # respects the actual reading flow and scales with description
+    # length.
     if m.fields:
         parts.append("**Fields.**\n")
-        parts.append(_render_fields_table(m.fields))
+        for i, f in enumerate(m.fields):
+            parts.append(_render_field(f))
+            if i < len(m.fields) - 1:
+                parts.append("")
+        # Blank line after the last field so the next section
+        # (Legacy notes, See also, …) doesn't run together with it.
         parts.append("")
-        # Per-field rationales / notes worth surfacing
-        for f in m.fields:
-            extras = _render_field_extras(f)
-            if extras:
-                parts.append(extras)
 
     # Post-unpack invariant
     if m.post_unpack_invariant:
@@ -361,18 +365,59 @@ def _format_body_size(m: MessageSchema) -> str:
     return f"{m.body_size} bytes"
 
 
-def _render_fields_table(fields: list[FieldSchema]) -> str:
-    rows = ["| Name | Type | Size | Description |", "|---|---|---|---|"]
-    for f in fields:
-        rows.append(
-            "| `{name}` | {type_} | {size} | {desc} |".format(
-                name=f.name,
-                type_=_format_field_type(f),
-                size=_format_field_size(f),
-                desc=_one_line(f.description),
-            )
+def _render_field(f: FieldSchema) -> str:
+    """Render one field as a sequence of paragraphs.
+
+    Format:
+
+        **`name`** &nbsp;·&nbsp; `type` &nbsp;·&nbsp; size
+
+        Description prose…
+
+        *Rationale.* …
+
+        *Layout.* `column_major_3x4`.
+
+        *Legacy.* …
+
+    Reads top-down as natural prose; scales cleanly with
+    description length, unlike a Markdown table cell.
+    """
+    paragraphs: list[str] = []
+
+    # Header line — name, type, size, with thin-space separators.
+    head_bits = [f"**`{f.name}`**", f"`{_format_field_type(f)}`"]
+    size_str = _format_field_size(f)
+    if size_str != "—":
+        head_bits.append(size_str)
+    paragraphs.append(" &nbsp;·&nbsp; ".join(head_bits))
+
+    # Description as its own paragraph.
+    paragraphs.append(f.description)
+
+    # Rationale, if present.
+    if f.rationale:
+        paragraphs.append(f"*Rationale.* {f.rationale}")
+
+    # Single-line attributes bundled into one paragraph.
+    attr_bits: list[str] = []
+    if f.endianness:
+        attr_bits.append(f"*Endianness:* {_enum_value(f.endianness)}.")
+    if getattr(f, "layout", None):
+        attr_bits.append(f"*Layout:* `{f.layout}`.")
+    if f.introduced_in:
+        attr_bits.append(
+            f"*Introduced in:* {_enum_value(f.introduced_in)}."
         )
-    return "\n".join(rows)
+    if attr_bits:
+        paragraphs.append(" ".join(attr_bits))
+
+    # Legacy notes, one paragraph each.
+    if getattr(f, "legacy_notes", None):
+        for note in f.legacy_notes:
+            paragraphs.append(f"*Legacy.* {note}")
+
+    return "\n\n".join(paragraphs)
 
 
 def _format_field_type(f: FieldSchema) -> str:
@@ -399,32 +444,3 @@ def _format_field_size(f: FieldSchema) -> str:
     return "—"
 
 
-def _render_field_extras(f: FieldSchema) -> str:
-    """Render rationale / introduced_in / legacy_notes / endianness for a field."""
-    bits: list[str] = []
-    if f.rationale:
-        bits.append(f"  - **`{f.name}` rationale.** {f.rationale}")
-    if f.introduced_in:
-        bits.append(
-            f"  - **`{f.name}` introduced in:** "
-            f"{_enum_value(f.introduced_in)}."
-        )
-    if f.endianness:
-        bits.append(
-            f"  - **`{f.name}` endianness:** {_enum_value(f.endianness)}."
-        )
-    if getattr(f, "layout", None):
-        bits.append(f"  - **`{f.name}` layout:** `{f.layout}`.")
-    if getattr(f, "legacy_notes", None):
-        for note in f.legacy_notes:
-            bits.append(f"  - **`{f.name}` legacy.** {note}")
-    if not bits:
-        return ""
-    # Trailing blank line separates this field's extras from
-    # whatever follows (next field's extras or the next H4).
-    return "\n".join(bits) + "\n"
-
-
-def _one_line(s: str) -> str:
-    """Collapse whitespace so a description fits in a Markdown table cell."""
-    return " ".join(s.split())
