@@ -28,7 +28,7 @@ For transport details, see [`NET_GUIDE.md`](NET_GUIDE.md).
                      │ encodes/decodes via
 ┌────────────────────┴────────────────────────────────┐
 │  oigtl  (top-level codec)   ← reach in only if      │
-│  Wire codec — pure, transport-independent              you have your own transport
+│  Wire codec — pure, transport-independent.          │
 │  pack/unpack of bytes. No I/O.                      │
 └─────────────────────────────────────────────────────┘
 ```
