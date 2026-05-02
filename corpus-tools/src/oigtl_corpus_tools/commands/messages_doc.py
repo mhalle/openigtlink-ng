@@ -39,6 +39,7 @@ from pathlib import Path
 from oigtl_corpus_tools.paths import RepoRootNotFound, find_repo_root
 from oigtl_corpus_tools.schema.field import FieldSchema
 from oigtl_corpus_tools.schema.message import MessageSchema
+from oigtl_corpus_tools.schema.types import FieldType, PrimitiveType
 
 
 # ---------------------------------------------------------------------------
@@ -417,19 +418,95 @@ def _render_field(f: FieldSchema) -> str:
         for note in f.legacy_notes:
             paragraphs.append(f"*Legacy.* {note}")
 
+    # Struct elements — render their nested sub-fields as a sub-list.
+    # Used by POINT, TDATA, QTDATA, TRAJ, IMGMETA, LBMETA, POLYDATA, …
+    sub_fields = _struct_subfields(f)
+    if sub_fields:
+        paragraphs.append("*Element fields:*")
+        bullet_lines: list[str] = []
+        for sub in sub_fields:
+            bullet_lines.append(_render_subfield_bullet(sub))
+        paragraphs.append("\n".join(bullet_lines))
+
     return "\n\n".join(paragraphs)
 
 
+def _struct_subfields(f: FieldSchema):
+    """If `f`'s element is an inline struct, return its nested fields.
+
+    Returns ``None`` for primitive arrays, fixed-string-element arrays,
+    and any other field shape without nested structure.
+    """
+    elt = f.element_type
+    if elt is None:
+        return None
+    # Primitive element: no nested fields.
+    if isinstance(elt, PrimitiveType):
+        return None
+    # ElementDescriptor with type=struct: nested fields live in elt.fields.
+    inner_type = getattr(elt, "type", None)
+    inner_fields = getattr(elt, "fields", None)
+    if inner_type == FieldType.STRUCT and inner_fields:
+        return inner_fields
+    return None
+
+
+def _render_subfield_bullet(sub: FieldSchema) -> str:
+    """Render a struct sub-field as a single Markdown bullet line.
+
+    Compact form because struct sub-fields typically have short
+    descriptions and the parent field's paragraph already carries
+    the structural framing.
+    """
+    type_str = _format_field_type(sub)
+    size_str = _format_field_size(sub)
+    head = f"**`{sub.name}`** &nbsp;·&nbsp; `{type_str}`"
+    if size_str != "—":
+        head += f" &nbsp;·&nbsp; {size_str}"
+    desc = " " + sub.description if sub.description else ""
+    return f"- {head} —{desc}"
+
+
 def _format_field_type(f: FieldSchema) -> str:
+    """Render a field's wire type as a compact human string.
+
+    Handles three element-type shapes:
+    - primitive (`uint8`, `float32`, …)
+    - inline `ElementDescriptor` (struct, fixed_string, …)
+    - named struct reference (string identifier)
+    """
     base = _enum_value(f.type)
-    if f.element_type:
-        elt = _enum_value(f.element_type)
-        if f.count is not None:
-            return f"{elt} × {f.count}"
-        if f.count_from:
-            return f"{elt} × ({_enum_value(f.count_from)})"
-        return f"{base}<{elt}>"
-    return base
+    if f.element_type is None:
+        return base
+
+    elt_str = _format_element_type(f.element_type)
+    if f.count is not None:
+        return f"{elt_str} × {f.count}"
+    if f.count_from:
+        return f"{elt_str} × ({_enum_value(f.count_from)})"
+    return f"{base}<{elt_str}>"
+
+
+def _format_element_type(element) -> str:
+    """Render an element type (primitive | ElementDescriptor | name)."""
+    # Primitive.
+    if isinstance(element, PrimitiveType):
+        return _enum_value(element)
+    # Plain string — a named, externally-defined struct reference.
+    if isinstance(element, str):
+        return element
+    # ElementDescriptor.
+    inner_type = getattr(element, "type", None)
+    if inner_type is None:
+        return _enum_value(element)
+    type_str = _enum_value(inner_type)
+    # Compact decoration for common shapes.
+    if inner_type == FieldType.STRUCT:
+        return "struct"
+    size = getattr(element, "size_bytes", None)
+    if size is not None and isinstance(size, int):
+        return f"{type_str}<{size}>"
+    return type_str
 
 
 def _enum_value(value) -> str:
