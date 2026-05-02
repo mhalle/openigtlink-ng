@@ -21,7 +21,7 @@ Carry payloads of typed data on the wire. The bulk of OpenIGTLink traffic — po
 - [`BIND`](#bind) — Multi-message container that bundles N child messages into a single wire message.
 - [`CAPABILITY`](#capability) — Advertises the list of OpenIGTLink message types that a device accepts.
 - [`COLORT`](#colort) — Color lookup table that maps integer pixel values to display colors.
-- [`COLORTABLE`](#colortable) — Legacy wire alias for COLORTABLE.
+- [`COLORTABLE`](#colortable) — Legacy wire encoding of the color-lookup-table message.
 - [`COMMAND`](#command) — Carries a structured command — typically an XML document — from one peer to another, tagged with a session-unique ID and a symbolic name so replies (RTS_COMMAND) can reference it.
 - [`IMAGE`](#image) — Delivers image pixel data — 2D frames or 3D volumes — together with orientation, origin, scalar type, and optional partial-volume windowing.
 - [`IMGMETA`](#imgmeta) — Advertises the set of IMAGE volumes available on a server.
@@ -244,7 +244,7 @@ Raw color table data — N × S bytes where N is the entry count from index_type
 - Upstream igtl_colortable_get_table_size uses a fallthrough pattern: any index_type other than 3 is treated as uint16 (65536 entries), and any map_type other than 3 or 5 is treated as RGB (3 bytes). A conformant implementation MUST NOT rely on this fallthrough and SHOULD reject unknown values explicitly.
 - Upstream C library does NOT validate body_size against the expected table_size before accessing the table region. A conformant implementation MUST verify body_size == 2 + expected_table_bytes before any table access.
 
-**See also:** [`IMAGE`](#image), [`LBMETA`](#lbmeta), [`IMGMETA`](#imgmeta), [`VIDEOMETA`](#videometa)
+**See also:** [`COLORTABLE`](#colortable), [`IMAGE`](#image), [`LBMETA`](#lbmeta), [`IMGMETA`](#imgmeta), [`VIDEOMETA`](#videometa)
 
 **Spec reference:** [protocol/v3.md §"Body (COLORTABLE)"](protocol/v3.md)
 
@@ -254,7 +254,7 @@ Raw color table data — N × S bytes where N is the entry count from index_type
 
 **Type ID:** `COLORTABLE` &nbsp;·&nbsp; **Introduced in:** v1 &nbsp;·&nbsp; **Body size:** variable &nbsp;·&nbsp; **Metadata allowed:** yes (v2 / v3)
 
-Legacy wire alias for COLORTABLE. Body layout is identical to the modern `COLORT` type_id; the only difference is the 10-character wire string that predates upstream shortening to 'COLORT'. Kept as a distinct schema so receivers can round-trip pre-shortening traffic without ambiguity.
+Legacy wire encoding of the color-lookup-table message. Body layout is identical to the modern `COLORT` type_id; only the 12-byte type-id field differs — the legacy form spells the type as 'COLORTABLE' (10 chars), predating upstream's shortening to 'COLORT' (6 chars). Kept as a distinct schema so receivers can round-trip pre-shortening traffic without ambiguity.
 
 **Rationale:** The upstream C++ library at some point shortened its `m_SendMessageType` from 'COLORTABLE' to 'COLORT'. Fixtures captured before the change still contain the 10-byte name in the 12-byte type field. New senders MUST use 'COLORT' (see colortable.json); receivers that care about backward compatibility with older deployments SHOULD accept this legacy name too.
 
@@ -279,7 +279,7 @@ Raw color table data. Same rules as COLORT.
 - This schema exists solely to let receivers decode pre-shortening wire traffic that uses 'COLORTABLE' as the type_id. New senders MUST use the 'COLORT' type_id (see colortable.json).
 - The body layout is byte-identical to the modern COLORT schema — only the 12-byte type_id field differs on the wire.
 
-**See also:** [`COLORTABLE`](#colortable), [`IMAGE`](#image), [`LBMETA`](#lbmeta)
+**See also:** [`COLORT`](#colort), [`IMAGE`](#image), [`LBMETA`](#lbmeta)
 
 **Spec reference:** [protocol/v3.md §"Body (COLORTABLE)"](protocol/v3.md)
 
@@ -544,7 +544,7 @@ Array of 136-byte POINT elements. Element count is derived as body_size / 136; a
 - The per-element struct packs with 1-byte alignment (no implicit padding). Implementations that rely on C struct layout without `#pragma pack(1)` will produce incorrect wire bytes on platforms that would otherwise pad `rgba`, `position`, or `radius`.
 - Upstream C++ library (at pinned SHA 94244fe) iterates `nelem` elements in igtl_point_convert_byte_order without verifying the body is large enough. A conformant implementation MUST reject any POINT message whose body_size is not a multiple of 136.
 
-**See also:** [`TRAJECTORY`](#trajectory), [`TDATA`](#tdata), [`QTDATA`](#qtdata)
+**See also:** [`TRAJ`](#traj), [`TDATA`](#tdata), [`QTDATA`](#qtdata)
 
 **Spec reference:** [protocol/v3.md §"Body (POINT)"](protocol/v3.md)
 
@@ -1270,7 +1270,7 @@ Request the current TDATA for the device named in the header.
 
 Request the TRAJECTORY set for the device named in the header.
 
-**See also:** [`TRAJECTORY`](#trajectory)
+**See also:** [`TRAJ`](#traj)
 
 ---
 
@@ -1850,7 +1850,7 @@ Server's return status for a TRAJECTORY query (GET/STT/STP). Per Documents/Proto
 
 0 = success (the requested operation completed). 1 = error (request rejected or failed). Other values are reserved; receivers SHOULD treat any non-zero value as error.
 
-**See also:** [`TRAJECTORY`](#trajectory)
+**See also:** [`TRAJ`](#traj)
 
 ---
 

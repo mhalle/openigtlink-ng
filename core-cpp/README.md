@@ -22,10 +22,14 @@ use.
 
 ## Status
 
-**Codec: complete.** Round-trips 23 of 24 upstream fixtures
-byte-for-byte, plus cross-language oracle parity against the Python
-reference codec. Transport layer (ASIO-based TCP/UDP, TLS, session
-management) is future work; see the parent repo's `README.md`.
+**Codec: complete.** All 84 message types from the spec, round-trip
+against every upstream fixture byte-for-byte, plus cross-language
+oracle parity against the Python reference codec.
+
+**Transport: complete for TCP** (ASIO-backed). Cross-runtime interop
+tests exercise it against `core-py` and `core-ts`. **TLS, auth, and
+session policy** are roadmapped but not implemented; see the parent
+repo's [`README.md`](../README.md).
 
 ## Layout
 
@@ -194,9 +198,9 @@ cmake --install build --prefix /your/prefix
 ```
 
 Installs five granular static archives, a merged `liboigtl.a`,
-`oigtlConfig.cmake` with imported targets (`oigtl::runtime`,
-`oigtl::messages`, `oigtl::transport`, `oigtl::ergo`, `oigtl::igtl_compat`,
-`oigtl::oigtl`), and a pkg-config file.
+`oigtlConfig.cmake` with imported targets (`oigtl::oigtl_runtime`,
+`oigtl::oigtl_messages`, `oigtl::oigtl_transport`, `oigtl::oigtl_ergo`,
+`oigtl::igtl_compat`, `oigtl::oigtl`), and a pkg-config file.
 
 CMake consumer:
 
