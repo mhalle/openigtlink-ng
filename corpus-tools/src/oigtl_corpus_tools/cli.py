@@ -17,7 +17,15 @@ import sys
 from collections.abc import Sequence
 
 from oigtl_corpus_tools import __version__
-from oigtl_corpus_tools.commands import codegen, corpus, fixtures, fuzz, oracle, schema
+from oigtl_corpus_tools.commands import (
+    codegen,
+    corpus,
+    fixtures,
+    fuzz,
+    messages_doc,
+    oracle,
+    schema,
+)
 
 
 def _build_parser() -> argparse.ArgumentParser:
@@ -72,6 +80,12 @@ def _build_parser() -> argparse.ArgumentParser:
         help="Run the differential oracle fuzzer across implementations.",
     )
     fuzz.register(fuzz_parser)
+
+    messages_doc_parser = subparsers.add_parser(
+        "messages-doc",
+        help="Render spec/MESSAGES.md from spec/schemas/.",
+    )
+    messages_doc.register(messages_doc_parser)
 
     return parser
 

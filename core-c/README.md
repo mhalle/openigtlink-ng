@@ -5,6 +5,12 @@ embedded consumers (MCUs, IoT devices, resource-constrained hosts)
 that can't afford the 20–50 KB linker footprint of the C++ or
 Python ports but still need wire-compatible IGTL communication.
 
+> **Reading order:** this README is scope, allocation model, and
+> safety contract. For a guided tour of the layered API
+> (per-message functions / header / helpers) and the typical
+> pack-and-ship flow, see [`API.md`](API.md). For message-level
+> questions, see [`../spec/MESSAGES.md`](../spec/MESSAGES.md).
+
 ## Scope — round 1
 
 ### What ships
