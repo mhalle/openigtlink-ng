@@ -15,7 +15,7 @@ For transport details, see [`NET_GUIDE.md`](NET_GUIDE.md).
 
 ```
 ┌─────────────────────────────────────────────────────┐
-│  oigtl.net                                          │
+│  oigtl.net          ← what you'll typically use     │
 │  Async + sync clients/servers, TCP + WebSocket,     │
 │  resilience, restrictions. See NET_GUIDE.md.        │
 └────────────────────┬────────────────────────────────┘
@@ -27,127 +27,25 @@ For transport details, see [`NET_GUIDE.md`](NET_GUIDE.md).
 └────────────────────┬────────────────────────────────┘
                      │ encodes/decodes via
 ┌────────────────────┴────────────────────────────────┐
-│  oigtl  (top-level codec)                           │
-│  Wire codec — pure, transport-independent           │
+│  oigtl  (top-level codec)   ← reach in only if      │
+│  Wire codec — pure, transport-independent              you have your own transport
 │  pack/unpack of bytes. No I/O.                      │
 └─────────────────────────────────────────────────────┘
 ```
 
-Each layer depends only on the ones below. You can use the codec
-without the messages layer; you can use the messages layer without
-the net layer; you can wire your own transport on top of the
-codec if you want.
+Each layer depends only on the ones below. The tour below goes
+top-down — `oigtl.net` first, because that's where most code
+lives; the codec last, because most callers never touch it
+directly.
 
-## Layer 1: the wire codec — `oigtl`
+## Connecting and sending: `oigtl.net`
 
-The top-level `oigtl` package exports the byte-level codec.
-Sufficient on its own for MQTT payloads, file replays, browser
-bundles via Pyodide, or any caller that already holds raw bytes.
+For researchers, lab integrators, and anyone connecting Python to
+an OpenIGTLink peer, `oigtl.net` is the front door. It owns the
+sockets, the framing, the receive loop, and the resilience
+features.
 
-```python
-from oigtl import (
-    HEADER_SIZE,           # 58 — the fixed-header size in bytes
-    Header,                # parsed-header dataclass
-    RawBody,               # opaque body wrapper
-    pack_envelope,         # build a complete framed message
-    pack_header,           # build the 58-byte header alone
-    unpack_envelope,       # parse one framed message
-    unpack_header,         # parse just the 58-byte header
-    unpack_message,        # parse + dispatch by type_id
-)
-```
-
-Two idioms cover most callers:
-
-```python
-# Encode: build a framed message directly from a typed body.
-wire = pack_envelope(transform_body, device_name="tracker_1")
-
-# Decode: parse a complete frame, get header + typed body back.
-header, body = unpack_envelope(wire)
-```
-
-The codec validates structure (CRC, framing, body-size, ASCII)
-on decode and raises one of the typed exceptions in
-`oigtl.runtime.exceptions` (`ProtocolError`, `CrcMismatchError`,
-`MalformedMessageError`, `ShortBufferError`, `UnknownMessageTypeError`).
-
-## Layer 2: typed messages — `oigtl.messages`
-
-84 built-in typed message classes — one per type in the spec —
-generated from `spec/schemas/`. Each is a Pydantic model with
-spec-aligned field names and types.
-
-```python
-from oigtl.messages import Transform, Status, Image
-# (or any of the 81 others)
-
-# Construction — Pydantic validates field types up front.
-tx = Transform(matrix=[1.0, 0.0, 0.0,
-                        0.0, 1.0, 0.0,
-                        0.0, 0.0, 1.0,
-                        10.0, 20.0, 30.0])
-
-# Direct pack/unpack — body bytes only, no header.
-body_bytes = tx.pack()
-tx2 = Transform.unpack(body_bytes)
-assert tx == tx2
-
-# Class-level type identifier — what goes on the wire.
-assert Transform.TYPE_ID == "TRANSFORM"
-```
-
-Every built-in message has the same surface: `TYPE_ID`, `pack()`,
-`unpack(body)`, plus the per-message Pydantic fields. The schemas
-under `spec/schemas/` and the rendered reference in
-[`../spec/MESSAGES.md`](../spec/MESSAGES.md) document field
-semantics, sizes, and version applicability.
-
-### Registry and dispatch
-
-The package ships a registry that maps `type_id` → message class.
-`unpack_envelope` consults it to choose the right class for an
-incoming frame. The registry is also the extension point:
-
-```python
-from oigtl import register_message_type, registered_types
-
-class TrackedFrame(BaseModel):
-    TYPE_ID = "TRACKEDFRAME"
-    @classmethod
-    def unpack(cls, body: bytes) -> "TrackedFrame": ...
-    def pack(self) -> bytes: ...
-
-register_message_type(TrackedFrame.TYPE_ID, TrackedFrame)
-# Now unpack_envelope returns TrackedFrame instances for that type_id,
-# and Client.receive(TrackedFrame) works the same as for built-ins.
-```
-
-PLUS's `TRACKEDFRAME`, vendor extensions, research prototypes —
-all hook in through this single registration call. No
-transport changes, no special-casing, no library fork.
-
-## Layer 3: transports — `oigtl.net`
-
-Async + sync TCP and WebSocket clients/servers, with optional
-resilience features (auto-reconnect, offline buffer, TCP
-keepalive) and a server-side restriction builder for host/subnet
-allowlists, max-clients caps, and idle-disconnect.
-
-The full surface is its own document — see
-[`NET_GUIDE.md`](NET_GUIDE.md) — but the entry points are:
-
-```python
-from oigtl.net import (
-    Client, ClientOptions,         # async TCP client
-    Server,                        # async TCP server
-    SyncClient, SyncServer,        # blocking variants of the above
-    WsClient, WsServer,            # WebSocket variants (browsers, dashboards)
-    Envelope,                      # parsed (header, body) pair
-)
-```
-
-Minimum-viable async client (matching NET_GUIDE.md's opening):
+The minimum viable async client:
 
 ```python
 from oigtl.net import Client
@@ -159,10 +57,131 @@ async with await Client.connect("tracker.lab", 18944) as c:
     print(reply.body.status_message)
 ```
 
+Sync variant for scripts where asyncio would be ceremony:
+
+```python
+from oigtl.net import SyncClient
+
+c = SyncClient.connect("tracker.lab", 18944)
+c.send(Transform(matrix=[...]))
+reply = c.receive(Status, timeout=2)   # 2 s
+c.close()
+```
+
+The full network surface — dispatch loops, resilience
+(auto-reconnect, offline buffer, TCP keepalive), server-side
+restriction builders, WebSocket clients and servers, the gateway
+pattern — lives in [`NET_GUIDE.md`](NET_GUIDE.md). Public
+entry points:
+
+```python
+from oigtl.net import (
+    Client, ClientOptions,         # async TCP client
+    Server,                        # async TCP server
+    SyncClient, SyncServer,        # blocking variants
+    WsClient, WsServer,            # WebSocket variants
+    Envelope,                      # parsed (header, body) pair
+)
+```
+
 Receive APIs accept either `timeout=<seconds>` or
 `timeout_ms=<ms>` (mutually exclusive). `ClientOptions` does the
 same for every duration field — see
 [`NET_GUIDE.md`](NET_GUIDE.md) for the rationale.
+
+## Working with messages: `oigtl.messages`
+
+84 built-in typed message classes — one per type in the spec —
+generated from `spec/schemas/`. Each is a Pydantic model with
+spec-aligned field names and types. You import them and pass
+them around; `oigtl.net` does the encoding/decoding.
+
+```python
+from oigtl.messages import Transform, Status, Image
+# (or any of the 81 others)
+
+# Pydantic validates field types up front.
+tx = Transform(matrix=[1.0, 0.0, 0.0,
+                        0.0, 1.0, 0.0,
+                        0.0, 0.0, 1.0,
+                        10.0, 20.0, 30.0])
+
+# Class-level type identifier — what goes on the wire.
+assert Transform.TYPE_ID == "TRANSFORM"
+```
+
+Every message class also exposes `pack(self) -> bytes` and a
+`classmethod unpack(body)` — useful for testing or for the
+"reaching deeper" cases below, but you don't need them for
+ordinary client/server work.
+
+The schemas under `spec/schemas/` and the rendered reference in
+[`../spec/MESSAGES.md`](../spec/MESSAGES.md) document field
+semantics, sizes, and version applicability.
+
+### Adding a custom message type
+
+The package ships a registry that maps `type_id` → message class.
+Custom types — PLUS's `TRACKEDFRAME`, vendor extensions, research
+prototypes — register through it:
+
+```python
+from oigtl import register_message_type
+
+class TrackedFrame(BaseModel):
+    TYPE_ID = "TRACKEDFRAME"
+    @classmethod
+    def unpack(cls, body: bytes) -> "TrackedFrame": ...
+    def pack(self) -> bytes: ...
+
+register_message_type(TrackedFrame.TYPE_ID, TrackedFrame)
+# After this, Client.receive(TrackedFrame) works exactly like the
+# built-ins. No transport changes, no library fork.
+```
+
+The contract a registered class satisfies: a `TYPE_ID` constant,
+a `pack()` instance method returning bytes, a `unpack(body)`
+classmethod returning the typed instance.
+
+## Reaching deeper: the wire codec
+
+The `oigtl` top-level package also exports the byte-level codec
+directly. Most callers never touch this — `oigtl.net` does it
+for you. Reach in only if you're building something `oigtl.net`
+doesn't cover:
+
+- A bridge that forwards OpenIGTLink frames over a non-TCP
+  transport (MQTT, ROS topics, IPC).
+- A file-replay tool that decodes wire bytes captured to disk.
+- A browser bundle via Pyodide that needs the codec without the
+  Python `socket` module.
+- A test harness that produces wire bytes directly to exercise a
+  peer's parser.
+
+```python
+from oigtl import (
+    HEADER_SIZE,           # 58 — the fixed-header size in bytes
+    Header,                # parsed-header dataclass
+    RawBody,               # opaque body wrapper for unknown type_ids
+    pack_envelope,         # build a complete framed message
+    pack_header,           # build the 58-byte header alone
+    unpack_envelope,       # parse one framed message
+    unpack_header,         # parse just the 58-byte header
+    unpack_message,        # parse + dispatch by type_id
+)
+
+# Build a framed message from a typed body.
+wire = pack_envelope(transform_body, device_name="tracker_1")
+
+# Parse a complete frame.
+header, body = unpack_envelope(wire)
+```
+
+The codec validates structure (CRC, framing, body-size, ASCII)
+on decode and raises one of the typed exceptions in
+`oigtl.runtime.exceptions` (`ProtocolError`, `CrcMismatchError`,
+`MalformedMessageError`, `ShortBufferError`,
+`UnknownMessageTypeError`).
 
 ## Submodules in detail
 
@@ -213,11 +232,11 @@ extension-API enrichment, both of which are additive.
 
 | You want to… | Look at |
 |---|---|
-| Pack/unpack bytes from a buffer you already have | [`README.md`](README.md), the `oigtl.codec` exports |
-| Find out what a TRANSFORM looks like on the wire | [`../spec/MESSAGES.md`](../spec/MESSAGES.md) |
 | Connect a Python client to an OpenIGTLink server | [`NET_GUIDE.md`](NET_GUIDE.md) |
-| Add a custom message type | The "Registry and dispatch" section above |
 | Run a resilient client across flaky networks | [`NET_GUIDE.md`](NET_GUIDE.md) §"Resilient client" |
 | Restrict who can connect to your server | [`NET_GUIDE.md`](NET_GUIDE.md) §"Server with host-level restrictions" |
 | Speak OpenIGTLink from a browser | [`NET_GUIDE.md`](NET_GUIDE.md) §"WebSocket" + `WsClient` |
+| Find out what a TRANSFORM looks like on the wire | [`../spec/MESSAGES.md`](../spec/MESSAGES.md) |
+| Add a custom message type | The "Adding a custom message type" section above |
+| Pack/unpack bytes without a transport | "Reaching deeper" above |
 | Understand the cross-language guarantees | [`../spec/CONFORMANCE.md`](../spec/CONFORMANCE.md) |

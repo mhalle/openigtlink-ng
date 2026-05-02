@@ -21,8 +21,8 @@ TCP keepalive), see [`CLIENT_GUIDE.md`](CLIENT_GUIDE.md).
 
 ```
 ┌──────────────────────────────────────────────────────┐
-│  oigtl::Client / oigtl::Server                       │
-│  Ergonomic facade — connect, send, receive,          │
+│  oigtl::Client / oigtl::Server   ← what you'll use   │
+│  Ergonomic facade — connect, send, receive,         │
 │  on<T>() dispatch, restrict_to_local_subnet, etc.    │
 └────────────────────┬─────────────────────────────────┘
                      │ wraps
@@ -39,111 +39,21 @@ TCP keepalive), see [`CLIENT_GUIDE.md`](CLIENT_GUIDE.md).
 └────────────────────┬─────────────────────────────────┘
                      │ encodes/decodes via
 ┌────────────────────┴─────────────────────────────────┐
-│  oigtl::runtime::                                    │
-│  Pure codec — header, extended header, metadata,     │
-│  CRC, byte order, ASCII, dispatch, oracle.           │
-│  Bounds-checked, fuzzer-hardened, stdlib-only.       │
+│  oigtl::runtime::          ← reach in only for       │
+│  Pure codec — header, extended header, metadata,        gateways, custom transports,
+│  CRC, byte order, ASCII, dispatch, oracle.              and other niche needs
 └──────────────────────────────────────────────────────┘
 ```
 
-Each layer depends only on the ones below. You can stop at any
-of them — the runtime alone is enough if you have your own
-transport; the runtime + messages is enough if you only need to
-encode/decode bytes; the full stack is the path of least
-resistance for new applications.
+Each layer depends only on the ones below. The tour goes top-down
+— the facade first, because that's where most code lives; the
+runtime last, because most callers never touch it directly.
 
-## Layer 1: the runtime — `oigtl::runtime`
+## Connecting and sending: `oigtl::Client` / `oigtl::Server`
 
-Pure codec, stdlib-only, bounds-checked, ~700 LoC of
-hand-written C++17. Headers under
-[`include/oigtl/runtime/`](include/oigtl/runtime/):
-
-| Header | What lives here |
-|---|---|
-| `byte_order.hpp` | Inline big-endian read/write helpers (`read_be_u16`, `write_be_f64`, …). Constexpr where possible. |
-| `crc64.hpp` | CRC-64 ECMA-182 over arbitrary bytes. Slice-by-8 implementation, ~1.4 GB/s on contemporary hardware. |
-| `header.hpp` | The 58-byte OpenIGTLink header — `pack_header` / `unpack_header`, with type_id and device_name validated as ASCII null-padded. |
-| `extended_header.hpp` | The v3 extended-header region (12 bytes). Used by `messages::` for v2/v3 framing. |
-| `metadata.hpp` | The v2/v3 metadata block — index + body. Bounds-checked allocation, validated index/body sizes. |
-| `ascii.hpp` | ASCII validation primitives. Reject non-ASCII bytes in declared-ASCII fields per the spec. |
-| `dispatch.hpp` | `Registry<type_id → round-trip fn>`. The dispatch table for `unpack_message` and the oracle. |
-| `oracle.hpp` | `parse_wire` / `verify_wire_bytes` — the conformance-oracle surface used by the codec, the negative-corpus tests, and the fuzzer. |
-| `error.hpp` | Typed exception hierarchy: `ProtocolError`, `ShortBufferError`, `CrcMismatchError`, `MalformedMessageError`, `UnknownMessageTypeError`. |
-| `invariants.hpp` | Cross-field invariants (e.g. `image` post-unpack invariant tying `pixels.size()` to header-derived dimensions). One named invariant per spec rule, implemented by every codec. |
-
-Direct usage if all you need is bytes-in / bytes-out:
-
-```cpp
-#include "oigtl/runtime/header.hpp"
-#include "oigtl/runtime/oracle.hpp"
-#include "oigtl/messages/register_all.hpp"
-
-auto registry = oigtl::messages::default_registry();   // all 84 types
-auto result = oigtl::runtime::oracle::verify_wire_bytes(
-    wire_ptr, wire_len, registry);
-if (!result.ok) { /* result.error */ }
-```
-
-## Layer 2: typed messages — `oigtl::messages`
-
-84 generated message structs — one per type in the spec.
-Generated from `spec/schemas/` by the same Python codegen that
-produces the Python and TypeScript cores.
-
-```cpp
-#include "oigtl/messages/transform.hpp"
-
-using oigtl::messages::Transform;
-
-Transform tx;
-tx.matrix = {1, 0, 0, 0, 1, 0, 0, 0, 1, 10, 20, 30};
-
-auto body_bytes = tx.pack();           // bytes only, no header
-auto tx2 = Transform::unpack(body_bytes.data(), body_bytes.size());
-```
-
-Each message struct has:
-
-- A `static constexpr type_id` matching the spec.
-- A `pack()` returning `std::vector<std::uint8_t>`.
-- A `static unpack(ptr, len)` returning the typed instance, throwing on malformed input.
-- Spec-aligned field names and types (`std::array<float, 12>` for TRANSFORM's matrix, etc.).
-
-The registry — `oigtl::messages::default_registry()` — maps
-`type_id` strings to round-trip functions. Used by `unpack_message`,
-the oracle, the fuzzer, and the `Server::on<T>()` dispatcher
-described below.
-
-For per-message field details, see
-[`../spec/MESSAGES.md`](../spec/MESSAGES.md).
-
-## Layer 3: transport — `oigtl::transport`
-
-Asynchronous Connection abstraction, message framing, and a
-small Future primitive. ASIO-backed TCP plus an in-process
-loopback for tests. Headers under
-[`include/oigtl/transport/`](include/oigtl/transport/):
-
-| Header | What lives here |
-|---|---|
-| `connection.hpp` | The `Connection` interface — abstract async send/receive. TCP and loopback both implement it. |
-| `framer.hpp` | The `Framer` interface — splits a byte stream into IGTL frames. `make_v3_framer(max_body_size)` produces the standard implementation. |
-| `tcp.hpp` | TCP backend — `make_tcp_pair`, `make_tcp_server`. ASIO under the hood. |
-| `future.hpp` | `Future<T>` — a tiny promise/future primitive used to wire async results back to the caller. |
-| `sync.hpp` | Sync helpers — block on a Future with a timeout. |
-| `errors.hpp` | Transport-layer exceptions (`FramingError`, `ConnectionClosedError`, …). |
-| `policy.hpp` | Server-side connection policy (host allowlists, max-clients, idle-disconnect). Builder API exposed via `Server`. |
-
-Most application code does not call into this layer directly —
-it sits behind `oigtl::Client` / `oigtl::Server` (next layer).
-Reach into `oigtl::transport` if you need a custom Connection
-backend or want to drive framing yourself.
-
-## Layer 4: the ergonomic facade — `oigtl::Client` / `oigtl::Server`
-
-The "lovely API" that sits on top of transport + codec. Sync, by
-design — researchers and lab applications rarely benefit from
-async-everywhere. Templated on message types.
+The "lovely API" — sync by design (researchers and lab
+applications rarely benefit from async-everywhere), templated on
+message types. This is what most C++ applications use.
 
 ```cpp
 #include "oigtl/client.hpp"
@@ -180,23 +90,93 @@ surface in detail.
 `Envelope<T>` is a typed `(Header, T body)` pair — what every
 `receive()` and dispatch handler gets.
 
-## Putting it together
+## Working with messages: `oigtl::messages`
 
-For a new C++ application:
+84 generated message structs — one per type in the spec.
+Generated from `spec/schemas/` by the same Python codegen that
+produces the Python and TypeScript cores. You include them and
+pass instances around; the facade does the encoding/decoding.
 
-1. **Use the facade.** `oigtl::Client::connect(...)`,
-   `oigtl::Server::listen(...).on<T>(...)`. That's enough for
-   most workflows.
-2. **Reach into `oigtl::messages` if you need to encode/decode
-   without a transport** — file replays, custom protocols
-   layered on top, fixture generation.
-3. **Reach into `oigtl::runtime` if you need to validate bytes
-   without instantiating typed messages** — for example, a
-   gateway that parses a header to route by `type_id` without
-   decoding the body.
-4. **Reach into `oigtl::transport` if you need a custom
-   Connection backend** — UDP, IPC, a test harness with
-   programmable failure modes.
+```cpp
+#include "oigtl/messages/transform.hpp"
+
+using oigtl::messages::Transform;
+
+Transform tx;
+tx.matrix = {1, 0, 0, 0, 1, 0, 0, 0, 1, 10, 20, 30};
+```
+
+Each message struct exposes:
+
+- A `static constexpr type_id` matching the spec.
+- A `pack()` returning `std::vector<std::uint8_t>` (body bytes only).
+- A `static unpack(ptr, len)` returning the typed instance, throwing on malformed input.
+- Spec-aligned field names and types (`std::array<float, 12>` for TRANSFORM's matrix, etc.).
+
+For per-message field details, see
+[`../spec/MESSAGES.md`](../spec/MESSAGES.md).
+
+The registry — `oigtl::messages::default_registry()` — maps
+`type_id` strings to round-trip functions. The facade uses it
+for `Server::on<T>()` dispatch.
+
+## Reaching deeper
+
+Most application code stops at the facade and the message
+structs. The two lower layers are accessible if you have a
+genuine need:
+
+### `oigtl::transport` — custom Connection backends
+
+If you need a non-TCP transport (UDP, IPC, a test harness with
+programmable failure modes), or you want to drive framing
+yourself rather than rely on the facade's receive loop, reach
+into `oigtl::transport`. Headers under
+[`include/oigtl/transport/`](include/oigtl/transport/):
+
+| Header | What lives here |
+|---|---|
+| `connection.hpp` | The `Connection` interface — abstract async send/receive. |
+| `framer.hpp` | The `Framer` interface — splits a byte stream into IGTL frames. `make_v3_framer(max_body_size)` is the standard implementation. |
+| `tcp.hpp` | TCP backend — `make_tcp_pair`, `make_tcp_server`. ASIO under the hood. |
+| `future.hpp` | `Future<T>` — small promise/future primitive used to wire async results to callers. |
+| `sync.hpp` | Sync helpers — block on a Future with a timeout. |
+| `errors.hpp` | Transport-layer exceptions (`FramingError`, `ConnectionClosedError`, …). |
+| `policy.hpp` | Server-side connection policy (host allowlists, max-clients, idle-disconnect). |
+
+### `oigtl::runtime` — pure codec
+
+If you need to encode/decode bytes without a transport at all —
+file replays, fixture generation, a gateway that parses headers
+to route by `type_id` without decoding the body — reach into
+`oigtl::runtime`. Pure codec, stdlib-only, bounds-checked,
+~700 LoC of hand-written C++17. Headers under
+[`include/oigtl/runtime/`](include/oigtl/runtime/):
+
+| Header | What lives here |
+|---|---|
+| `byte_order.hpp` | Inline big-endian read/write helpers (`read_be_u16`, `write_be_f64`, …). Constexpr where possible. |
+| `crc64.hpp` | CRC-64 ECMA-182 over arbitrary bytes. Slice-by-8, ~1.4 GB/s. |
+| `header.hpp` | The 58-byte OpenIGTLink header — `pack_header` / `unpack_header`, with type_id and device_name validated as ASCII null-padded. |
+| `extended_header.hpp` | The v3 extended-header region (12 bytes). |
+| `metadata.hpp` | The v2/v3 metadata block — index + body. Bounds-checked allocation, validated index/body sizes. |
+| `ascii.hpp` | ASCII validation primitives. Reject non-ASCII bytes in declared-ASCII fields per the spec. |
+| `dispatch.hpp` | `Registry<type_id → round-trip fn>`. |
+| `oracle.hpp` | `parse_wire` / `verify_wire_bytes` — the conformance-oracle surface used by the codec, the negative-corpus tests, and the fuzzer. |
+| `error.hpp` | Typed exception hierarchy: `ProtocolError`, `ShortBufferError`, `CrcMismatchError`, `MalformedMessageError`, `UnknownMessageTypeError`. |
+| `invariants.hpp` | Cross-field invariants (e.g. `image` post-unpack invariant tying `pixels.size()` to header-derived dimensions). |
+
+Direct usage if all you need is bytes-in / bytes-out:
+
+```cpp
+#include "oigtl/runtime/oracle.hpp"
+#include "oigtl/messages/register_all.hpp"
+
+auto registry = oigtl::messages::default_registry();   // all 84 types
+auto result = oigtl::runtime::oracle::verify_wire_bytes(
+    wire_ptr, wire_len, registry);
+if (!result.ok) { /* result.error */ }
+```
 
 ## Headers cheatsheet
 
