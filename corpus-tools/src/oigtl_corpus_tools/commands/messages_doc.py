@@ -39,6 +39,7 @@ from pathlib import Path
 from oigtl_corpus_tools.paths import RepoRootNotFound, find_repo_root
 from oigtl_corpus_tools.schema.field import FieldSchema
 from oigtl_corpus_tools.schema.message import MessageSchema
+from oigtl_corpus_tools.schema.types import FieldType, PrimitiveType
 
 
 # ---------------------------------------------------------------------------
@@ -292,23 +293,27 @@ def _render_message(m: MessageSchema) -> str:
 
     # Rationale
     if m.rationale:
-        parts.append("**Rationale.** " + m.rationale + "\n")
+        parts.append("**Rationale:** " + m.rationale + "\n")
 
-    # Fields
+    # Fields — rendered as named paragraphs rather than a table.
+    # Markdown tables collapse long descriptions into single tall
+    # rows that are unreadable on GitHub; natural prose per field
+    # respects the actual reading flow and scales with description
+    # length.
     if m.fields:
-        parts.append("**Fields.**\n")
-        parts.append(_render_fields_table(m.fields))
+        parts.append("**Fields:**\n")
+        for i, f in enumerate(m.fields):
+            parts.append(_render_field(f))
+            if i < len(m.fields) - 1:
+                parts.append("")
+        # Blank line after the last field so the next section
+        # (Legacy notes, See also, …) doesn't run together with it.
         parts.append("")
-        # Per-field rationales / notes worth surfacing
-        for f in m.fields:
-            extras = _render_field_extras(f)
-            if extras:
-                parts.append(extras)
 
     # Post-unpack invariant
     if m.post_unpack_invariant:
         parts.append(
-            f"**Post-unpack invariant.** `{m.post_unpack_invariant}` "
+            f"**Post-unpack invariant:** `{m.post_unpack_invariant}` "
             f"— see `corpus-tools/src/oigtl_corpus_tools/codec/policy.py` "
             f"for the cross-codec invariant definition.\n"
         )
@@ -317,20 +322,20 @@ def _render_message(m: MessageSchema) -> str:
     if m.body_size_set:
         legal = ", ".join(str(n) for n in m.body_size_set)
         parts.append(
-            f"**Legal body sizes.** {legal} bytes only. Codecs reject "
+            f"**Legal body sizes:** {legal} bytes only. Codecs reject "
             f"any other length before field access.\n"
         )
 
     # Legacy notes
     if m.legacy_notes:
-        parts.append("**Legacy notes.**\n")
+        parts.append("**Legacy notes:**\n")
         for note in m.legacy_notes:
             parts.append(f"- {note}")
         parts.append("")
 
     # Other notes
     if m.notes:
-        parts.append("**Notes.**\n")
+        parts.append("**Notes:**\n")
         for note in m.notes:
             parts.append(f"- {note}")
         parts.append("")
@@ -340,14 +345,14 @@ def _render_message(m: MessageSchema) -> str:
         links = ", ".join(
             f"[`{ref}`](#{_anchor_for(ref)})" for ref in m.see_also
         )
-        parts.append(f"**See also.** {links}\n")
+        parts.append(f"**See also:** {links}\n")
 
     # Spec reference
     if m.spec_reference:
         section = m.spec_reference.section
         document = m.spec_reference.document
         parts.append(
-            f"**Spec reference.** [{document} §\"{section}\"]"
+            f"**Spec reference:** [{document} §\"{section}\"]"
             f"({document})\n"
         )
 
@@ -361,30 +366,147 @@ def _format_body_size(m: MessageSchema) -> str:
     return f"{m.body_size} bytes"
 
 
-def _render_fields_table(fields: list[FieldSchema]) -> str:
-    rows = ["| Name | Type | Size | Description |", "|---|---|---|---|"]
-    for f in fields:
-        rows.append(
-            "| `{name}` | {type_} | {size} | {desc} |".format(
-                name=f.name,
-                type_=_format_field_type(f),
-                size=_format_field_size(f),
-                desc=_one_line(f.description),
-            )
+def _render_field(f: FieldSchema) -> str:
+    """Render one field as a sequence of paragraphs.
+
+    Format:
+
+        **`name`** &nbsp;·&nbsp; `type` &nbsp;·&nbsp; size
+
+        Description prose…
+
+        *Rationale:* …
+
+        *Layout:* `column_major_3x4`.
+
+        *Legacy:* …
+
+    Reads top-down as natural prose; scales cleanly with
+    description length, unlike a Markdown table cell.
+    """
+    paragraphs: list[str] = []
+
+    # Header line — name, type, size, with thin-space separators.
+    head_bits = [f"**`{f.name}`**", f"`{_format_field_type(f)}`"]
+    size_str = _format_field_size(f)
+    if size_str != "—":
+        head_bits.append(size_str)
+    paragraphs.append(" &nbsp;·&nbsp; ".join(head_bits))
+
+    # Description as its own paragraph.
+    paragraphs.append(f.description)
+
+    # Rationale, if present.
+    if f.rationale:
+        paragraphs.append(f"*Rationale:* {f.rationale}")
+
+    # Single-line attributes bundled into one paragraph.
+    attr_bits: list[str] = []
+    if f.endianness:
+        attr_bits.append(f"*Endianness:* {_enum_value(f.endianness)}.")
+    if getattr(f, "layout", None):
+        attr_bits.append(f"*Layout:* `{f.layout}`.")
+    if f.introduced_in:
+        attr_bits.append(
+            f"*Introduced in:* {_enum_value(f.introduced_in)}."
         )
-    return "\n".join(rows)
+    if attr_bits:
+        paragraphs.append(" ".join(attr_bits))
+
+    # Legacy notes, one paragraph each.
+    if getattr(f, "legacy_notes", None):
+        for note in f.legacy_notes:
+            paragraphs.append(f"*Legacy:* {note}")
+
+    # Struct elements — render their nested sub-fields as a sub-list.
+    # Used by POINT, TDATA, QTDATA, TRAJ, IMGMETA, LBMETA, POLYDATA, …
+    sub_fields = _struct_subfields(f)
+    if sub_fields:
+        paragraphs.append("*Element fields:*")
+        bullet_lines: list[str] = []
+        for sub in sub_fields:
+            bullet_lines.append(_render_subfield_bullet(sub))
+        paragraphs.append("\n".join(bullet_lines))
+
+    return "\n\n".join(paragraphs)
+
+
+def _struct_subfields(f: FieldSchema):
+    """If `f`'s element is an inline struct, return its nested fields.
+
+    Returns ``None`` for primitive arrays, fixed-string-element arrays,
+    and any other field shape without nested structure.
+    """
+    elt = f.element_type
+    if elt is None:
+        return None
+    # Primitive element: no nested fields.
+    if isinstance(elt, PrimitiveType):
+        return None
+    # ElementDescriptor with type=struct: nested fields live in elt.fields.
+    inner_type = getattr(elt, "type", None)
+    inner_fields = getattr(elt, "fields", None)
+    if inner_type == FieldType.STRUCT and inner_fields:
+        return inner_fields
+    return None
+
+
+def _render_subfield_bullet(sub: FieldSchema) -> str:
+    """Render a struct sub-field as a single Markdown bullet line.
+
+    Compact form because struct sub-fields typically have short
+    descriptions and the parent field's paragraph already carries
+    the structural framing.
+    """
+    type_str = _format_field_type(sub)
+    size_str = _format_field_size(sub)
+    head = f"**`{sub.name}`** &nbsp;·&nbsp; `{type_str}`"
+    if size_str != "—":
+        head += f" &nbsp;·&nbsp; {size_str}"
+    desc = " " + sub.description if sub.description else ""
+    return f"- {head} —{desc}"
 
 
 def _format_field_type(f: FieldSchema) -> str:
+    """Render a field's wire type as a compact human string.
+
+    Handles three element-type shapes:
+    - primitive (`uint8`, `float32`, …)
+    - inline `ElementDescriptor` (struct, fixed_string, …)
+    - named struct reference (string identifier)
+    """
     base = _enum_value(f.type)
-    if f.element_type:
-        elt = _enum_value(f.element_type)
-        if f.count is not None:
-            return f"{elt} × {f.count}"
-        if f.count_from:
-            return f"{elt} × ({_enum_value(f.count_from)})"
-        return f"{base}<{elt}>"
-    return base
+    if f.element_type is None:
+        return base
+
+    elt_str = _format_element_type(f.element_type)
+    if f.count is not None:
+        return f"{elt_str} × {f.count}"
+    if f.count_from:
+        return f"{elt_str} × ({_enum_value(f.count_from)})"
+    return f"{base}<{elt_str}>"
+
+
+def _format_element_type(element) -> str:
+    """Render an element type (primitive | ElementDescriptor | name)."""
+    # Primitive.
+    if isinstance(element, PrimitiveType):
+        return _enum_value(element)
+    # Plain string — a named, externally-defined struct reference.
+    if isinstance(element, str):
+        return element
+    # ElementDescriptor.
+    inner_type = getattr(element, "type", None)
+    if inner_type is None:
+        return _enum_value(element)
+    type_str = _enum_value(inner_type)
+    # Compact decoration for common shapes.
+    if inner_type == FieldType.STRUCT:
+        return "struct"
+    size = getattr(element, "size_bytes", None)
+    if size is not None and isinstance(size, int):
+        return f"{type_str}<{size}>"
+    return type_str
 
 
 def _enum_value(value) -> str:
@@ -399,32 +521,3 @@ def _format_field_size(f: FieldSchema) -> str:
     return "—"
 
 
-def _render_field_extras(f: FieldSchema) -> str:
-    """Render rationale / introduced_in / legacy_notes / endianness for a field."""
-    bits: list[str] = []
-    if f.rationale:
-        bits.append(f"  - **`{f.name}` rationale.** {f.rationale}")
-    if f.introduced_in:
-        bits.append(
-            f"  - **`{f.name}` introduced in:** "
-            f"{_enum_value(f.introduced_in)}."
-        )
-    if f.endianness:
-        bits.append(
-            f"  - **`{f.name}` endianness:** {_enum_value(f.endianness)}."
-        )
-    if getattr(f, "layout", None):
-        bits.append(f"  - **`{f.name}` layout:** `{f.layout}`.")
-    if getattr(f, "legacy_notes", None):
-        for note in f.legacy_notes:
-            bits.append(f"  - **`{f.name}` legacy.** {note}")
-    if not bits:
-        return ""
-    # Trailing blank line separates this field's extras from
-    # whatever follows (next field's extras or the next H4).
-    return "\n".join(bits) + "\n"
-
-
-def _one_line(s: str) -> str:
-    """Collapse whitespace so a description fits in a Markdown table cell."""
-    return " ".join(s.split())
