@@ -185,7 +185,8 @@ and usage.
   per-symbol reference.
   [`core-py/API.md`](core-py/API.md) ·
   [`core-cpp/API.md`](core-cpp/API.md) ·
-  [`core-ts/API.md`](core-ts/API.md)
+  [`core-ts/API.md`](core-ts/API.md) ·
+  [`core-c/API.md`](core-c/API.md)
 - [`core-cpp/compat/MIGRATION.md`](core-cpp/compat/MIGRATION.md) —
   swapping `libOpenIGTLink` for openigtlink-ng in an existing
   C++ project. Linker flags, build recipes, FAQ.
