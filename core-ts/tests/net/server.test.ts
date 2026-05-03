@@ -114,6 +114,81 @@ describe("Server dispatch — ts Client ↔ ts Server loopback", () => {
     }
   });
 
+  it("rejects peers outside the allow list at accept time", async () => {
+    // Bind on loopback but only allow 192.0.2.0/24 (TEST-NET-1) —
+    // a loopback connect must therefore be rejected.
+    const server = await Server.listen(0, {
+      host: "127.0.0.1",
+      allow: ["192.0.2.0/24"],
+    });
+    let connectedFired = false;
+    server.onPeerConnected(() => { connectedFired = true; });
+    try {
+      // The TCP handshake itself succeeds, but the server tears
+      // the socket down immediately. The Client observes a closed
+      // connection on its first send/receive.
+      const c = await Client.connect("127.0.0.1", server.port, {
+        connectTimeoutMs: 5000,
+      });
+      try {
+        await new Promise((r) => setTimeout(r, 100));
+        assert.equal(connectedFired, false);
+      } finally {
+        await c.close();
+      }
+    } finally {
+      await server.close();
+    }
+  });
+
+  it("accepts peers explicitly on the allow list", async () => {
+    const server = await Server.listen(0, {
+      host: "127.0.0.1",
+      allow: ["127.0.0.1"],
+    });
+    let connectedFired = false;
+    server.onPeerConnected(() => { connectedFired = true; });
+    try {
+      const c = await Client.connect("127.0.0.1", server.port, {
+        connectTimeoutMs: 5000,
+      });
+      try {
+        await new Promise((r) => setTimeout(r, 100));
+        assert.equal(connectedFired, true);
+      } finally {
+        await c.close();
+      }
+    } finally {
+      await server.close();
+    }
+  });
+
+  it("enforces maxClients", async () => {
+    const server = await Server.listen(0, {
+      host: "127.0.0.1",
+      maxClients: 1,
+    });
+    let acceptedCount = 0;
+    server.onPeerConnected(() => { acceptedCount++; });
+    try {
+      const c1 = await Client.connect("127.0.0.1", server.port, {
+        connectTimeoutMs: 5000,
+      });
+      // Give the server a tick to register c1 in its peer set
+      // before c2 arrives.
+      await new Promise((r) => setTimeout(r, 50));
+      const c2 = await Client.connect("127.0.0.1", server.port, {
+        connectTimeoutMs: 5000,
+      });
+      await new Promise((r) => setTimeout(r, 100));
+      assert.equal(acceptedCount, 1);
+      await c1.close();
+      await c2.close();
+    } finally {
+      await server.close();
+    }
+  });
+
   it("onUnknown fires for typeIds with no registered handler", async () => {
     const server = await Server.listen(0, { host: "127.0.0.1" });
     let unknownFired = false;

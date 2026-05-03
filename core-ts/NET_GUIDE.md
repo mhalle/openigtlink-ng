@@ -261,8 +261,52 @@ idiomatic `timedelta`, and `setTimeout` takes ms anyway.
 `WsClient` accepts the same options plus an optional `webSocket`
 constructor field (`WsClientOptions`).
 
-`Server` and `WsServer` use `ServerOptions` / `WsServerOptions`
-which are similarly minimal in this round.
+`Server` and `WsServer` use `ServerOptions` / `WsServerOptions`,
+covered next.
+
+---
+
+## Configuration: `ServerOptions` and `WsServerOptions`
+
+Both server types share the same shape, with WebSocket-only
+extensions on `WsServerOptions`:
+
+```ts
+import { Server, WsServer } from "@openigtlink/core/net";
+
+const tcp = await Server.listen(18944, {
+  host: "0.0.0.0",
+  defaultDevice: "tracker-relay",
+  maxMessageSize: 16 * 1024 * 1024,
+  allow: ["127.0.0.1", "10.0.0.0/8", "::1"],
+  maxClients: 32,
+});
+
+const ws = await WsServer.listen(18945, {
+  host: "0.0.0.0",
+  allow: ["10.0.0.0/8"],
+  allowOrigins: ["https://dashboard.lab.example"],
+  maxClients: 50,
+});
+```
+
+| Field | Default | Meaning |
+|---|---|---|
+| `host` | `"0.0.0.0"` | Interface to bind. Use `"127.0.0.1"` to refuse non-loopback peers at the OS level (belt-and-braces with `allow`). |
+| `defaultDevice` | `""` | Device-name string written into outgoing headers when `peer.send()` isn't given an explicit device name. |
+| `maxMessageSize` | `0` (no cap) | Pre-parse DoS defence — reject incoming frames whose `bodySize` exceeds this before buffering the body bytes. |
+| `allow` | `undefined` (all peers) | Peer-IP allowlist. Each entry is a literal address (`"127.0.0.1"`, `"::1"`), a CIDR (`"10.0.0.0/8"`, `"fd00::/8"`), or an inclusive range (`"10.0.0.1-10.0.0.99"`). Non-matching peers are rejected at accept time, before any IGTL byte is read. |
+| `maxClients` | `0` (unlimited) | Hard cap on concurrent peers. TCP rejects over-cap connections by closing the socket; WebSocket fails the upgrade with HTTP 503. |
+| `allowOrigins` *(WS only)* | `undefined` (all origins) | Allowlist for the browser-supplied `Origin` request header. Exact match per entry; `"*"` allows any origin **including** non-browser clients with no header. Without this set, a page on **any** origin can connect — set it for any `WsServer` reachable from a browser. |
+
+The peer-IP and Origin checks are pre-upgrade for `WsServer`
+(via `verifyClient`), so a rejected peer never opens a WebSocket
+session; on `Server` they run inside the TCP `connection` listener
+before the `Peer` object is constructed. Either way no handler
+sees a rejected peer.
+
+Hostnames are not resolved — pass IPs only. If your access list
+is DNS-based, resolve at boot and pass the addresses.
 
 ---
 
@@ -310,10 +354,11 @@ The TS port deliberately ships a smaller surface than `core-py`:
   for a future TS implementation to mirror. Application code can
   layer simple reconnect on top of `Client` today by catching
   `ConnectionClosedError` and re-calling `Client.connect`.
-- **Server-side accept restrictions** (host/origin allowlists,
-  max-clients caps, idle-disconnect) — not yet implemented.
-  Front-load with a reverse proxy or firewall for now.
+- **Idle-disconnect** — not yet implemented. Pair `maxClients`
+  with periodic application-level liveness probes for now.
 
-When these land they'll layer additively on the existing surface
-— the entry points (`Client.connect`, `Server.listen`,
+Peer-IP allowlists, Origin allowlists, and `maxClients` are
+implemented (see "Configuration: `ServerOptions` and
+`WsServerOptions`"). When the remaining items land they'll layer
+additively — the entry points (`Client.connect`, `Server.listen`,
 `WsClient.connect`, `WsServer.listen`) won't change.

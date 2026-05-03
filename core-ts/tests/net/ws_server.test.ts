@@ -128,6 +128,115 @@ describe("WsServer dispatch — ts WsClient ↔ ts WsServer loopback", () => {
     }
   });
 
+  it("rejects peers outside the IP allow list with HTTP 403", async () => {
+    const server = await WsServer.listen(0, {
+      host: "127.0.0.1",
+      allow: ["192.0.2.0/24"],   // TEST-NET-1 — loopback excluded
+    });
+    let connectedFired = false;
+    server.onPeerConnected(() => { connectedFired = true; });
+    try {
+      await assert.rejects(
+        WsClient.connect(`ws://127.0.0.1:${server.port}/`, {
+          webSocket: WsCtor,
+          connectTimeoutMs: 5000,
+        }),
+        /unexpected|403|Forbidden|closed/i,
+      );
+      await new Promise((r) => setTimeout(r, 50));
+      assert.equal(connectedFired, false);
+    } finally {
+      await server.close();
+    }
+  });
+
+  it("rejects unknown Origin with HTTP 403, accepts allowed Origin", async () => {
+    const server = await WsServer.listen(0, {
+      host: "127.0.0.1",
+      allowOrigins: ["https://app.example.com"],
+    });
+    try {
+      // 1) Browser-style upgrade with a wrong Origin: rejected.
+      await assert.rejects(
+        new Promise<void>((resolve, reject) => {
+          const ws = new WebSocket(`ws://127.0.0.1:${server.port}/`, {
+            origin: "https://attacker.example",
+          });
+          ws.on("open", () => { ws.close(); resolve(); });
+          ws.on("unexpected-response", (_req, res) => {
+            reject(new Error(`unexpected-response status=${res.statusCode}`));
+          });
+          ws.on("error", (err) => reject(err));
+        }),
+        /unexpected-response status=403|403|Forbidden/i,
+      );
+
+      // 2) Same upgrade with the right Origin: accepted.
+      await new Promise<void>((resolve, reject) => {
+        const ws = new WebSocket(`ws://127.0.0.1:${server.port}/`, {
+          origin: "https://app.example.com",
+        });
+        ws.on("open", () => { ws.close(); resolve(); });
+        ws.on("error", reject);
+      });
+    } finally {
+      await server.close();
+    }
+  });
+
+  it("rejects upgrades with no Origin header when allowOrigins is set", async () => {
+    const server = await WsServer.listen(0, {
+      host: "127.0.0.1",
+      allowOrigins: ["https://app.example.com"],
+    });
+    try {
+      // No `origin` option at all -> request omits the header ->
+      // policy denies (would need "*" to allow header-less clients).
+      await assert.rejects(
+        new Promise<void>((resolve, reject) => {
+          const ws = new WebSocket(`ws://127.0.0.1:${server.port}/`);
+          ws.on("open", () => { ws.close(); resolve(); });
+          ws.on("unexpected-response", (_req, res) => {
+            reject(new Error(`unexpected-response status=${res.statusCode}`));
+          });
+          ws.on("error", (err) => reject(err));
+        }),
+        /unexpected-response status=403|403|Forbidden/i,
+      );
+    } finally {
+      await server.close();
+    }
+  });
+
+  it("enforces maxClients with HTTP 503", async () => {
+    const server = await WsServer.listen(0, {
+      host: "127.0.0.1",
+      maxClients: 1,
+    });
+    let acceptedCount = 0;
+    server.onPeerConnected(() => { acceptedCount++; });
+    try {
+      const c1 = await WsClient.connect(
+        `ws://127.0.0.1:${server.port}/`,
+        { webSocket: WsCtor, connectTimeoutMs: 5000 },
+      );
+      // Let the server register c1 in its peer set before c2 arrives.
+      await new Promise((r) => setTimeout(r, 50));
+      await assert.rejects(
+        WsClient.connect(`ws://127.0.0.1:${server.port}/`, {
+          webSocket: WsCtor,
+          connectTimeoutMs: 5000,
+        }),
+        /unexpected|503|Service Unavailable|closed/i,
+      );
+      await new Promise((r) => setTimeout(r, 50));
+      assert.equal(acceptedCount, 1);
+      await c1.close();
+    } finally {
+      await server.close();
+    }
+  });
+
   it("onUnknown fires for typeIds with no registered handler", async () => {
     const server = await WsServer.listen(0, { host: "127.0.0.1" });
     let unknownFired = false;
