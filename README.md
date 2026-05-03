@@ -26,7 +26,7 @@ project makes is worth keeping in mind:
 | Porting PLUS Toolkit specifically | [`core-cpp/compat/PORTING_PLUS.md`](core-cpp/compat/PORTING_PLUS.md) |
 | Writing new C++ code | [`core-cpp/API.md`](core-cpp/API.md) → [`core-cpp/CLIENT_GUIDE.md`](core-cpp/CLIENT_GUIDE.md) |
 | Writing Python (research scripts, dashboards) | [`core-py/API.md`](core-py/API.md) → [`core-py/NET_GUIDE.md`](core-py/NET_GUIDE.md) |
-| Writing TypeScript (browser dashboards, Node services) | [`core-ts/API.md`](core-ts/API.md) |
+| Writing TypeScript (browser dashboards, Node services) | [`core-ts/API.md`](core-ts/API.md) → [`core-ts/NET_GUIDE.md`](core-ts/NET_GUIDE.md) |
 | Working on an embedded target (MCU, IoT bridge) | [`core-c/API.md`](core-c/API.md) |
 | Looking up what's in a TRANSFORM / IMAGE / etc. | [`spec/MESSAGES.md`](spec/MESSAGES.md) |
 | Auditing the wire protocol | [`spec/protocol/v3.md`](spec/protocol/v3.md) |

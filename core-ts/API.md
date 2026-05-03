@@ -45,12 +45,12 @@ environment-specific entry points:
 import { Client } from "@openigtlink/core/net";
 import { Transform, Status } from "@openigtlink/core/messages";
 
-const client = await Client.connect({ host: "tracker.lab", port: 18944 });
-await client.send(new Transform({ matrix: [1, 0, 0,
-                                            0, 1, 0,
-                                            0, 0, 1,
-                                            10, 20, 30] }));
-const reply = await client.receive(Status);
+const c = await Client.connect("tracker.lab", 18944);
+await c.send(new Transform({ matrix: [1, 0, 0,
+                                       0, 1, 0,
+                                       0, 0, 1,
+                                       0, 0, 0] }));
+const reply = await c.receive(Status);
 console.log(reply.body.statusMessage);
 
 // Browser (WebSocket):
@@ -66,11 +66,15 @@ includes Node-only APIs (TCP via the `net` module); `/net/ws` is
 browser-safe WebSocket. A bundler targeting the browser should
 import only `/net/ws` to avoid pulling Node built-ins.
 
-Server-side mirrors the client API — `Server.listen({ port })`
-for TCP, `WsServer.listen({ port })` for WebSocket. Both expose
-`.on(MessageClass, handler)` for type-dispatched receives and
-support host/origin allowlists, max-clients caps, and
-idle-disconnect.
+Server-side mirrors the client API — `Server.listen(port)` for
+TCP, `WsServer.listen(port)` for WebSocket (Node only). Both
+expose `.on(MessageClass, handler)` for type-dispatched
+receives and per-peer `peer.send(message)` / `peer.close()`.
+
+**For the full network surface** — dispatch loops, receive
+timeouts, configuration, error model, browser-bundle guidance,
+WebSocket server worked example — see
+[`NET_GUIDE.md`](NET_GUIDE.md).
 
 ## Working with messages: `@openigtlink/core/messages`
 
@@ -210,10 +214,13 @@ Two stable extension points:
 
 | You want to… | Look at |
 |---|---|
-| Connect a Node client to an OpenIGTLink server | `@openigtlink/core/net` exports |
-| Speak OpenIGTLink from a browser | `@openigtlink/core/net/ws` |
+| Connect a Node client to an OpenIGTLink server | [`NET_GUIDE.md`](NET_GUIDE.md) §"TCP client (Node)" |
+| Speak OpenIGTLink from a browser | [`NET_GUIDE.md`](NET_GUIDE.md) §"WebSocket client" |
+| Run a TCP or WebSocket server | [`NET_GUIDE.md`](NET_GUIDE.md) §"TCP server" / §"WebSocket server" |
+| Configure timeouts / DoS caps | [`NET_GUIDE.md`](NET_GUIDE.md) §"Configuration: `ClientOptions`" |
+| Handle disconnects, framing errors, timeouts | [`NET_GUIDE.md`](NET_GUIDE.md) §"Error model" |
 | Find out what a TRANSFORM looks like on the wire | [`../spec/MESSAGES.md`](../spec/MESSAGES.md) |
 | Add a custom message type | The "Adding a custom message type" section above |
 | Pack/unpack bytes without a transport | "Reaching deeper" above |
-| Tune the bundle for browsers (avoid Node built-ins) | Import only the top-level package and `/net/ws` |
+| Tune the bundle for browsers (avoid Node built-ins) | [`NET_GUIDE.md`](NET_GUIDE.md) §"Browser bundle" |
 | Understand the cross-language guarantees | [`../spec/CONFORMANCE.md`](../spec/CONFORMANCE.md) |
