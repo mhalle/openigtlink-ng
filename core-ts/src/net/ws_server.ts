@@ -53,6 +53,12 @@ import {
   TransportTimeoutError,
 } from "./errors.js";
 import { type Envelope } from "./envelope.js";
+import {
+  buildOriginPolicy,
+  buildPeerPolicy,
+  type OriginPolicy,
+  type PeerPolicy,
+} from "./policy.js";
 import type { SendableCtor, SendableMessage } from "./types.js";
 
 // ---------------------------------------------------------------------------
@@ -72,19 +78,55 @@ export interface WsServerOptions {
    * peer.send call). Matches core-py's `default_device`.
    */
   defaultDevice?: string;
+  /**
+   * Peer-IP allowlist (literal addresses, CIDRs, or inclusive
+   * ranges; see {@link ServerOptions.allow} for spec language).
+   * Connections from outside the list are rejected at the WS
+   * upgrade with HTTP 403, before any IGTL byte is read.
+   * Default: undefined (accept any peer).
+   */
+  allow?: readonly string[];
+  /**
+   * Allowlist for the `Origin` request header sent by browsers
+   * during the WebSocket upgrade. Each entry is matched exactly
+   * (e.g. `"https://app.example.com"`); the literal `"*"` allows
+   * any origin **including** clients that omit the header
+   * entirely (non-browser clients). Default: undefined (allow
+   * any origin).
+   *
+   * **Setting this is strongly recommended for any `WsServer`
+   * exposed to a browser**: without it, a page on any origin can
+   * connect to your endpoint.
+   */
+  allowOrigins?: readonly string[];
+  /**
+   * Hard cap on concurrent peers. Once reached, further upgrades
+   * are rejected with HTTP 503. `0` = unlimited. Default: 0.
+   */
+  maxClients?: number;
 }
 
 interface ResolvedWsServerOptions {
   host: string;
   maxMessageSize: number;
   defaultDevice: string;
+  policy: PeerPolicy;
+  originPolicy: OriginPolicy;
+  maxClients: number;
 }
 
 function resolveOptions(opts?: WsServerOptions): ResolvedWsServerOptions {
+  const maxClients = opts?.maxClients ?? 0;
+  if (maxClients < 0 || !Number.isInteger(maxClients)) {
+    throw new TypeError("maxClients must be a non-negative integer");
+  }
   return {
     host: opts?.host ?? "0.0.0.0",
     maxMessageSize: opts?.maxMessageSize ?? 0,
     defaultDevice: opts?.defaultDevice ?? "",
+    policy: buildPeerPolicy(opts?.allow),
+    originPolicy: buildOriginPolicy(opts?.allowOrigins),
+    maxClients,
   };
 }
 
@@ -227,9 +269,9 @@ export class WsServer {
   private constructor(
     private readonly http: HttpServer,
     private readonly wss: WebSocketServer,
-    opts: WsServerOptions | undefined,
+    resolved: ResolvedWsServerOptions,
   ) {
-    this.opts = resolveOptions(opts);
+    this.opts = resolved;
   }
 
   /**
@@ -244,8 +286,36 @@ export class WsServer {
     opts?: WsServerOptions,
   ): Promise<WsServer> {
     const http = createHttpServer();
-    const wss = new WebSocketServer({ server: http });
-    const server = new WsServer(http, wss, opts);
+    // We resolve options here (rather than letting the constructor
+    // do it) so the verifyClient closure can reference the same
+    // ResolvedWsServerOptions instance the server will use.
+    const resolved = resolveOptions(opts);
+    const wss = new WebSocketServer({
+      server: http,
+      verifyClient: (info, cb) => {
+        // Pre-upgrade gates: peer-IP allowlist, Origin allowlist,
+        // and max-clients. Reject before the WS handshake completes
+        // so no Peer object is constructed and no IGTL byte is read.
+        const remoteIp = info.req.socket.remoteAddress ?? "";
+        if (!resolved.policy.allows(remoteIp)) {
+          cb(false, 403, "Forbidden");
+          return;
+        }
+        if (!resolved.originPolicy.allows(info.origin)) {
+          cb(false, 403, "Forbidden");
+          return;
+        }
+        if (
+          resolved.maxClients > 0 &&
+          server.peers.size >= resolved.maxClients
+        ) {
+          cb(false, 503, "Service Unavailable");
+          return;
+        }
+        cb(true);
+      },
+    });
+    const server = new WsServer(http, wss, resolved);
 
     wss.on("connection", (ws: WebSocket, req: IncomingMessage) => {
       if (server.closed) {

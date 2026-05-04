@@ -46,6 +46,7 @@ import {
   FramingError,
 } from "./errors.js";
 import { type Envelope } from "./envelope.js";
+import { buildPeerPolicy, type PeerPolicy } from "./policy.js";
 import type { SendableCtor, SendableMessage } from "./types.js";
 
 // ---------------------------------------------------------------------------
@@ -67,19 +68,45 @@ export interface ServerOptions {
    * `peer.send` call). Matches core-py `default_device`.
    */
   defaultDevice?: string;
+  /**
+   * Peer-IP allowlist. Each entry is a literal address
+   * (`"127.0.0.1"`, `"::1"`), a CIDR (`"10.0.0.0/8"`,
+   * `"fd00::/8"`), or an inclusive range
+   * (`"10.0.0.1-10.0.0.99"`). Connections from outside the list
+   * are rejected at accept time, before the first byte is read.
+   *
+   * Default: undefined (accept any peer). Mirrors core-py
+   * `Server.allow(...)`.
+   */
+  allow?: readonly string[];
+  /**
+   * Hard cap on concurrent peers. Once reached, further accepts
+   * are closed immediately. `0` = unlimited. Default: 0.
+   *
+   * Pre-parse DoS hygiene; pair with `allow` for layered defence.
+   */
+  maxClients?: number;
 }
 
 interface ResolvedServerOptions {
   host: string;
   maxMessageSize: number;
   defaultDevice: string;
+  policy: PeerPolicy;
+  maxClients: number;
 }
 
 function resolveOptions(opts?: ServerOptions): ResolvedServerOptions {
+  const maxClients = opts?.maxClients ?? 0;
+  if (maxClients < 0 || !Number.isInteger(maxClients)) {
+    throw new TypeError("maxClients must be a non-negative integer");
+  }
   return {
     host: opts?.host ?? "0.0.0.0",
     maxMessageSize: opts?.maxMessageSize ?? 0,
     defaultDevice: opts?.defaultDevice ?? "",
+    policy: buildPeerPolicy(opts?.allow),
+    maxClients,
   };
 }
 
@@ -264,6 +291,21 @@ export class Server {
 
     net.on("connection", (socket: Socket) => {
       if (server.closed) {
+        try { socket.destroy(); } catch {}
+        return;
+      }
+      // Pre-accept policy gates: peer-IP allowlist and max-clients.
+      // Both close the socket without ever calling acceptPeer, so
+      // no Peer object is constructed and no IGTL byte is read.
+      const remoteIp = socket.remoteAddress ?? "";
+      if (!server.opts.policy.allows(remoteIp)) {
+        try { socket.destroy(); } catch {}
+        return;
+      }
+      if (
+        server.opts.maxClients > 0 &&
+        server.peers.size >= server.opts.maxClients
+      ) {
         try { socket.destroy(); } catch {}
         return;
       }
